@@ -534,6 +534,50 @@ function checkoutField(selector, fallbackNode) {
   return document.querySelector(`[data-page-panel="checkout"] ${selector}`) || fallbackNode;
 }
 
+function splitAddress(value) {
+  const parts = String(value || "")
+    .split(",")
+    .map((part) => part.trim());
+  return {
+    house: parts[0] || "",
+    street: parts[1] || "",
+    area: parts[2] || "",
+    city: parts[3] || "",
+    pincode: (parts[4] || "").replace(/\D/g, "").slice(0, 6)
+  };
+}
+
+function checkoutAddressParts() {
+  const pagePanel = document.querySelector('[data-page-panel="checkout"]');
+  if (!pagePanel || pagePanel.getAttribute("aria-hidden") === "true") {
+    return splitAddress(nodes.checkoutAddress.value);
+  }
+
+  const values = {
+    house: pagePanel.querySelector("[data-page-checkout-house]")?.value || "",
+    street: pagePanel.querySelector("[data-page-checkout-street]")?.value || "",
+    area: pagePanel.querySelector("[data-page-checkout-area]")?.value || "",
+    city: pagePanel.querySelector("[data-page-checkout-city]")?.value || "",
+    pincode: pagePanel.querySelector("[data-page-checkout-pincode]")?.value || ""
+  };
+
+  if (Object.values(values).some((value) => String(value).trim())) {
+    return {
+      house: String(values.house).trim(),
+      street: String(values.street).trim(),
+      area: String(values.area).trim(),
+      city: String(values.city).trim(),
+      pincode: String(values.pincode).replace(/\D/g, "").slice(0, 6)
+    };
+  }
+
+  return splitAddress(nodes.checkoutAddress.value);
+}
+
+function formatAddress(parts) {
+  return [parts.house, parts.street, parts.area, parts.city, parts.pincode].filter(Boolean).join(", ");
+}
+
 function setCheckoutActionState(processing = false) {
   const disabled = processing || cartTotals().itemCount === 0;
   const label = processing ? "Processing..." : isLoggedIn() ? "Place order" : "Login to place order";
@@ -574,7 +618,8 @@ function renderCheckoutPage() {
   const addressNode = checkoutField("[data-page-checkout-address]", nodes.checkoutAddress);
   const phone = state.session?.user?.phone || phoneNode.value || "";
   const name = nameNode.value || state.session?.user?.name || "";
-  const address = addressNode.value || "";
+  const address = formatAddress(checkoutAddressParts()) || addressNode.value || "";
+  const addressParts = splitAddress(address);
   const checkoutLabel = isLoggedIn() ? "Place order" : "Login to place order";
 
   nodes.checkoutPage.innerHTML = `
@@ -620,9 +665,14 @@ function renderCheckoutPage() {
             </div>
           </div>
           <div class="checkout-field-grid">
-            <label>Full name<input type="text" data-page-checkout-name value="${escapeHtml(name)}" placeholder="Customer name" autocomplete="name" /></label>
-            <label>Mobile number<input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(phone)}" placeholder="10 digit mobile" autocomplete="tel" /></label>
-            <label class="wide">Delivery address<textarea data-page-checkout-address placeholder="House no, street, area, city, pincode" rows="4">${escapeHtml(address)}</textarea></label>
+            <label class="wide">Full name<input type="text" data-page-checkout-name value="${escapeHtml(name)}" placeholder="Customer name" autocomplete="name" /></label>
+            <label class="wide">Mobile number<input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(phone)}" placeholder="10 digit mobile" autocomplete="tel" /></label>
+            <label>House no<input type="text" data-page-checkout-house value="${escapeHtml(addressParts.house)}" placeholder="Flat / house no" autocomplete="address-line1" /></label>
+            <label>Street<input type="text" data-page-checkout-street value="${escapeHtml(addressParts.street)}" placeholder="Street / road" autocomplete="address-line2" /></label>
+            <label>Area<input type="text" data-page-checkout-area value="${escapeHtml(addressParts.area)}" placeholder="Area / locality" /></label>
+            <label>City<input type="text" data-page-checkout-city value="${escapeHtml(addressParts.city)}" placeholder="City" autocomplete="address-level2" /></label>
+            <label>Pincode<input type="tel" inputmode="numeric" maxlength="6" data-page-checkout-pincode value="${escapeHtml(addressParts.pincode)}" placeholder="6 digit pincode" autocomplete="postal-code" /></label>
+            <input type="hidden" data-page-checkout-address value="${escapeHtml(address)}" />
           </div>
           <div class="delivery-hint">
             <span>Include landmark and pincode for faster dispatch.</span>
@@ -930,9 +980,15 @@ function validateCheckout() {
   const nameNode = checkoutField("[data-page-checkout-name]", nodes.checkoutName);
   const phoneNode = checkoutField("[data-page-checkout-phone]", nodes.checkoutPhone);
   const addressNode = checkoutField("[data-page-checkout-address]", nodes.checkoutAddress);
+  const houseNode = checkoutField("[data-page-checkout-house]", addressNode);
+  const streetNode = checkoutField("[data-page-checkout-street]", addressNode);
+  const areaNode = checkoutField("[data-page-checkout-area]", addressNode);
+  const cityNode = checkoutField("[data-page-checkout-city]", addressNode);
+  const pincodeNode = checkoutField("[data-page-checkout-pincode]", addressNode);
   const phone = phoneDigits(phoneNode.value || state.session?.user?.phone);
   const name = String(nameNode.value || state.session?.user?.name || "").trim();
-  const address = String(addressNode.value || "").trim();
+  const addressParts = checkoutAddressParts();
+  const address = formatAddress(addressParts);
 
   if (!isLoggedIn()) {
     openAccount();
@@ -964,13 +1020,39 @@ function validateCheckout() {
     return null;
   }
 
-  if (address.length < 12) {
-    showToast("Enter full delivery address");
-    addressNode.focus();
+  if (!addressParts.house) {
+    showToast("Enter house number");
+    houseNode.focus();
     return null;
   }
 
-  return { name, phone, address };
+  if (!addressParts.street) {
+    showToast("Enter street");
+    streetNode.focus();
+    return null;
+  }
+
+  if (!addressParts.area) {
+    showToast("Enter area");
+    areaNode.focus();
+    return null;
+  }
+
+  if (!addressParts.city) {
+    showToast("Enter city");
+    cityNode.focus();
+    return null;
+  }
+
+  if (addressParts.pincode.length !== 6) {
+    showToast("Enter valid 6 digit pincode");
+    pincodeNode.focus();
+    return null;
+  }
+
+  addressNode.value = address;
+  nodes.checkoutAddress.value = address;
+  return { name, phone, address, addressParts };
 }
 
 function buildOrder(customer, payment) {
