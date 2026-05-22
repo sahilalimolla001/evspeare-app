@@ -82,6 +82,31 @@
     return "Deals";
   }
 
+  function firstPresent(item, names) {
+    for (const name of names) {
+      if (!Object.prototype.hasOwnProperty.call(item, name)) continue;
+      const value = item[name];
+      if (value !== null && value !== undefined && value !== "") return value;
+    }
+    return null;
+  }
+
+  function numericOrNull(value) {
+    if (value === null || value === undefined || value === "") return null;
+    const match = String(value).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+    if (!match) return null;
+    const parsed = Number(match[0]);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function stockStatus(item, quantity) {
+    const raw = firstPresent(item, ["stock_status", "stockStatus", "stock", "availability", "in_stock", "inStock", "is_in_stock", "isInStock", "available"]);
+    if (quantity !== null && quantity <= 0) return "out_of_stock";
+    if (typeof raw === "boolean") return raw ? "available" : "out_of_stock";
+    if (raw === 0 || raw === "0") return "out_of_stock";
+    return raw || "available";
+  }
+
   function normalizeProduct(item, index) {
     const price = Number(item.price || item.sale_price || item.selling_price || item.final_price || 0);
     const mrp = Number(item.mrp || item.regular_price || item.compare_at_price || item.original_price || price);
@@ -89,10 +114,12 @@
     const tags = Array.isArray(item.tags)
       ? item.tags.map((tag) => tag.name || tag.title || tag)
       : [category];
+    const quantity = numericOrNull(firstPresent(item, ["stockQuantity", "stock_quantity", "inventory", "available_stock", "availableStock", "quantity", "qty", "stock_count"]));
 
     return {
       id: String(item.id || item.product_id || item.sku || `remote-${index}`),
-      sourceId: item.id || item.product_id || item.sku || null,
+      sourceId: item.sourceId || item.source_id || item.product_id || item.productId || item.id || item.sku || null,
+      sku: item.sku || item.product_sku || item.productSku || null,
       title: item.title || item.name || "Product",
       category,
       price: price || mrp || 0,
@@ -102,7 +129,8 @@
       delivery: item.delivery || item.shipping_text || "Delivery available",
       tags: [...new Set(["Deals", category, ...tags].filter(Boolean))],
       image: firstImage(item),
-      stock: item.stock_status || item.in_stock || item.stock || "available"
+      stock: stockStatus(item, quantity),
+      stockQuantity: quantity
     };
   }
 

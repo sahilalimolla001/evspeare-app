@@ -401,6 +401,222 @@ async function fetchWithTimeout(url, options = {}) {
   }
 }
 
+function firstPresent(item, names) {
+  for (const name of names) {
+    if (!item || !Object.prototype.hasOwnProperty.call(item, name)) continue;
+    const value = item[name];
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+  return null;
+}
+
+function numericValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "boolean") return value ? null : 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+
+  const match = String(value).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function arrayFromPayload(payload, keys = ["products", "items", "data"], depth = 0) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object" || depth > 2) return [];
+
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+
+  for (const key of keys) {
+    const nested = arrayFromPayload(payload[key], keys, depth + 1);
+    if (nested.length) return nested;
+  }
+
+  return [];
+}
+
+function imageBaseUrl(endpointUrl) {
+  if (process.env.IMAGE_BASE_URL) return process.env.IMAGE_BASE_URL;
+  try {
+    return new URL(endpointUrl).origin;
+  } catch (error) {
+    return "";
+  }
+}
+
+function publicProductImageUrl(value, endpointUrl = "") {
+  const image = String(value || "").trim();
+  if (!image) return "";
+
+  if (image.startsWith("gs://")) {
+    return `/api/mobile/images?src=${encodeURIComponent(image)}`;
+  }
+
+  try {
+    const url = new URL(image);
+    if (
+      url.hostname === "storage.googleapis.com" ||
+      url.hostname === "firebasestorage.googleapis.com" ||
+      url.hostname.endsWith(".storage.googleapis.com")
+    ) {
+      return `/api/mobile/images?src=${encodeURIComponent(image)}`;
+    }
+    return url.toString();
+  } catch (error) {
+    const base = imageBaseUrl(endpointUrl);
+    if (base) {
+      try {
+        return new URL(image, `${base.replace(/\/+$/g, "")}/`).toString();
+      } catch (innerError) {
+        return image;
+      }
+    }
+  }
+
+  return image;
+}
+
+function firstProductImage(item, endpointUrl) {
+  const direct = firstPresent(item, [
+    "image",
+    "image_url",
+    "imageUrl",
+    "photo",
+    "thumbnail",
+    "thumbnail_url",
+    "thumbnailUrl",
+    "featured_image",
+    "featuredImage",
+    "main_image",
+    "mainImage",
+    "product_image",
+    "productImage"
+  ]);
+  if (direct) return publicProductImageUrl(direct, endpointUrl);
+
+  const images = firstPresent(item, ["images", "gallery", "photos", "media"]);
+  if (Array.isArray(images) && images[0]) {
+    const first = typeof images[0] === "object"
+      ? firstPresent(images[0], ["src", "url", "image", "image_url", "path"])
+      : images[0];
+    if (first) return publicProductImageUrl(first, endpointUrl);
+  }
+
+  return "https://images.unsplash.com/photo-1607082350899-7e105aa886ae?auto=format&fit=crop&w=420&q=80";
+}
+
+function firstProductCategory(item) {
+  const direct = firstPresent(item, ["category", "category_name", "categoryName", "product_category", "productCategory"]);
+  if (typeof direct === "string") return direct;
+  if (direct && typeof direct === "object") return direct.name || direct.title || "Deals";
+
+  const categories = firstPresent(item, ["categories", "collections"]);
+  if (Array.isArray(categories) && categories[0]) {
+    return categories[0].name || categories[0].title || categories[0].slug || categories[0];
+  }
+
+  return "Deals";
+}
+
+function stockStatusFromItem(item, quantity) {
+  const statusValue = firstPresent(item, [
+    "stock_status",
+    "stockStatus",
+    "availability",
+    "status",
+    "stock",
+    "in_stock",
+    "inStock",
+    "is_in_stock",
+    "isInStock",
+    "available"
+  ]);
+
+  if (quantity !== null && quantity <= 0) return "out_of_stock";
+  if (typeof statusValue === "boolean") return statusValue ? "available" : "out_of_stock";
+  if (statusValue === 0 || statusValue === "0") return "out_of_stock";
+
+  const normalized = String(statusValue || "").toLowerCase();
+  if (["out_of_stock", "out of stock", "sold_out", "sold out", "unavailable", "inactive", "disabled"].includes(normalized)) {
+    return "out_of_stock";
+  }
+  return statusValue || "available";
+}
+
+function normalizeRemoteProduct(item, index, endpointUrl, source) {
+  const id = firstPresent(item, ["id", "product_id", "productId", "sku", "product_sku", "productSku", "code"]);
+  const sourceId = firstPresent(item, ["product_id", "productId", "id", "sku", "product_sku", "productSku", "code"]);
+  const sku = firstPresent(item, ["sku", "product_sku", "productSku", "code"]);
+  const price = numericValue(firstPresent(item, ["price", "sale_price", "salePrice", "selling_price", "sellingPrice", "final_price", "finalPrice"]));
+  const mrp = numericValue(firstPresent(item, ["mrp", "regular_price", "regularPrice", "original_price", "originalPrice", "compare_at_price", "compareAtPrice"]));
+  const quantity = numericValue(firstPresent(item, [
+    "stock_quantity",
+    "stockQuantity",
+    "inventory",
+    "inventory_qty",
+    "inventoryQty",
+    "inventory_quantity",
+    "inventoryQuantity",
+    "available_quantity",
+    "availableQuantity",
+    "available_stock",
+    "availableStock",
+    "warehouse_stock",
+    "warehouseStock",
+    "warehouse_inventory",
+    "warehouseInventory",
+    "current_stock",
+    "currentStock",
+    "qty",
+    "quantity",
+    "on_hand",
+    "onHand"
+  ]));
+  const category = firstProductCategory(item);
+  const rawTags = firstPresent(item, ["tags", "labels"]);
+  const tags = Array.isArray(rawTags)
+    ? rawTags.map((tag) => tag.name || tag.title || tag).filter(Boolean)
+    : [];
+
+  return {
+    id: String(id || `${source}-${index}`),
+    sourceId: sourceId === null || sourceId === undefined ? null : sourceId,
+    sku: sku === null || sku === undefined ? null : String(sku),
+    title: firstPresent(item, ["title", "name", "product_name", "productName"]) || "Product",
+    category,
+    price: price || mrp || 0,
+    mrp: mrp || price || 0,
+    rating: numericValue(firstPresent(item, ["rating", "average_rating", "averageRating"])) || 4.1,
+    reviews: numericValue(firstPresent(item, ["reviews", "rating_count", "ratingCount", "review_count", "reviewCount"])) || 0,
+    delivery: firstPresent(item, ["delivery", "shipping_text", "shippingText"]) || "Delivery available",
+    tags: [...new Set(["Deals", category, ...tags].filter(Boolean))],
+    image: firstProductImage(item, endpointUrl),
+    stock: stockStatusFromItem(item, quantity),
+    stockQuantity: quantity,
+    source
+  };
+}
+
+async function fetchRemoteJson(endpointUrl, headers, label) {
+  const response = await fetchWithTimeout(endpointUrl, { headers });
+  const text = await response.text();
+  let data = {};
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch (error) {
+    throw new Error(`${label} must return JSON data`);
+  }
+
+  if (!response.ok) {
+    throw new Error(data.message || data.error || `${label} failed with ${response.status}`);
+  }
+
+  return data;
+}
+
 function publicDiagnostics(req) {
   return {
     ok: true,
@@ -422,11 +638,16 @@ function publicDiagnostics(req) {
       ordersUrlSelfReference: isSelfReference(req, process.env.WEBSITE_ORDERS_URL, "/api/mobile/orders")
     },
     warehouse: {
+      productsUrlSet: Boolean(process.env.WAREHOUSE_PRODUCTS_URL),
+      inventoryUrlSet: Boolean(process.env.WAREHOUSE_INVENTORY_URL),
       ordersUrlSet: Boolean(process.env.WAREHOUSE_ORDERS_URL),
       trackingUrlSet: Boolean(process.env.WAREHOUSE_TRACKING_URL),
       apiTokenSet: Boolean(process.env.WAREHOUSE_API_TOKEN),
+      productsUrl: safeUrlSummary(process.env.WAREHOUSE_PRODUCTS_URL),
+      inventoryUrl: safeUrlSummary(process.env.WAREHOUSE_INVENTORY_URL),
       ordersUrl: safeUrlSummary(process.env.WAREHOUSE_ORDERS_URL),
-      trackingUrl: safeUrlSummary(process.env.WAREHOUSE_TRACKING_URL)
+      trackingUrl: safeUrlSummary(process.env.WAREHOUSE_TRACKING_URL),
+      productsUrlSelfReference: isSelfReference(req, process.env.WAREHOUSE_PRODUCTS_URL, "/api/mobile/products")
     },
     images: {
       googleStorageConfigured: googleStorageConfigured(),
@@ -530,50 +751,243 @@ function websiteHeaders(extra = {}) {
   return headers;
 }
 
-async function handleProducts(req, res) {
+function warehouseHeaders(extra = {}) {
+  const headers = {
+    Accept: "application/json",
+    ...extra
+  };
+  if (process.env.WAREHOUSE_API_TOKEN) {
+    headers.Authorization = process.env.WAREHOUSE_API_TOKEN;
+  }
+  return headers;
+}
+
+function inventoryKeys(row) {
+  const keys = [
+    firstPresent(row, ["product_id", "productId"]),
+    firstPresent(row, ["product", "item_id", "itemId"]),
+    firstPresent(row, ["sku", "product_sku", "productSku"]),
+    firstPresent(row, ["variant_id", "variantId"])
+  ].filter((value) => value !== null && value !== undefined && value !== "");
+
+  if (!keys.length) {
+    const id = firstPresent(row, ["id"]);
+    if (id !== null && id !== undefined && id !== "") keys.push(id);
+  }
+
+  return [...new Set(keys.map((key) => String(key)))];
+}
+
+function inventoryQuantity(row) {
+  return numericValue(firstPresent(row, [
+    "stock_quantity",
+    "stockQuantity",
+    "inventory",
+    "inventory_qty",
+    "inventoryQty",
+    "inventory_quantity",
+    "inventoryQuantity",
+    "available_quantity",
+    "availableQuantity",
+    "available_stock",
+    "availableStock",
+    "warehouse_stock",
+    "warehouseStock",
+    "warehouse_inventory",
+    "warehouseInventory",
+    "current_stock",
+    "currentStock",
+    "stock_count",
+    "stockCount",
+    "qty",
+    "quantity",
+    "stock",
+    "on_hand",
+    "onHand"
+  ]));
+}
+
+async function mergeWarehouseInventory(products, req) {
+  if (!process.env.WAREHOUSE_INVENTORY_URL || !products.length) return products;
+
+  if (req && isSelfReference(req, process.env.WAREHOUSE_INVENTORY_URL, "/api/mobile/products")) {
+    throw new Error("WAREHOUSE_INVENTORY_URL points back to this app. Set your real warehouse inventory API URL.");
+  }
+
+  const data = await fetchRemoteJson(
+    process.env.WAREHOUSE_INVENTORY_URL,
+    warehouseHeaders(),
+    "Warehouse inventory import"
+  );
+  const rows = arrayFromPayload(data, ["inventory", "stocks", "stock", "items", "products", "data"]);
+  const inventory = new Map();
+
+  rows.forEach((row) => {
+    const quantity = inventoryQuantity(row);
+    const status = stockStatusFromItem(row, quantity);
+    inventoryKeys(row).forEach((key) => {
+      const existing = inventory.get(key);
+      inventory.set(key, {
+        quantity: quantity === null
+          ? existing?.quantity ?? null
+          : Number(existing?.quantity || 0) + quantity,
+        status
+      });
+    });
+  });
+
+  return products.map((product) => {
+    const keys = [product.sourceId, product.id, product.sku]
+      .filter((value) => value !== null && value !== undefined && value !== "")
+      .map((value) => String(value));
+    const match = keys.map((key) => inventory.get(key)).find(Boolean);
+    if (!match) return product;
+
+    return {
+      ...product,
+      stockQuantity: match.quantity,
+      stock: match.quantity !== null && match.quantity <= 0 ? "out_of_stock" : match.status || product.stock
+    };
+  });
+}
+
+async function fetchWarehouseProducts(req) {
+  if (!process.env.WAREHOUSE_PRODUCTS_URL) return null;
+
+  if (isSelfReference(req, process.env.WAREHOUSE_PRODUCTS_URL, "/api/mobile/products")) {
+    throw new Error("WAREHOUSE_PRODUCTS_URL points back to this app. Set your real warehouse products API URL.");
+  }
+
+  const data = await fetchRemoteJson(
+    process.env.WAREHOUSE_PRODUCTS_URL,
+    warehouseHeaders(),
+    "Warehouse product import"
+  );
+  const products = arrayFromPayload(data, ["products", "items", "data"])
+    .map((item, index) => normalizeRemoteProduct(item, index, process.env.WAREHOUSE_PRODUCTS_URL, "warehouse"))
+    .filter((product) => product.price > 0);
+
+  return mergeWarehouseInventory(products, req);
+}
+
+async function fetchWebsiteProducts(req) {
+  if (!process.env.WEBSITE_PRODUCTS_URL) return null;
+
+  if (isSelfReference(req, process.env.WEBSITE_PRODUCTS_URL, "/api/mobile/products")) {
+    throw new Error("WEBSITE_PRODUCTS_URL points back to this app. Set DATABASE_URL or your real website products API URL.");
+  }
+
+  const data = await fetchRemoteJson(
+    process.env.WEBSITE_PRODUCTS_URL,
+    websiteHeaders(),
+    "Website product import"
+  );
+  const products = arrayFromPayload(data, ["products", "items", "data"])
+    .map((item, index) => normalizeRemoteProduct(item, index, process.env.WEBSITE_PRODUCTS_URL, "website"))
+    .filter((product) => product.price > 0);
+
+  return products;
+}
+
+async function fetchCatalogProducts(req) {
+  const errors = [];
+
+  if (process.env.WAREHOUSE_PRODUCTS_URL) {
+    try {
+      const products = await fetchWarehouseProducts(req);
+      if (products && products.length) return { source: "warehouse", products };
+    } catch (error) {
+      console.error("Warehouse product import failed", error);
+      errors.push(`Warehouse: ${error.message}`);
+    }
+  }
+
   try {
     const dbProducts = await database.fetchProducts();
-    if (dbProducts) {
-      return send(res, 200, {
+    if (dbProducts && dbProducts.length) {
+      return {
         source: "database",
         products: dbProducts
-      });
+      };
     }
   } catch (error) {
     console.error("Database product import failed", error);
-    if (!process.env.WEBSITE_PRODUCTS_URL) {
-      return send(res, 500, { message: error.message || "Database product import failed" });
+    errors.push(`Database: ${error.message}`);
+  }
+
+  if (process.env.WEBSITE_PRODUCTS_URL) {
+    try {
+      const products = await fetchWebsiteProducts(req);
+      if (products && products.length) return { source: "website", products };
+    } catch (error) {
+      console.error("Website product import failed", error);
+      errors.push(`Website: ${error.message}`);
     }
   }
 
-  if (!process.env.WEBSITE_PRODUCTS_URL) {
-    return send(res, 200, { products: [] });
+  if (errors.length && (process.env.WAREHOUSE_PRODUCTS_URL || process.env.WEBSITE_PRODUCTS_URL || database.status().configured)) {
+    throw new Error(errors[0]);
   }
 
-  if (isSelfReference(req, process.env.WEBSITE_PRODUCTS_URL, "/api/mobile/products")) {
-    return send(res, 500, {
-      message: "WEBSITE_PRODUCTS_URL points back to this app. Set DATABASE_URL or your real website products API URL."
-    });
+  return { source: "empty", products: [] };
+}
+
+async function warehouseInventoryDiagnostics(req) {
+  const warehouse = {
+    productsUrlSet: Boolean(process.env.WAREHOUSE_PRODUCTS_URL),
+    inventoryUrlSet: Boolean(process.env.WAREHOUSE_INVENTORY_URL),
+    productsUrl: safeUrlSummary(process.env.WAREHOUSE_PRODUCTS_URL),
+    inventoryUrl: safeUrlSummary(process.env.WAREHOUSE_INVENTORY_URL)
+  };
+
+  if (process.env.WAREHOUSE_PRODUCTS_URL) {
+    try {
+      const products = await fetchWarehouseProducts(req);
+      warehouse.productCount = products ? products.length : 0;
+      warehouse.productSample = (products || []).slice(0, 5).map((product) => ({
+        id: product.id,
+        sourceId: product.sourceId,
+        sku: product.sku,
+        title: product.title,
+        stock: product.stock,
+        stockQuantity: product.stockQuantity
+      }));
+    } catch (error) {
+      warehouse.productsError = error.message;
+    }
   }
 
-  let response;
-  let data;
+  if (process.env.WAREHOUSE_INVENTORY_URL) {
+    try {
+      const data = await fetchRemoteJson(
+        process.env.WAREHOUSE_INVENTORY_URL,
+        warehouseHeaders(),
+        "Warehouse inventory import"
+      );
+      const rows = arrayFromPayload(data, ["inventory", "stocks", "stock", "items", "products", "data"]);
+      warehouse.inventoryCount = rows.length;
+      warehouse.inventorySample = rows.slice(0, 10).map((row) => ({
+        keys: inventoryKeys(row),
+        stockQuantity: inventoryQuantity(row),
+        stock: stockStatusFromItem(row, inventoryQuantity(row))
+      }));
+    } catch (error) {
+      warehouse.inventoryError = error.message;
+    }
+  }
+
+  return warehouse;
+}
+
+async function handleProducts(req, res) {
   try {
-    response = await fetchWithTimeout(process.env.WEBSITE_PRODUCTS_URL, {
-      headers: websiteHeaders()
-    });
-    const text = await response.text();
-    data = text ? JSON.parse(text) : {};
+    const catalog = await fetchCatalogProducts(req);
+    return send(res, 200, catalog);
   } catch (error) {
     return send(res, 502, {
-      message: `Website product import failed: ${error.message}`
+      message: `Product import failed: ${error.message}`
     });
   }
-
-  if (!response.ok) {
-    return send(res, response.status, { message: data.message || data.error || "Product sync failed" });
-  }
-  send(res, 200, data);
 }
 
 async function handleProductImage(req, res) {
@@ -757,15 +1171,17 @@ async function persistAndPushOrder(order, req) {
   }
 }
 
-async function validateOrderInventory(order) {
+async function validateOrderInventory(order, req) {
   try {
-    const products = await database.fetchProducts();
-    if (!products) return null;
+    const catalog = await fetchCatalogProducts(req);
+    const products = catalog.products || [];
+    if (!products.length) return null;
 
     const byId = new Map();
     products.forEach((product) => {
       byId.set(String(product.id), product);
       if (product.sourceId !== null && product.sourceId !== undefined) byId.set(String(product.sourceId), product);
+      if (product.sku !== null && product.sku !== undefined) byId.set(String(product.sku), product);
     });
 
     for (const item of order.items || []) {
@@ -786,6 +1202,9 @@ async function validateOrderInventory(order) {
     }
   } catch (error) {
     console.error("Inventory validation skipped", error.message);
+    if (process.env.WAREHOUSE_PRODUCTS_URL || process.env.WAREHOUSE_INVENTORY_URL || database.status().configured) {
+      return "Warehouse inventory is not available right now. Please try again.";
+    }
   }
 
   return null;
@@ -802,7 +1221,7 @@ async function handleOrder(req, res) {
     return send(res, 400, { message: "Order items are required" });
   }
 
-  const inventoryError = await validateOrderInventory(order);
+  const inventoryError = await validateOrderInventory(order, req);
   if (inventoryError) {
     return send(res, 409, { message: inventoryError });
   }
@@ -910,7 +1329,7 @@ async function handlePaymentCreate(req, res) {
     return send(res, 503, { message: "PayU env vars are missing" });
   }
 
-  const inventoryError = await validateOrderInventory(order);
+  const inventoryError = await validateOrderInventory(order, req);
   if (inventoryError) {
     return send(res, 409, { message: inventoryError });
   }
@@ -1090,7 +1509,11 @@ async function router(req, res) {
     }
 
     if (req.method === "GET" && url.pathname === "/api/mobile/inventory-diagnostics") {
-      return send(res, 200, await database.inventoryDiagnostics());
+      const [db, warehouse] = await Promise.all([
+        database.inventoryDiagnostics().catch((error) => ({ error: error.message })),
+        warehouseInventoryDiagnostics(req)
+      ]);
+      return send(res, 200, { database: db, warehouse });
     }
 
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);
