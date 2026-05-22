@@ -186,6 +186,11 @@
     });
   }
 
+  async function fetchOrders() {
+    if (!hasEndpoint(config.ordersEndpoint)) return { orders: [] };
+    return request(config.ordersEndpoint);
+  }
+
   window.BazaarGoApi = {
     config,
     fetchProducts,
@@ -194,6 +199,7 @@
     createPaymentOrder,
     verifyPayment,
     pushOrder,
+    fetchOrders,
     hasEndpoint
   };
 })();

@@ -59,23 +59,26 @@
           <strong>Change</strong>
         </button>
 
-        <div class="service-strip">
+        <div class="service-strip" hidden>
           <span data-sync-status>Demo catalog</span>
           <button type="button" data-action="refresh-products">Sync products</button>
         </div>
       </header>
 
       <main class="content" data-view="home">
-        <section class="promo-band" aria-label="Festival offers">
+        <section class="promo-band" aria-label="Festival offers" data-promo-band>
           <div>
-            <p>Fresh drop</p>
-            <h1>Mobile mega sale</h1>
-            <span>Up to 45% off with bank offers</span>
+            <p data-promo-kicker>Fresh drop</p>
+            <h1 data-promo-title>EV spare sale</h1>
+            <span data-promo-copy>Quality parts with fast dispatch</span>
+            <small data-promo-terms>Terms and conditions apply.</small>
           </div>
           <img
             src="https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=420&q=80"
             alt="Smartphone on a bright shopping offer background"
+            data-promo-image
           />
+          <div class="promo-dots" data-promo-dots aria-hidden="true"></div>
         </section>
 
         <section class="quick-actions" aria-label="Fast actions">
@@ -182,9 +185,26 @@
         <button type="button" data-filter-chip="Appliances">Appliances</button>
         <button type="button" data-action="show-wishlist">Wishlist</button>
         <button type="button" data-action="open-account">Login and profile</button>
-        <button type="button" data-action="refresh-products">Import products</button>
+        <button type="button" data-action="refresh-products" hidden>Import products</button>
         <button type="button" data-action="open-cart">Cart and checkout</button>
+        <button type="button" data-action="open-orders">Orders and tracking</button>
       </div>
+    </aside>
+
+    <aside class="page-panel" data-page-panel="product" aria-hidden="true">
+      <section class="page-card" data-product-page></section>
+    </aside>
+
+    <aside class="page-panel" data-page-panel="cart" aria-hidden="true">
+      <section class="page-card" data-cart-page></section>
+    </aside>
+
+    <aside class="page-panel" data-page-panel="checkout" aria-hidden="true">
+      <section class="page-card" data-checkout-page></section>
+    </aside>
+
+    <aside class="page-panel" data-page-panel="orders" aria-hidden="true">
+      <section class="page-card" data-orders-page></section>
     </aside>
 
     <aside class="cart-sheet" data-cart-sheet aria-hidden="true">

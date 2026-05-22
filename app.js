@@ -1,7 +1,8 @@
 const storageKeys = {
   session: "bazaarGo.session",
   cart: "bazaarGo.cart",
-  wishlist: "bazaarGo.wishlist"
+  wishlist: "bazaarGo.wishlist",
+  orders: "bazaarGo.orders"
 };
 
 const fallbackProducts = [
@@ -154,6 +155,30 @@ const api = window.BazaarGoApi;
 const appConfig = window.EVSPEARE_CONFIG || window.BAZAARGO_CONFIG || {};
 const currency = new Intl.NumberFormat("en-IN");
 
+const promoSlides = [
+  {
+    kicker: "Warehouse direct",
+    title: "EV spare parts",
+    copy: "Motors, rims, lights and service parts dispatched fast",
+    terms: "Terms and conditions apply. Stock depends on warehouse availability.",
+    image: "https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?auto=format&fit=crop&w=420&q=80"
+  },
+  {
+    kicker: "COD available",
+    title: "Order with trust",
+    copy: "Pay online through PayU or choose Cash on Delivery",
+    terms: "COD availability may vary by pincode and order value.",
+    image: "https://images.unsplash.com/photo-1581092921461-39b9d08a9b21?auto=format&fit=crop&w=420&q=80"
+  },
+  {
+    kicker: "Live tracking",
+    title: "Warehouse updates",
+    copy: "Track order progress from picked to delivered",
+    terms: "Tracking updates depend on warehouse system sync.",
+    image: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=420&q=80"
+  }
+];
+
 const state = {
   query: "",
   activeFilter: "All",
@@ -163,7 +188,11 @@ const state = {
   session: loadJson(storageKeys.session, null),
   pendingPhone: "",
   paymentMethod: "cod",
-  syncing: false
+  syncing: false,
+  selectedProductId: "",
+  orders: loadJson(storageKeys.orders, []),
+  ordersLoading: false,
+  promoIndex: 0
 };
 
 const nodes = {
@@ -199,7 +228,18 @@ const nodes = {
   checkoutPhone: document.querySelector("[data-checkout-phone]"),
   checkoutAddress: document.querySelector("[data-checkout-address]"),
   gatewayNote: document.querySelector("[data-gateway-note]"),
-  checkoutButton: document.querySelector("[data-action='checkout']")
+  checkoutButton: document.querySelector("[data-action='checkout']"),
+  requestOtpButton: document.querySelector("[data-action='request-otp']"),
+  productPage: document.querySelector("[data-product-page]"),
+  cartPage: document.querySelector("[data-cart-page]"),
+  checkoutPage: document.querySelector("[data-checkout-page]"),
+  ordersPage: document.querySelector("[data-orders-page]"),
+  promoKicker: document.querySelector("[data-promo-kicker]"),
+  promoTitle: document.querySelector("[data-promo-title]"),
+  promoCopy: document.querySelector("[data-promo-copy]"),
+  promoTerms: document.querySelector("[data-promo-terms]"),
+  promoImage: document.querySelector("[data-promo-image]"),
+  promoDots: document.querySelector("[data-promo-dots]")
 };
 
 function loadJson(key, fallback) {
@@ -223,6 +263,32 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function productImageFallback(title = "EV Spare") {
+  const initials = String(title)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase())
+    .join("") || "EV";
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+      <rect width="640" height="480" fill="#eef4ff"/>
+      <circle cx="320" cy="220" r="96" fill="#2874f0" opacity=".14"/>
+      <path d="M205 285h230l36 55H169l36-55Z" fill="#172033" opacity=".9"/>
+      <path d="M232 164h176l46 100H186l46-100Z" fill="#2874f0"/>
+      <path d="M242 190h156l24 50H218l24-50Z" fill="#ffffff" opacity=".9"/>
+      <text x="320" y="383" text-anchor="middle" font-family="Arial, sans-serif" font-size="54" font-weight="800" fill="#172033">${initials}</text>
+      <text x="320" y="426" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#627086">Ev Speare</text>
+    </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function imageAttrs(product) {
+  const src = escapeHtml(product.image || productImageFallback(product.title));
+  const fallback = escapeHtml(productImageFallback(product.title));
+  return `src="${src}" onerror="this.onerror=null;this.src='${fallback}'"`;
 }
 
 function formatPrice(value) {
@@ -292,7 +358,7 @@ function renderCategories() {
     .map(
       (category) => `
         <button class="category-card ${state.activeFilter === category.name ? "active" : ""}" type="button" data-filter-chip="${escapeHtml(category.name)}">
-          <img src="${escapeHtml(category.image)}" alt="${escapeHtml(category.name)}" />
+          <img src="${escapeHtml(category.image)}" alt="${escapeHtml(category.name)}" onerror="this.onerror=null;this.src='${escapeHtml(productImageFallback(category.name))}'" />
           <span>${escapeHtml(category.name)}</span>
         </button>
       `
@@ -318,9 +384,9 @@ function productCard(product) {
   const off = discount(product);
 
   return `
-    <article class="product-card">
+    <article class="product-card" data-open-product="${escapeHtml(product.id)}">
       <div class="product-media">
-        <img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.title)}" loading="lazy" />
+        <img ${imageAttrs(product)} alt="${escapeHtml(product.title)}" loading="lazy" />
         <button class="wishlist-button ${wished ? "active" : ""}" type="button" aria-label="Add ${escapeHtml(product.title)} to wishlist" data-wishlist="${escapeHtml(product.id)}">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" />
@@ -340,6 +406,7 @@ function productCard(product) {
         </div>
         <p class="delivery-line">${escapeHtml(product.delivery || "Delivery available")}</p>
         <div class="card-actions">
+          <button class="view-button" type="button" data-open-product="${escapeHtml(product.id)}">View</button>
           <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}">Add to cart</button>
           <button class="buy-button" type="button" aria-label="Buy ${escapeHtml(product.title)}" data-buy-now="${escapeHtml(product.id)}">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -404,7 +471,7 @@ function renderCart() {
           .map(
             (item) => `
               <article class="cart-item">
-                <img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.title)}" />
+                <img ${imageAttrs(item)} alt="${escapeHtml(item.title)}" />
                 <div>
                   <h3>${escapeHtml(item.title)}</h3>
                   <p>${formatPrice(item.price)} x ${item.quantity}</p>
@@ -421,6 +488,8 @@ function renderCart() {
             `
           )
           .join("");
+
+  if (nodes.cartPage) renderCartPage();
 }
 
 function renderBadges() {
@@ -431,7 +500,8 @@ function renderSession() {
   const loggedIn = isLoggedIn();
   const phone = state.session?.user?.phone || "";
 
-  nodes.accountPill.textContent = loggedIn ? `+91 ${phone.slice(-4)}` : "Login";
+  nodes.accountPill.hidden = loggedIn;
+  nodes.accountPill.textContent = "Login";
   nodes.authLogin.hidden = loggedIn;
   nodes.authProfile.hidden = !loggedIn;
   nodes.authTitle.textContent = loggedIn ? "Your profile" : "OTP login";
@@ -458,9 +528,198 @@ function renderGatewayNote() {
   } else {
     nodes.gatewayNote.textContent = "Online payment needs PayU key/salt on Railway.";
   }
+
+  document.querySelectorAll("[data-page-gateway-note]").forEach((node) => {
+    node.textContent = nodes.gatewayNote.textContent;
+  });
+}
+
+function openPage(name) {
+  document.querySelectorAll("[data-page-panel]").forEach((panel) => {
+    const active = panel.dataset.pagePanel === name;
+    panel.classList.toggle("open", active);
+    panel.setAttribute("aria-hidden", active ? "false" : "true");
+  });
+}
+
+function closePages() {
+  document.querySelectorAll("[data-page-panel]").forEach((panel) => {
+    panel.classList.remove("open");
+    panel.setAttribute("aria-hidden", "true");
+  });
+}
+
+function renderPromo() {
+  const slide = promoSlides[state.promoIndex % promoSlides.length];
+  nodes.promoKicker.textContent = slide.kicker;
+  nodes.promoTitle.textContent = slide.title;
+  nodes.promoCopy.textContent = slide.copy;
+  nodes.promoTerms.textContent = slide.terms;
+  nodes.promoImage.src = slide.image;
+  nodes.promoImage.onerror = () => {
+    nodes.promoImage.onerror = null;
+    nodes.promoImage.src = productImageFallback(slide.title);
+  };
+  nodes.promoDots.innerHTML = promoSlides
+    .map((_, index) => `<span class="${index === state.promoIndex ? "active" : ""}"></span>`)
+    .join("");
+}
+
+function renderProductPage(productId) {
+  const product = productById(productId);
+  if (!product) return;
+  state.selectedProductId = product.id;
+  const off = discount(product);
+
+  nodes.productPage.innerHTML = `
+    <div class="page-header">
+      <button class="icon-button" type="button" data-action="close-page" aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+      </button>
+      <div><h2>Product details</h2><span>${escapeHtml(product.category || "Parts")}</span></div>
+      <button class="icon-button" type="button" data-wishlist="${escapeHtml(product.id)}" aria-label="Wishlist">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" /></svg>
+      </button>
+    </div>
+    <div class="detail-media"><img ${imageAttrs(product)} alt="${escapeHtml(product.title)}" /></div>
+    <div class="detail-body">
+      <h1>${escapeHtml(product.title)}</h1>
+      <div class="rating-row"><span class="rating-pill">${escapeHtml(product.rating || "4.1")}</span><span>${currency.format(product.reviews || 0)} ratings</span></div>
+      <div class="price-row detail-price">
+        <strong>${formatPrice(product.price)}</strong>
+        ${product.mrp > product.price ? `<del>${formatPrice(product.mrp)}</del>` : ""}
+        ${off ? `<span>${off}% off</span>` : ""}
+      </div>
+      <div class="detail-service">
+        <span>Warehouse stock: ${escapeHtml(product.stock || "available")}</span>
+        <span>${escapeHtml(product.delivery || "Delivery available")}</span>
+        <span>Secure checkout with COD and PayU</span>
+      </div>
+      <div class="detail-actions">
+        <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}">Add to cart</button>
+        <button class="checkout-button" type="button" data-buy-now="${escapeHtml(product.id)}">Buy now</button>
+      </div>
+    </div>
+  `;
+  openPage("product");
+}
+
+function renderCartPage() {
+  const totals = cartTotals();
+  nodes.cartPage.innerHTML = `
+    <div class="page-header">
+      <button class="icon-button" type="button" data-action="close-page" aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+      </button>
+      <div><h2>Cart</h2><span>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"}</span></div>
+      <button class="icon-button" type="button" data-action="open-orders" aria-label="Orders">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4V7ZM7 7a5 5 0 0 1 10 0M9 12h6" /></svg>
+      </button>
+    </div>
+    <div class="page-list">
+      ${totals.entries.length ? totals.entries.map((item) => `
+        <article class="cart-item page-cart-item">
+          <img ${imageAttrs(item)} alt="${escapeHtml(item.title)}" />
+          <div>
+            <h3>${escapeHtml(item.title)}</h3>
+            <p>${formatPrice(item.price)} x ${item.quantity}</p>
+            <div class="qty-row">
+              <div class="qty-control">
+                <button type="button" data-decrease="${escapeHtml(item.id)}">-</button>
+                <span>${item.quantity}</span>
+                <button type="button" data-increase="${escapeHtml(item.id)}">+</button>
+              </div>
+              <button class="remove-button" type="button" data-remove="${escapeHtml(item.id)}">Remove</button>
+            </div>
+          </div>
+        </article>
+      `).join("") : `<div class="cart-empty">Your cart is empty.<br />Add products to start checkout.</div>`}
+    </div>
+    <div class="page-total">
+      <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
+      <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
+      <div class="total"><span>Total</span><strong>${formatPrice(totals.total)}</strong></div>
+    </div>
+    <button class="checkout-button" type="button" data-action="open-checkout-page" ${totals.itemCount ? "" : "disabled"}>Continue to checkout</button>
+  `;
+}
+
+function checkoutField(selector, fallbackNode) {
+  return document.querySelector(`[data-page-panel="checkout"] ${selector}`) || fallbackNode;
+}
+
+function renderCheckoutPage() {
+  const totals = cartTotals();
+  const phone = state.session?.user?.phone || nodes.checkoutPhone.value || "";
+  const name = nodes.checkoutName.value || state.session?.user?.name || "";
+  const address = nodes.checkoutAddress.value || "";
+
+  nodes.checkoutPage.innerHTML = `
+    <div class="page-header">
+      <button class="icon-button" type="button" data-action="open-cart" aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+      </button>
+      <div><h2>Checkout</h2><span>${formatPrice(totals.total)}</span></div>
+    </div>
+    <form class="checkout-form checkout-page-form" data-page-checkout-form>
+      <label>Full name<input type="text" data-page-checkout-name value="${escapeHtml(name)}" placeholder="Customer name" autocomplete="name" /></label>
+      <label>Mobile number<input type="tel" data-page-checkout-phone value="${escapeHtml(phone)}" placeholder="10 digit mobile" autocomplete="tel" /></label>
+      <label>Delivery address<textarea data-page-checkout-address placeholder="House no, street, city, pincode" rows="4">${escapeHtml(address)}</textarea></label>
+      <div class="payment-options" role="radiogroup" aria-label="Payment method">
+        <label><input type="radio" name="page-payment" value="cod" ${state.paymentMethod === "cod" ? "checked" : ""} data-payment-method /><span>Cash on Delivery</span></label>
+        <label><input type="radio" name="page-payment" value="online" ${state.paymentMethod === "online" ? "checked" : ""} data-payment-method /><span>PayU Online</span></label>
+      </div>
+      <p class="gateway-note" data-page-gateway-note></p>
+    </form>
+    <div class="page-total">
+      <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
+      <div><span>Delivery</span><strong>Free</strong></div>
+      <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
+      <div class="total"><span>Total</span><strong>${formatPrice(totals.total)}</strong></div>
+    </div>
+    <button class="checkout-button" type="button" data-action="checkout">${isLoggedIn() ? "Place order" : "Login to place order"}</button>
+  `;
+  renderGatewayNote();
+}
+
+function trackingStepsHtml(order) {
+  const steps = order.tracking?.steps || [];
+  return `<div class="tracking-steps">${steps.map((step) => `
+    <div class="tracking-step ${step.done ? "done" : ""}">
+      <span></span><strong>${escapeHtml(step.label)}</strong>
+    </div>
+  `).join("")}</div>`;
+}
+
+function renderOrdersPage() {
+  nodes.ordersPage.innerHTML = `
+    <div class="page-header">
+      <button class="icon-button" type="button" data-action="close-page" aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+      </button>
+      <div><h2>Orders</h2><span>Warehouse tracking</span></div>
+      <button class="icon-button" type="button" data-action="refresh-orders" aria-label="Refresh orders">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.6 6M3 12a9 9 0 0 1 15.6-6M3 18v-6h6M21 6v6h-6" /></svg>
+      </button>
+    </div>
+    ${state.ordersLoading ? `<div class="cart-empty">Loading orders...</div>` : ""}
+    <div class="orders-list">
+      ${state.orders.length ? state.orders.map((order) => `
+        <article class="order-card">
+          <div class="order-head">
+            <div><strong>${escapeHtml(order.orderId)}</strong><span>${escapeHtml(new Date(order.createdAt || Date.now()).toLocaleString())}</span></div>
+            <b>${formatPrice(order.amountTotal || order.amounts?.total || 0)}</b>
+          </div>
+          <p>${escapeHtml(order.tracking?.label || order.tracking?.status || order.status || "Order placed")}</p>
+          ${trackingStepsHtml(order)}
+        </article>
+      `).join("") : `<div class="cart-empty">No orders yet.<br />Place an order to track warehouse status.</div>`}
+    </div>
+  `;
 }
 
 function renderAll() {
+  renderPromo();
   renderCategories();
   renderFilters();
   renderProducts();
@@ -468,6 +727,9 @@ function renderAll() {
   renderBadges();
   renderSession();
   renderGatewayNote();
+  renderCartPage();
+  renderCheckoutPage();
+  renderOrdersPage();
 }
 
 function setFilter(filter) {
@@ -485,13 +747,14 @@ function addToCart(productId, openCart = false) {
 }
 
 function openCartSheet() {
-  nodes.cartSheet.classList.add("open");
-  nodes.cartSheet.setAttribute("aria-hidden", "false");
+  renderCartPage();
+  openPage("cart");
 }
 
 function closeCartSheet() {
   nodes.cartSheet.classList.remove("open");
   nodes.cartSheet.setAttribute("aria-hidden", "true");
+  closePages();
 }
 
 function openDrawer() {
@@ -580,6 +843,8 @@ async function requestOtp() {
   try {
     await api.requestOtp(phone);
     nodes.otpPanel.hidden = false;
+    nodes.loginPhone.disabled = true;
+    nodes.requestOtpButton.hidden = true;
     nodes.loginOtp.value = "";
     nodes.loginOtp.focus();
     showToast(appConfig.demo?.enabled ? "Demo OTP: 123456" : "OTP sent");
@@ -621,15 +886,20 @@ function logout() {
   localStorage.removeItem(storageKeys.session);
   nodes.loginOtp.value = "";
   nodes.otpPanel.hidden = true;
+  nodes.loginPhone.disabled = false;
+  nodes.requestOtpButton.hidden = false;
   renderAll();
   closeAccount();
   showToast("Logged out");
 }
 
 function validateCheckout() {
-  const phone = phoneDigits(nodes.checkoutPhone.value || state.session?.user?.phone);
-  const name = String(nodes.checkoutName.value || state.session?.user?.name || "").trim();
-  const address = String(nodes.checkoutAddress.value || "").trim();
+  const nameNode = checkoutField("[data-page-checkout-name]", nodes.checkoutName);
+  const phoneNode = checkoutField("[data-page-checkout-phone]", nodes.checkoutPhone);
+  const addressNode = checkoutField("[data-page-checkout-address]", nodes.checkoutAddress);
+  const phone = phoneDigits(phoneNode.value || state.session?.user?.phone);
+  const name = String(nameNode.value || state.session?.user?.name || "").trim();
+  const address = String(addressNode.value || "").trim();
 
   if (!isLoggedIn()) {
     openAccount();
@@ -639,19 +909,19 @@ function validateCheckout() {
 
   if (!name) {
     showToast("Enter customer name");
-    nodes.checkoutName.focus();
+    nameNode.focus();
     return null;
   }
 
   if (phone.length !== 10) {
     showToast("Enter valid mobile number");
-    nodes.checkoutPhone.focus();
+    phoneNode.focus();
     return null;
   }
 
   if (address.length < 12) {
     showToast("Enter full delivery address");
-    nodes.checkoutAddress.focus();
+    addressNode.focus();
     return null;
   }
 
@@ -844,16 +1114,63 @@ async function placeOrder() {
 
     const order = buildOrder(customer, payment);
     const response = await api.pushOrder(order);
+    saveLocalOrder({
+      ...order,
+      amountTotal: order.amounts.total,
+      paymentMethod: order.payment.method,
+      paymentStatus: order.payment.status,
+      tracking: {
+        status: "placed",
+        label: response.warehousePushed ? "Sent to warehouse" : "Order placed",
+        steps: [
+          { key: "placed", label: "Order placed", done: true },
+          { key: "picked", label: "Warehouse picked", done: false },
+          { key: "shipped", label: "Shipped", done: false },
+          { key: "out_for_delivery", label: "Out for delivery", done: false },
+          { key: "delivered", label: "Delivered", done: false }
+        ]
+      }
+    });
     state.cart.clear();
     persistShoppingState();
     renderAll();
     closeCartSheet();
-    showToast(response.storedLocally ? "Order saved locally. Configure API to push live." : "Order pushed successfully");
+    await loadOrders({ silent: true });
+    renderOrdersPage();
+    openPage("orders");
+    showToast(response.warehousePushed ? "Order sent to warehouse" : "Order placed successfully");
   } catch (error) {
     showToast(error.message || "Order failed");
   } finally {
     nodes.checkoutButton.disabled = cartTotals().itemCount === 0;
     nodes.checkoutButton.textContent = isLoggedIn() ? "Place order" : "Login to place order";
+  }
+}
+
+function saveLocalOrder(order) {
+  state.orders = [order, ...state.orders.filter((item) => item.orderId !== order.orderId)].slice(0, 50);
+  saveJson(storageKeys.orders, state.orders);
+}
+
+async function loadOrders({ silent = false } = {}) {
+  if (!isLoggedIn()) {
+    if (!silent) openAccount();
+    return;
+  }
+
+  state.ordersLoading = true;
+  renderOrdersPage();
+  try {
+    const response = await api.fetchOrders();
+    if (Array.isArray(response.orders)) {
+      state.orders = response.orders;
+      saveJson(storageKeys.orders, state.orders);
+    }
+  } catch (error) {
+    if (!silent) showToast(error.message || "Orders not available");
+  } finally {
+    state.ordersLoading = false;
+    renderOrdersPage();
   }
 }
 
@@ -866,6 +1183,8 @@ function handlePaymentReturn() {
     state.cart.clear();
     persistShoppingState();
     renderCart();
+    loadOrders({ silent: true });
+    openPage("orders");
     showToast("Payment successful. Order placed.");
   } else if (status === "failure") {
     showToast("Payment failed or cancelled");
@@ -877,10 +1196,11 @@ function handlePaymentReturn() {
 }
 
 document.addEventListener("click", async (event) => {
-  const target = event.target.closest("button, [data-action], [data-filter-chip]");
+  const target = event.target.closest("button, [data-action], [data-filter-chip], [data-open-product]");
   if (!target) return;
 
   const filter = target.dataset.filterChip;
+  const openProductId = target.dataset.openProduct;
   const addId = target.dataset.addCart;
   const buyId = target.dataset.buyNow;
   const wishlistId = target.dataset.wishlist;
@@ -893,8 +1213,20 @@ document.addEventListener("click", async (event) => {
     closeDrawer();
   }
 
+  if (openProductId && !target.dataset.addCart && !target.dataset.buyNow && !target.dataset.wishlist) {
+    renderProductPage(openProductId);
+  }
+
   if (addId) addToCart(addId);
-  if (buyId) addToCart(buyId, true);
+  if (buyId) {
+    addToCart(buyId);
+    if (isLoggedIn()) {
+      renderCheckoutPage();
+      openPage("checkout");
+    } else {
+      openAccount();
+    }
+  }
 
   if (wishlistId) {
     if (state.wishlist.has(wishlistId)) {
@@ -931,6 +1263,26 @@ document.addEventListener("click", async (event) => {
   switch (target.dataset.action) {
     case "open-cart":
       openCartSheet();
+      break;
+    case "open-checkout-page":
+      if (!isLoggedIn()) {
+        openAccount();
+      } else {
+        renderCheckoutPage();
+        openPage("checkout");
+      }
+      break;
+    case "open-orders":
+      renderOrdersPage();
+      openPage("orders");
+      await loadOrders({ silent: true });
+      closeDrawer();
+      break;
+    case "refresh-orders":
+      await loadOrders();
+      break;
+    case "close-page":
+      closePages();
       break;
     case "close-cart":
       closeCartSheet();
@@ -970,8 +1322,8 @@ document.addEventListener("click", async (event) => {
       renderProducts();
       break;
     case "select-address":
-      nodes.checkoutAddress.focus();
-      openCartSheet();
+      renderCheckoutPage();
+      openPage("checkout");
       break;
     case "show-wishlist":
       if (state.wishlist.size === 0) {
@@ -995,6 +1347,7 @@ document.addEventListener("click", async (event) => {
   switch (target.dataset.nav) {
     case "home":
       setActiveNav("home");
+      closePages();
       state.query = "";
       nodes.searchInput.value = "";
       setFilter("All");
@@ -1006,7 +1359,9 @@ document.addEventListener("click", async (event) => {
       break;
     case "orders":
       setActiveNav("orders");
-      showToast("Orders screen ready to connect");
+      renderOrdersPage();
+      openPage("orders");
+      await loadOrders({ silent: true });
       break;
     case "cart":
       setActiveNav("cart");
@@ -1042,6 +1397,7 @@ document.addEventListener("keydown", (event) => {
     closeCartSheet();
     closeDrawer();
     closeAccount();
+    closePages();
   }
 });
 
@@ -1053,3 +1409,10 @@ if (state.session?.user?.phone) {
 renderAll();
 syncProducts({ silent: true });
 handlePaymentReturn();
+setInterval(() => {
+  state.promoIndex = (state.promoIndex + 1) % promoSlides.length;
+  renderPromo();
+}, 4500);
+if (isLoggedIn()) {
+  loadOrders({ silent: true });
+}

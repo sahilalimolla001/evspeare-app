@@ -259,6 +259,13 @@ function publicDiagnostics(req) {
       productsUrlSelfReference: isSelfReference(req, process.env.WEBSITE_PRODUCTS_URL, "/api/mobile/products"),
       ordersUrlSelfReference: isSelfReference(req, process.env.WEBSITE_ORDERS_URL, "/api/mobile/orders")
     },
+    warehouse: {
+      ordersUrlSet: Boolean(process.env.WAREHOUSE_ORDERS_URL),
+      trackingUrlSet: Boolean(process.env.WAREHOUSE_TRACKING_URL),
+      apiTokenSet: Boolean(process.env.WAREHOUSE_API_TOKEN),
+      ordersUrl: safeUrlSummary(process.env.WAREHOUSE_ORDERS_URL),
+      trackingUrl: safeUrlSummary(process.env.WAREHOUSE_TRACKING_URL)
+    },
     database: database.status()
   };
 }
@@ -438,6 +445,77 @@ async function pushOrderToWebsite(order, req) {
   return data;
 }
 
+function trackingSteps(status) {
+  const normalized = String(status || "placed").toLowerCase();
+  const picked = ["picked", "packed", "shipped", "out_for_delivery", "delivered"].includes(normalized);
+  const shipped = ["shipped", "out_for_delivery", "delivered"].includes(normalized);
+  const out = ["out_for_delivery", "delivered"].includes(normalized);
+  const delivered = normalized === "delivered";
+
+  return [
+    { key: "placed", label: "Order placed", done: true },
+    { key: "picked", label: "Warehouse picked", done: picked },
+    { key: "shipped", label: "Shipped", done: shipped },
+    { key: "out_for_delivery", label: "Out for delivery", done: out },
+    { key: "delivered", label: "Delivered", done: delivered }
+  ];
+}
+
+async function pushOrderToWarehouse(order) {
+  if (!process.env.WAREHOUSE_ORDERS_URL) return null;
+
+  const headers = {
+    "Content-Type": "application/json",
+    Accept: "application/json"
+  };
+  if (process.env.WAREHOUSE_API_TOKEN) headers.Authorization = process.env.WAREHOUSE_API_TOKEN;
+
+  const response = await fetchWithTimeout(process.env.WAREHOUSE_ORDERS_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(order)
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(data.message || data.error || "Warehouse order push failed");
+  return data;
+}
+
+async function fetchWarehouseTracking(orderId) {
+  if (!process.env.WAREHOUSE_TRACKING_URL) return null;
+
+  const url = new URL(process.env.WAREHOUSE_TRACKING_URL);
+  url.searchParams.set("orderId", orderId);
+
+  const headers = { Accept: "application/json" };
+  if (process.env.WAREHOUSE_API_TOKEN) headers.Authorization = process.env.WAREHOUSE_API_TOKEN;
+
+  const response = await fetchWithTimeout(url.toString(), { headers });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(data.message || data.error || "Warehouse tracking failed");
+  return data;
+}
+
+async function persistAndPushOrder(order, req) {
+  const result = await pushOrderToWebsite(order, req);
+  try {
+    const warehouse = await pushOrderToWarehouse(order);
+    return {
+      ...result,
+      warehousePushed: Boolean(warehouse),
+      warehouse
+    };
+  } catch (error) {
+    console.error("Warehouse order push failed", error);
+    return {
+      ...result,
+      warehousePushed: false,
+      warehouseError: error.message
+    };
+  }
+}
+
 async function handleOrder(req, res) {
   const user = verifyToken(req);
   if (!user && process.env.ALLOW_UNAUTHENTICATED_ORDERS !== "true") {
@@ -449,11 +527,43 @@ async function handleOrder(req, res) {
     return send(res, 400, { message: "Order items are required" });
   }
 
-  const response = await pushOrderToWebsite({
+  const response = await persistAndPushOrder({
     ...order,
     verifiedCustomer: user || null
   }, req);
   send(res, 200, response);
+}
+
+async function handleCustomerOrders(req, res) {
+  const user = verifyToken(req);
+  if (!user) return send(res, 401, { message: "Login required" });
+
+  const orders = (await database.fetchCustomerOrders(user.phone)) || [];
+  const enriched = [];
+
+  for (const order of orders) {
+    let tracking = order.tracking || {
+      status: order.status || "placed",
+      label: order.status || "Order placed"
+    };
+
+    try {
+      const warehouseTracking = await fetchWarehouseTracking(order.orderId);
+      if (warehouseTracking) tracking = { ...tracking, ...warehouseTracking };
+    } catch (error) {
+      tracking = { ...tracking, error: error.message };
+    }
+
+    enriched.push({
+      ...order,
+      tracking: {
+        ...tracking,
+        steps: tracking.steps || trackingSteps(tracking.status || order.status)
+      }
+    });
+  }
+
+  send(res, 200, { orders: enriched });
 }
 
 function payuAmount(value) {
@@ -598,7 +708,7 @@ async function handlePayuCallback(req, res, success) {
   };
 
   try {
-    await pushOrderToWebsite(order, req);
+    await persistAndPushOrder(order, req);
     deletePendingPayuOrder(fields.txnid);
     return sendHtml(
       res,
@@ -697,6 +807,7 @@ async function router(req, res) {
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/verify-otp") return handleVerifyOtp(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/products") return handleProducts(req, res);
+    if (req.method === "GET" && url.pathname === "/api/mobile/orders") return handleCustomerOrders(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/orders") return handleOrder(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/payments/create") return handlePaymentCreate(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/payments/verify") return handlePaymentVerify(req, res);

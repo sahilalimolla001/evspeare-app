@@ -294,6 +294,34 @@ svg {
   font-size: 0.85rem;
 }
 
+.promo-band small {
+  display: block;
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.68rem;
+  line-height: 1.3;
+}
+
+.promo-dots {
+  position: absolute;
+  left: 16px;
+  bottom: 10px;
+  display: flex;
+  gap: 5px;
+}
+
+.promo-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.36);
+}
+
+.promo-dots span.active {
+  width: 18px;
+  background: var(--yellow);
+}
+
 .promo-band img {
   width: 100%;
   height: 132px;
@@ -564,11 +592,12 @@ svg {
 
 .card-actions {
   display: grid;
-  grid-template-columns: 1fr 38px;
+  grid-template-columns: 54px 1fr 38px;
   gap: 7px;
 }
 
 .add-button,
+.view-button,
 .buy-button,
 .checkout-button {
   min-height: 38px;
@@ -579,6 +608,11 @@ svg {
 .add-button {
   color: var(--blue-dark);
   background: #e8f0fe;
+}
+
+.view-button {
+  color: #43546d;
+  background: #f1f5f9;
 }
 
 .buy-button {
@@ -738,6 +772,202 @@ svg {
 
 .cart-sheet.open .sheet-panel {
   transform: translateY(0);
+}
+
+.page-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 28;
+  width: min(100%, 480px);
+  margin: 0 auto;
+  background: var(--page);
+  transform: translateX(102%);
+  transition: transform 220ms ease;
+  pointer-events: none;
+}
+
+.page-panel.open {
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.page-card {
+  min-height: 100%;
+  max-height: 100vh;
+  overflow: auto;
+  padding: max(14px, env(safe-area-inset-top)) 12px calc(86px + env(safe-area-inset-bottom));
+  background: var(--page);
+}
+
+.page-header {
+  min-height: 54px;
+  margin: -2px 0 12px;
+  display: grid;
+  grid-template-columns: 42px 1fr 42px;
+  align-items: center;
+  gap: 10px;
+}
+
+.page-header h2 {
+  margin: 0;
+  font-size: 1.12rem;
+}
+
+.page-header span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.page-header .icon-button {
+  color: var(--ink);
+  background: white;
+  box-shadow: 0 1px 0 rgba(23, 32, 51, 0.06);
+}
+
+.detail-media {
+  aspect-ratio: 1 / 0.82;
+  border-radius: 8px;
+  overflow: hidden;
+  background: white;
+}
+
+.detail-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.detail-body {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: white;
+}
+
+.detail-body h1 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+  line-height: 1.25;
+}
+
+.detail-price strong {
+  font-size: 1.28rem;
+}
+
+.detail-service {
+  margin: 12px 0;
+  display: grid;
+  gap: 8px;
+}
+
+.detail-service span {
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  color: #43546d;
+  background: #f7f9fc;
+  font-size: 0.8rem;
+  font-weight: 760;
+}
+
+.detail-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.page-list,
+.orders-list {
+  display: grid;
+  gap: 10px;
+}
+
+.page-cart-item {
+  background: white;
+}
+
+.page-total {
+  margin-top: 12px;
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  background: white;
+}
+
+.page-total div {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.page-total .total {
+  color: var(--ink);
+  font-weight: 900;
+  font-size: 1rem;
+}
+
+.checkout-page-form {
+  background: white;
+}
+
+.order-card {
+  border-radius: 8px;
+  padding: 12px;
+  background: white;
+  border: 1px solid rgba(228, 233, 242, 0.9);
+}
+
+.order-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.order-head div {
+  display: grid;
+  gap: 2px;
+}
+
+.order-head span,
+.order-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.tracking-steps {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.tracking-step {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  gap: 8px;
+  color: #8793a5;
+  font-size: 0.8rem;
+}
+
+.tracking-step span {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #d8dee8;
+}
+
+.tracking-step.done {
+  color: var(--ink);
+}
+
+.tracking-step.done span {
+  background: var(--green);
 }
 
 .sheet-handle {

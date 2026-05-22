@@ -23,6 +23,10 @@ WEBSITE_PRODUCTS_URL=https://yourwebsite.com/api/mobile/products
 WEBSITE_ORDERS_URL=https://yourwebsite.com/api/mobile/orders
 WEBSITE_API_TOKEN=Bearer your_backend_api_token
 
+WAREHOUSE_ORDERS_URL=https://yourwarehouse.com/api/orders
+WAREHOUSE_TRACKING_URL=https://yourwarehouse.com/api/order-tracking
+WAREHOUSE_API_TOKEN=Bearer your_warehouse_token
+
 DATABASE_CLIENT=mysql
 DATABASE_URL=mysql://user:password@host:3306/database
 DB_PRODUCTS_TABLE=products
@@ -54,6 +58,8 @@ PAYU_ENV=production
 - `POST /api/mobile/auth/verify-otp` verifies OTP through Twilio and returns a saved login token.
 - `GET /api/mobile/diagnostics` checks whether Twilio, PayU, and website env vars are set without exposing secrets.
 - `POST /api/mobile/orders` inserts COD orders into database first, then falls back to `WEBSITE_ORDERS_URL`.
+- If `WAREHOUSE_ORDERS_URL` is set, every placed order is pushed to the warehouse system after DB save.
+- `GET /api/mobile/orders` returns customer orders and merges live warehouse tracking from `WAREHOUSE_TRACKING_URL`.
 - `POST /api/mobile/payments/create` creates a PayU hosted checkout form with server-generated SHA-512 hash.
 - `/payment/payu/success` verifies PayU response hash, then pushes paid order to your website.
 - `/payment/payu/failure` returns the customer to the app after failed/cancelled payment.

@@ -327,6 +327,60 @@ async function insertOrder(order) {
   };
 }
 
+function parsePayload(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return {};
+  }
+}
+
+async function fetchCustomerOrders(phone) {
+  if (!enabled()) return null;
+
+  const orders = quoteId(ordersTableName());
+  try {
+    const rows = await query(
+      `SELECT
+        order_id,
+        customer_name,
+        customer_phone,
+        amount_total,
+        payment_method,
+        payment_status,
+        status,
+        payload,
+        created_at
+       FROM ${orders}
+       WHERE customer_phone = $1
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      [phone]
+    );
+
+    return rows.map((row) => {
+      const payload = parsePayload(row.payload);
+      return {
+        orderId: row.order_id,
+        customerName: row.customer_name,
+        customerPhone: row.customer_phone,
+        amountTotal: Number(row.amount_total || payload.amounts?.total || 0),
+        paymentMethod: row.payment_method || payload.payment?.method || "",
+        paymentStatus: row.payment_status || payload.payment?.status || "",
+        status: row.status || payload.status || "placed",
+        createdAt: row.created_at,
+        items: payload.items || [],
+        tracking: payload.tracking || null
+      };
+    });
+  } catch (error) {
+    if (String(error.message || "").includes("does not exist")) return [];
+    throw error;
+  }
+}
+
 function status() {
   return {
     configured: enabled(),
@@ -342,5 +396,6 @@ function status() {
 module.exports = {
   status,
   fetchProducts,
-  insertOrder
+  insertOrder,
+  fetchCustomerOrders
 };
