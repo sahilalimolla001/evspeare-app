@@ -531,6 +531,14 @@ async function router(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
+    if (req.method === "GET" && url.pathname === "/health") {
+      return send(res, 200, {
+        ok: true,
+        service: "ev-speare",
+        time: new Date().toISOString()
+      });
+    }
+
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/verify-otp") return handleVerifyOtp(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/products") return handleProducts(req, res);
