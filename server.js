@@ -9,6 +9,7 @@ const rootDir = __dirname;
 const port = Number(process.env.PORT || 3000);
 const fallbackPort = 3000;
 const pendingPayuOrders = new Map();
+let googleAccessTokenCache = null;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -101,6 +102,10 @@ function publicConfig(req) {
 
 function base64Url(input) {
   return Buffer.from(input).toString("base64url");
+}
+
+function base64UrlJson(value) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
 function sessionSecret() {
@@ -208,6 +213,148 @@ function safeUrlSummary(value) {
   }
 }
 
+function allowedImageHost(hostname) {
+  const allowed = (process.env.IMAGE_PROXY_ALLOWED_HOSTS || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+
+  return (
+    hostname === "storage.googleapis.com" ||
+    hostname === "firebasestorage.googleapis.com" ||
+    hostname.endsWith(".storage.googleapis.com") ||
+    allowed.includes(hostname.toLowerCase())
+  );
+}
+
+function parseGcsSource(src) {
+  const value = String(src || "");
+  if (value.startsWith("gs://")) {
+    const withoutScheme = value.slice(5);
+    const slashIndex = withoutScheme.indexOf("/");
+    if (slashIndex <= 0) return null;
+    return {
+      bucket: withoutScheme.slice(0, slashIndex),
+      object: withoutScheme.slice(slashIndex + 1),
+      publicUrl: `https://storage.googleapis.com/${withoutScheme}`
+    };
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.hostname === "storage.googleapis.com") {
+      const parts = url.pathname.replace(/^\/+/, "").split("/");
+      const bucket = parts.shift();
+      if (!bucket || !parts.length) return null;
+      return {
+        bucket,
+        object: decodeURIComponent(parts.join("/")),
+        publicUrl: url.toString()
+      };
+    }
+
+    if (url.hostname.endsWith(".storage.googleapis.com")) {
+      return {
+        bucket: url.hostname.replace(".storage.googleapis.com", ""),
+        object: decodeURIComponent(url.pathname.replace(/^\/+/, "")),
+        publicUrl: url.toString()
+      };
+    }
+
+    if (url.hostname === "firebasestorage.googleapis.com") {
+      const match = url.pathname.match(/\/v0\/b\/([^/]+)\/o\/(.+)$/);
+      if (!match) return null;
+      return {
+        bucket: decodeURIComponent(match[1]),
+        object: decodeURIComponent(match[2]),
+        publicUrl: url.toString()
+      };
+    }
+  } catch (error) {
+    return null;
+  }
+
+  return null;
+}
+
+function googleServiceAccount() {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "";
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      return {
+        clientEmail: parsed.client_email,
+        privateKey: String(parsed.private_key || "").replace(/\\n/g, "\n"),
+        tokenUri: parsed.token_uri || "https://oauth2.googleapis.com/token"
+      };
+    } catch (error) {
+      console.error("Invalid GOOGLE_SERVICE_ACCOUNT_JSON", error.message);
+    }
+  }
+
+  return {
+    clientEmail: process.env.GOOGLE_CLIENT_EMAIL,
+    privateKey: String(process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+    tokenUri: process.env.GOOGLE_TOKEN_URI || "https://oauth2.googleapis.com/token"
+  };
+}
+
+function googleStorageConfigured() {
+  const account = googleServiceAccount();
+  return Boolean(account.clientEmail && account.privateKey);
+}
+
+async function googleAccessToken() {
+  if (googleAccessTokenCache && googleAccessTokenCache.expiresAt > Date.now() + 60000) {
+    return googleAccessTokenCache.token;
+  }
+
+  const account = googleServiceAccount();
+  if (!account.clientEmail || !account.privateKey) {
+    throw new Error("Google service account is not configured for private warehouse images");
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const assertionBase = `${base64UrlJson({ alg: "RS256", typ: "JWT" })}.${base64UrlJson({
+    iss: account.clientEmail,
+    scope: "https://www.googleapis.com/auth/devstorage.read_only",
+    aud: account.tokenUri,
+    iat: now,
+    exp: now + 3600
+  })}`;
+  const signature = crypto.createSign("RSA-SHA256").update(assertionBase).sign(account.privateKey).toString("base64url");
+  const assertion = `${assertionBase}.${signature}`;
+
+  const response = await fetch(account.tokenUri, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error_description || data.error || "Google token request failed");
+
+  googleAccessTokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000
+  };
+  return googleAccessTokenCache.token;
+}
+
+function placeholderSvg(message = "Image unavailable") {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+    <rect width="640" height="480" fill="#eef4ff"/>
+    <circle cx="320" cy="210" r="92" fill="#2874f0" opacity=".14"/>
+    <path d="M205 285h230l36 55H169l36-55Z" fill="#172033" opacity=".9"/>
+    <path d="M232 164h176l46 100H186l46-100Z" fill="#2874f0"/>
+    <path d="M242 190h156l24 50H218l24-50Z" fill="#ffffff" opacity=".9"/>
+    <text x="320" y="390" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="800" fill="#172033">Ev Speare</text>
+    <text x="320" y="425" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#627086">${message}</text>
+  </svg>`;
+}
+
 function isSelfReference(req, value, endpointPath) {
   if (!value) return false;
   try {
@@ -265,6 +412,10 @@ function publicDiagnostics(req) {
       apiTokenSet: Boolean(process.env.WAREHOUSE_API_TOKEN),
       ordersUrl: safeUrlSummary(process.env.WAREHOUSE_ORDERS_URL),
       trackingUrl: safeUrlSummary(process.env.WAREHOUSE_TRACKING_URL)
+    },
+    images: {
+      googleStorageConfigured: googleStorageConfigured(),
+      proxyAllowedHostsSet: Boolean(process.env.IMAGE_PROXY_ALLOWED_HOSTS)
     },
     database: database.status()
   };
@@ -408,6 +559,64 @@ async function handleProducts(req, res) {
     return send(res, response.status, { message: data.message || data.error || "Product sync failed" });
   }
   send(res, 200, data);
+}
+
+async function handleProductImage(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const src = url.searchParams.get("src") || "";
+  if (!src) {
+    send(res, 400, { message: "Image source is required" });
+    return;
+  }
+
+  let directUrl = src;
+  const gcs = parseGcsSource(src);
+
+  try {
+    if (!gcs) {
+      const parsed = new URL(src);
+      if (!allowedImageHost(parsed.hostname)) {
+        return send(res, 403, { message: "Image host is not allowed" });
+      }
+      directUrl = parsed.toString();
+    } else {
+      directUrl = gcs.publicUrl;
+    }
+
+    let response = await fetchWithTimeout(directUrl, {
+      headers: { Accept: "image/*,*/*;q=0.8" }
+    });
+
+    if (!response.ok && gcs && googleStorageConfigured()) {
+      const token = await googleAccessToken();
+      const mediaUrl = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(gcs.bucket)}/o/${encodeURIComponent(gcs.object)}?alt=media`;
+      response = await fetchWithTimeout(mediaUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "image/*,*/*;q=0.8"
+        }
+      });
+    }
+
+    if (!response.ok) {
+      throw new Error(`Image fetch failed with ${response.status}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    res.writeHead(200, {
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=3600"
+    });
+    res.end(Buffer.from(arrayBuffer));
+  } catch (error) {
+    console.error("Product image proxy failed", error.message);
+    res.writeHead(200, {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "public, max-age=120"
+    });
+    res.end(placeholderSvg("Warehouse image locked"));
+  }
 }
 
 async function pushOrderToWebsite(order, req) {
@@ -807,6 +1016,7 @@ async function router(req, res) {
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/verify-otp") return handleVerifyOtp(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/products") return handleProducts(req, res);
+    if (req.method === "GET" && url.pathname === "/api/mobile/images") return handleProductImage(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/orders") return handleCustomerOrders(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/orders") return handleOrder(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/payments/create") return handlePaymentCreate(req, res);

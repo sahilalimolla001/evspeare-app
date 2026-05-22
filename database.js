@@ -126,13 +126,20 @@ function selectAlias(columns, alias, names) {
 function publicImageUrl(value) {
   const image = String(value || "");
   if (image.startsWith("gs://")) {
-    const withoutScheme = image.slice(5);
-    const slashIndex = withoutScheme.indexOf("/");
-    if (slashIndex > 0) {
-      const bucket = withoutScheme.slice(0, slashIndex);
-      const objectPath = withoutScheme.slice(slashIndex + 1);
-      return `https://storage.googleapis.com/${bucket}/${objectPath}`;
+    return `/api/mobile/images?src=${encodeURIComponent(image)}`;
+  }
+
+  try {
+    const url = new URL(image);
+    if (
+      url.hostname === "storage.googleapis.com" ||
+      url.hostname === "firebasestorage.googleapis.com" ||
+      url.hostname.endsWith(".storage.googleapis.com")
+    ) {
+      return `/api/mobile/images?src=${encodeURIComponent(image)}`;
     }
+  } catch (error) {
+    // Non-URL values are handled below.
   }
 
   if (image.startsWith("/") && process.env.IMAGE_BASE_URL) {

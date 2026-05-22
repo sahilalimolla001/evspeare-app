@@ -26,6 +26,8 @@ WEBSITE_API_TOKEN=Bearer your_backend_api_token
 WAREHOUSE_ORDERS_URL=https://yourwarehouse.com/api/orders
 WAREHOUSE_TRACKING_URL=https://yourwarehouse.com/api/order-tracking
 WAREHOUSE_API_TOKEN=Bearer your_warehouse_token
+GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
+IMAGE_PROXY_ALLOWED_HOSTS=yourwarehouse.com,cdn.yourwarehouse.com
 
 DATABASE_CLIENT=mysql
 DATABASE_URL=mysql://user:password@host:3306/database
@@ -60,6 +62,7 @@ PAYU_ENV=production
 - `POST /api/mobile/orders` inserts COD orders into database first, then falls back to `WEBSITE_ORDERS_URL`.
 - If `WAREHOUSE_ORDERS_URL` is set, every placed order is pushed to the warehouse system after DB save.
 - `GET /api/mobile/orders` returns customer orders and merges live warehouse tracking from `WAREHOUSE_TRACKING_URL`.
+- `GET /api/mobile/images?src=...` serves warehouse product images through the backend, including private `gs://` Google Storage images when `GOOGLE_SERVICE_ACCOUNT_JSON` is configured.
 - `POST /api/mobile/payments/create` creates a PayU hosted checkout form with server-generated SHA-512 hash.
 - `/payment/payu/success` verifies PayU response hash, then pushes paid order to your website.
 - `/payment/payu/failure` returns the customer to the app after failed/cancelled payment.
