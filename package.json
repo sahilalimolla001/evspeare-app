@@ -7,6 +7,10 @@
     "start": "node server.js",
     "check": "node --check server.js && node --check api.js && node --check app.js"
   },
+  "dependencies": {
+    "mysql2": "^3.11.5",
+    "pg": "^8.13.1"
+  },
   "engines": {
     "node": ">=18"
   }

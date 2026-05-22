@@ -3,6 +3,7 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { URLSearchParams } = require("url");
+const database = require("./database");
 
 const rootDir = __dirname;
 const port = Number(process.env.PORT || 3000);
@@ -207,7 +208,8 @@ function publicDiagnostics() {
       productsUrlSet: Boolean(process.env.WEBSITE_PRODUCTS_URL),
       ordersUrlSet: Boolean(process.env.WEBSITE_ORDERS_URL),
       apiTokenSet: Boolean(process.env.WEBSITE_API_TOKEN)
-    }
+    },
+    database: database.status()
   };
 }
 
@@ -306,6 +308,21 @@ function websiteHeaders(extra = {}) {
 }
 
 async function handleProducts(req, res) {
+  try {
+    const dbProducts = await database.fetchProducts();
+    if (dbProducts) {
+      return send(res, 200, {
+        source: "database",
+        products: dbProducts
+      });
+    }
+  } catch (error) {
+    console.error("Database product import failed", error);
+    if (!process.env.WEBSITE_PRODUCTS_URL) {
+      return send(res, 500, { message: error.message || "Database product import failed" });
+    }
+  }
+
   if (!process.env.WEBSITE_PRODUCTS_URL) {
     return send(res, 200, { products: [] });
   }
@@ -322,6 +339,16 @@ async function handleProducts(req, res) {
 }
 
 async function pushOrderToWebsite(order) {
+  try {
+    const dbResult = await database.insertOrder(order);
+    if (dbResult) return dbResult;
+  } catch (error) {
+    console.error("Database order insert failed", error);
+    if (!process.env.WEBSITE_ORDERS_URL) {
+      throw error;
+    }
+  }
+
   if (!process.env.WEBSITE_ORDERS_URL) {
     const dataDir = path.join(rootDir, "data");
     fs.mkdirSync(dataDir, { recursive: true });
