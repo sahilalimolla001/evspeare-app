@@ -26,8 +26,8 @@ WEBSITE_API_TOKEN=Bearer your_backend_api_token
 DATABASE_CLIENT=mysql
 DATABASE_URL=mysql://user:password@host:3306/database
 DB_PRODUCTS_TABLE=products
-DB_ORDERS_TABLE=orders
-DB_ORDER_ITEMS_TABLE=order_items
+DB_ORDERS_TABLE=evspeare_orders
+DB_ORDER_ITEMS_TABLE=evspeare_order_items
 DB_AUTO_CREATE_TABLES=true
 
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -106,7 +106,7 @@ ORDER BY product_id DESC
 LIMIT 100
 ```
 
-Orders are inserted into `orders` and `order_items`. Tables are auto-created unless:
+Orders are inserted into `evspeare_orders` and `evspeare_order_items` by default. Tables are auto-created unless:
 
 ```env
 DB_AUTO_CREATE_TABLES=false
@@ -115,7 +115,7 @@ DB_AUTO_CREATE_TABLES=false
 Default order tables:
 
 ```sql
-CREATE TABLE orders (
+CREATE TABLE evspeare_orders (
   id INT AUTO_INCREMENT PRIMARY KEY,
   order_id VARCHAR(80) UNIQUE NOT NULL,
   customer_name VARCHAR(160),
@@ -129,7 +129,7 @@ CREATE TABLE orders (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE order_items (
+CREATE TABLE evspeare_order_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   order_id VARCHAR(80) NOT NULL,
   product_id VARCHAR(120),

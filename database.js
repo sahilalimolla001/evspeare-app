@@ -42,6 +42,14 @@ function normalizeSql(sql) {
   return sql.replace(/\$(\d+)/g, "?").replace(/"/g, "`");
 }
 
+function ordersTableName() {
+  return tableName("DB_ORDERS_TABLE", "evspeare_orders");
+}
+
+function orderItemsTableName() {
+  return tableName("DB_ORDER_ITEMS_TABLE", "evspeare_order_items");
+}
+
 function createPool() {
   if (pool) return pool;
 
@@ -92,40 +100,69 @@ async function execute(sql, params = []) {
   return result;
 }
 
-function productSelectSql() {
+async function tableColumns(table) {
+  const rows = clientName().startsWith("postgres")
+    ? await query(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1",
+        [table]
+      )
+    : await query(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = $1",
+        [table]
+      );
+
+  return new Set(rows.map((row) => String(row.column_name || row.COLUMN_NAME || "").toLowerCase()));
+}
+
+function firstExisting(columns, names) {
+  return names.find((name) => columns.has(name.toLowerCase())) || "";
+}
+
+function selectAlias(columns, alias, names) {
+  const column = firstExisting(columns, names);
+  return column ? `${quoteId(column)} AS ${quoteId(alias)}` : `NULL AS ${quoteId(alias)}`;
+}
+
+async function productSelectSql() {
   if (process.env.DB_PRODUCTS_QUERY) return process.env.DB_PRODUCTS_QUERY;
 
-  const table = quoteId(tableName("DB_PRODUCTS_TABLE", "products"));
+  const rawTable = tableName("DB_PRODUCTS_TABLE", "products");
+  const columns = await tableColumns(rawTable);
+  const table = quoteId(rawTable);
   const activeColumn = process.env.DB_PRODUCTS_ACTIVE_COLUMN || "";
-  const activeClause = activeColumn && /^[a-zA-Z0-9_]+$/.test(activeColumn)
+  const activeClause = activeColumn && /^[a-zA-Z0-9_]+$/.test(activeColumn) && columns.has(activeColumn.toLowerCase())
     ? ` WHERE ${quoteId(activeColumn)} IN (1, true, '1', 'true', 'active', 'publish')`
     : "";
+  const orderColumn = firstExisting(columns, ["id", "product_id", "created_at", "updated_at"]);
+  const orderClause = orderColumn ? `ORDER BY ${quoteId(orderColumn)} DESC` : "";
+  const limit = Number(process.env.DB_PRODUCTS_LIMIT || 100);
 
   return `
     SELECT
-      id,
-      name,
-      title,
-      sku,
-      price,
-      sale_price,
-      selling_price,
-      mrp,
-      regular_price,
-      original_price,
-      image,
-      image_url,
-      category,
-      rating,
-      average_rating,
-      reviews,
-      rating_count,
-      stock_status,
-      in_stock
+      ${selectAlias(columns, "id", ["id", "product_id"])},
+      ${selectAlias(columns, "product_id", ["product_id", "id"])},
+      ${selectAlias(columns, "name", ["name", "product_name", "title"])},
+      ${selectAlias(columns, "title", ["title", "name", "product_name"])},
+      ${selectAlias(columns, "sku", ["sku", "product_sku"])},
+      ${selectAlias(columns, "price", ["price", "sale_price", "selling_price", "final_price"])},
+      ${selectAlias(columns, "sale_price", ["sale_price", "selling_price", "price"])},
+      ${selectAlias(columns, "selling_price", ["selling_price", "sale_price", "price"])},
+      ${selectAlias(columns, "mrp", ["mrp", "regular_price", "original_price", "compare_at_price", "price"])},
+      ${selectAlias(columns, "regular_price", ["regular_price", "mrp", "original_price", "compare_at_price", "price"])},
+      ${selectAlias(columns, "original_price", ["original_price", "regular_price", "mrp", "compare_at_price", "price"])},
+      ${selectAlias(columns, "image", ["image", "image_url", "thumbnail", "photo"])},
+      ${selectAlias(columns, "image_url", ["image_url", "image", "thumbnail", "photo"])},
+      ${selectAlias(columns, "category", ["category", "category_name", "product_category"])},
+      ${selectAlias(columns, "rating", ["rating", "average_rating"])},
+      ${selectAlias(columns, "average_rating", ["average_rating", "rating"])},
+      ${selectAlias(columns, "reviews", ["reviews", "rating_count", "review_count"])},
+      ${selectAlias(columns, "rating_count", ["rating_count", "review_count", "reviews"])},
+      ${selectAlias(columns, "stock_status", ["stock_status", "status", "availability"])},
+      ${selectAlias(columns, "in_stock", ["in_stock", "stock", "stock_quantity"])}
     FROM ${table}
     ${activeClause}
-    ORDER BY id DESC
-    LIMIT ${Number(process.env.DB_PRODUCTS_LIMIT || 100)}
+    ${orderClause}
+    LIMIT ${limit}
   `;
 }
 
@@ -152,15 +189,15 @@ function asProduct(row, index) {
 
 async function fetchProducts() {
   if (!enabled()) return null;
-  const rows = await query(productSelectSql());
+  const rows = await query(await productSelectSql());
   return rows.map(asProduct).filter((product) => product.price > 0);
 }
 
 async function ensureOrderTables() {
   if (process.env.DB_AUTO_CREATE_TABLES === "false") return;
 
-  const orders = quoteId(tableName("DB_ORDERS_TABLE", "orders"));
-  const items = quoteId(tableName("DB_ORDER_ITEMS_TABLE", "order_items"));
+  const orders = quoteId(ordersTableName());
+  const items = quoteId(orderItemsTableName());
 
   if (clientName().startsWith("postgres")) {
     await execute(`
@@ -227,8 +264,8 @@ async function insertOrder(order) {
 
   await ensureOrderTables();
 
-  const orders = quoteId(tableName("DB_ORDERS_TABLE", "orders"));
-  const items = quoteId(tableName("DB_ORDER_ITEMS_TABLE", "order_items"));
+  const orders = quoteId(ordersTableName());
+  const items = quoteId(orderItemsTableName());
   const payload = JSON.stringify(order);
   const values = [
     order.orderId,
@@ -277,8 +314,8 @@ function status() {
     client: clientName() || null,
     urlSet: Boolean(databaseUrl()),
     productsTable: process.env.DB_PRODUCTS_TABLE || "products",
-    ordersTable: process.env.DB_ORDERS_TABLE || "orders",
-    orderItemsTable: process.env.DB_ORDER_ITEMS_TABLE || "order_items",
+    ordersTable: process.env.DB_ORDERS_TABLE || "evspeare_orders",
+    orderItemsTable: process.env.DB_ORDER_ITEMS_TABLE || "evspeare_order_items",
     autoCreateTables: process.env.DB_AUTO_CREATE_TABLES !== "false"
   };
 }
