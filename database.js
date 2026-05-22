@@ -274,12 +274,22 @@ async function inventoryDiagnostics() {
   const productTable = tableName("DB_PRODUCTS_TABLE", "products");
   const productColumns = await tableColumns(productTable).catch(() => new Set());
   const inventory = await inventoryTableInfo();
+  let inventorySample = [];
+
+  if (inventory) {
+    inventorySample = await query(
+      `SELECT ${quoteId(inventory.productColumn)} AS product_id, ${quoteId(inventory.quantityColumn)} AS stock_quantity
+       FROM ${quoteId(inventory.table)}
+       LIMIT 10`
+    ).catch(() => []);
+  }
 
   return {
     configured: true,
     productTable,
     productColumns: Array.from(productColumns).sort(),
-    inventory
+    inventory,
+    inventorySample
   };
 }
 
