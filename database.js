@@ -123,6 +123,25 @@ function selectAlias(columns, alias, names) {
   return column ? `${quoteId(column)} AS ${quoteId(alias)}` : `NULL AS ${quoteId(alias)}`;
 }
 
+function publicImageUrl(value) {
+  const image = String(value || "");
+  if (image.startsWith("gs://")) {
+    const withoutScheme = image.slice(5);
+    const slashIndex = withoutScheme.indexOf("/");
+    if (slashIndex > 0) {
+      const bucket = withoutScheme.slice(0, slashIndex);
+      const objectPath = withoutScheme.slice(slashIndex + 1);
+      return `https://storage.googleapis.com/${bucket}/${objectPath}`;
+    }
+  }
+
+  if (image.startsWith("/") && process.env.IMAGE_BASE_URL) {
+    return `${process.env.IMAGE_BASE_URL.replace(/\/+$/g, "")}${image}`;
+  }
+
+  return image;
+}
+
 async function productSelectSql() {
   if (process.env.DB_PRODUCTS_QUERY) return process.env.DB_PRODUCTS_QUERY;
 
@@ -182,7 +201,7 @@ function asProduct(row, index) {
     reviews: Number(row.reviews || row.rating_count || 0),
     delivery: row.delivery || row.shipping_text || "Delivery available",
     tags: ["Deals", category],
-    image: row.image || row.image_url || "https://images.unsplash.com/photo-1607082350899-7e105aa886ae?auto=format&fit=crop&w=420&q=80",
+    image: publicImageUrl(row.image || row.image_url) || "https://images.unsplash.com/photo-1607082350899-7e105aa886ae?auto=format&fit=crop&w=420&q=80",
     stock: row.stock_status || row.in_stock || "available"
   };
 }
