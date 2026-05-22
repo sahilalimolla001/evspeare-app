@@ -6,6 +6,7 @@ const { URLSearchParams } = require("url");
 
 const rootDir = __dirname;
 const port = Number(process.env.PORT || 3000);
+const fallbackPort = 3000;
 const pendingPayuOrders = new Map();
 
 const mimeTypes = {
@@ -556,6 +557,17 @@ async function router(req, res) {
   }
 }
 
-http.createServer(router).listen(port, "0.0.0.0", () => {
-  console.log(`Ev Speare app running on 0.0.0.0:${port}`);
-});
+function startServer(listenPort, label) {
+  const server = http.createServer(router);
+  server.on("error", (error) => {
+    console.error(`Unable to bind ${label} port ${listenPort}:`, error.message);
+  });
+  server.listen(listenPort, "0.0.0.0", () => {
+    console.log(`Ev Speare app running on 0.0.0.0:${listenPort} (${label})`);
+  });
+}
+
+startServer(port, "primary");
+if (port !== fallbackPort) {
+  startServer(fallbackPort, "fallback");
+}
