@@ -1,12 +1,12 @@
-window.BAZAARGO_CONFIG = {
-  businessName: "BazaarGo",
+window.EVSPEARE_CONFIG = {
+  businessName: "Ev Speare",
   currency: "INR",
 
   /*
    * Put your existing website API base URL here.
    * Example: "https://yourwebsite.com"
    */
-  apiBaseUrl: "",
+  apiBaseUrl: window.location.protocol === "file:" ? "" : window.location.origin,
 
   /*
    * These paths should be provided by your existing website/backend.
@@ -27,19 +27,21 @@ window.BAZAARGO_CONFIG = {
 
   /*
    * Add an API token only if your website exposes a secure server-side token.
-   * Do not put Razorpay secret key, database passwords, or admin passwords here.
+   * Do not put PayU salt, Twilio auth token, database passwords, or admin passwords here.
    */
   authHeader: "",
 
   paymentGateway: {
-    provider: "razorpay",
+    provider: "payu",
     keyId: "",
-    checkoutScript: "https://checkout.razorpay.com/v1/checkout.js"
+    checkoutScript: ""
   },
 
   demo: {
-    enabled: true,
+    enabled: false,
     otp: "123456",
-    allowDemoPayment: true
+    allowDemoPayment: false
   }
 };
+
+window.BAZAARGO_CONFIG = window.EVSPEARE_CONFIG;

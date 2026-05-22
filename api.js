@@ -1,5 +1,5 @@
 (function () {
-  const config = window.BAZAARGO_CONFIG || {};
+  const config = window.EVSPEARE_CONFIG || window.BAZAARGO_CONFIG || {};
 
   function trimSlashes(value) {
     return String(value || "").replace(/^\/+|\/+$/g, "");

@@ -151,7 +151,7 @@ let products = [...fallbackProducts];
 let categories = buildCategories(products);
 
 const api = window.BazaarGoApi;
-const appConfig = window.BAZAARGO_CONFIG || {};
+const appConfig = window.EVSPEARE_CONFIG || window.BAZAARGO_CONFIG || {};
 const currency = new Intl.NumberFormat("en-IN");
 
 const state = {
@@ -452,11 +452,11 @@ function renderGatewayNote() {
   if (state.paymentMethod === "cod") {
     nodes.gatewayNote.textContent = "COD order will be pushed to your website as pending payment.";
   } else if (hasKey && hasPaymentServer) {
-    nodes.gatewayNote.textContent = "Online payment will open the configured payment gateway.";
+    nodes.gatewayNote.textContent = "Online payment will open PayU secure checkout.";
   } else if (appConfig.demo?.allowDemoPayment) {
     nodes.gatewayNote.textContent = "Demo online payment is enabled. Configure gateway keys before going live.";
   } else {
-    nodes.gatewayNote.textContent = "Online payment needs gateway key and server payment endpoints.";
+    nodes.gatewayNote.textContent = "Online payment needs PayU key/salt on Railway.";
   }
 }
 
@@ -706,6 +706,24 @@ function loadScript(src) {
   });
 }
 
+function submitPaymentForm(action, fields) {
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = action;
+  form.style.display = "none";
+
+  Object.entries(fields || {}).forEach(([name, value]) => {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value == null ? "" : String(value);
+    form.appendChild(input);
+  });
+
+  document.body.appendChild(form);
+  form.submit();
+}
+
 async function runRazorpay(order, gatewayOrder) {
   const gateway = appConfig.paymentGateway || {};
   if (!gateway.keyId) {
@@ -785,6 +803,15 @@ async function runOnlinePayment(order) {
     return runRazorpay(order, gatewayOrder);
   }
 
+  if (appConfig.paymentGateway?.provider === "payu" || gatewayOrder.gateway === "payu") {
+    if (!gatewayOrder.action || !gatewayOrder.fields) {
+      throw new Error("PayU payment form is missing");
+    }
+    showToast("Redirecting to PayU...");
+    submitPaymentForm(gatewayOrder.action, gatewayOrder.fields);
+    return new Promise(() => {});
+  }
+
   if (gatewayOrder.redirectUrl) {
     window.location.href = gatewayOrder.redirectUrl;
     throw new Error("Redirecting to payment gateway");
@@ -828,6 +855,25 @@ async function placeOrder() {
     nodes.checkoutButton.disabled = cartTotals().itemCount === 0;
     nodes.checkoutButton.textContent = isLoggedIn() ? "Place order" : "Login to place order";
   }
+}
+
+function handlePaymentReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const status = params.get("payment");
+  if (!status) return;
+
+  if (status === "success") {
+    state.cart.clear();
+    persistShoppingState();
+    renderCart();
+    showToast("Payment successful. Order placed.");
+  } else if (status === "failure") {
+    showToast("Payment failed or cancelled");
+  } else if (status === "order-push-failed") {
+    showToast("Payment captured. Order push needs backend check.");
+  }
+
+  window.history.replaceState({}, document.title, window.location.pathname);
 }
 
 document.addEventListener("click", async (event) => {
@@ -1006,3 +1052,4 @@ if (state.session?.user?.phone) {
 
 renderAll();
 syncProducts({ silent: true });
+handlePaymentReturn();
