@@ -268,6 +268,21 @@ async function inventoryTableInfo() {
   return null;
 }
 
+async function inventoryDiagnostics() {
+  if (!enabled()) return { configured: false };
+
+  const productTable = tableName("DB_PRODUCTS_TABLE", "products");
+  const productColumns = await tableColumns(productTable).catch(() => new Set());
+  const inventory = await inventoryTableInfo();
+
+  return {
+    configured: true,
+    productTable,
+    productColumns: Array.from(productColumns).sort(),
+    inventory
+  };
+}
+
 async function applyInventory(products) {
   if (!products.length) return products;
 
@@ -510,6 +525,7 @@ function status() {
 
 module.exports = {
   status,
+  inventoryDiagnostics,
   fetchProducts,
   insertOrder,
   fetchCustomerOrders

@@ -1089,6 +1089,10 @@ async function router(req, res) {
       return send(res, 200, publicDiagnostics(req));
     }
 
+    if (req.method === "GET" && url.pathname === "/api/mobile/inventory-diagnostics") {
+      return send(res, 200, await database.inventoryDiagnostics());
+    }
+
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/verify-otp") return handleVerifyOtp(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/products") return handleProducts(req, res);
