@@ -605,13 +605,29 @@ function renderCheckoutPage() {
           <div>
             <span>Step 1</span>
             <h3>Delivery details</h3>
+            <p>Use the address where the warehouse partner should dispatch this order.</p>
           </div>
           <b>${isLoggedIn() ? "Logged in" : "Login needed"}</b>
         </div>
-        <div class="checkout-field-grid">
-          <label>Full name<input type="text" data-page-checkout-name value="${escapeHtml(name)}" placeholder="Customer name" autocomplete="name" /></label>
-          <label>Mobile number<input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(phone)}" placeholder="10 digit mobile" autocomplete="tel" /></label>
-          <label class="wide">Delivery address<textarea data-page-checkout-address placeholder="House no, street, city, pincode" rows="4">${escapeHtml(address)}</textarea></label>
+        <div class="delivery-card">
+          <div class="delivery-card-head">
+            <span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-5.1 7-12A7 7 0 1 0 5 9c0 6.9 7 12 7 12Z" /><path d="M12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /></svg>
+            </span>
+            <div>
+              <strong>Shipping address</strong>
+              <small>Contact details and full drop location</small>
+            </div>
+          </div>
+          <div class="checkout-field-grid">
+            <label>Full name<input type="text" data-page-checkout-name value="${escapeHtml(name)}" placeholder="Customer name" autocomplete="name" /></label>
+            <label>Mobile number<input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(phone)}" placeholder="10 digit mobile" autocomplete="tel" /></label>
+            <label class="wide">Delivery address<textarea data-page-checkout-address placeholder="House no, street, area, city, pincode" rows="4">${escapeHtml(address)}</textarea></label>
+          </div>
+          <div class="delivery-hint">
+            <span>Include landmark and pincode for faster dispatch.</span>
+            <strong>India only</strong>
+          </div>
         </div>
       </section>
 
