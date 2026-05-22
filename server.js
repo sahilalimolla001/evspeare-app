@@ -296,6 +296,34 @@ function isMissingRemoteEndpoint(error) {
   return /\b404\b|not found/i.test(error.message || "");
 }
 
+function isLoginRequiredError(error) {
+  return /\b401\b|unauthorized|login required/i.test(error.message || "");
+}
+
+async function fetchWebsiteJsonWithAuth(req, endpointUrl, label) {
+  try {
+    return await fetchRemoteJson(
+      endpointUrl,
+      websiteHeaders({}, req),
+      label
+    );
+  } catch (error) {
+    if (!isLoginRequiredError(error)) throw error;
+
+    const cookie = await websiteLoginCookie(req, endpointUrl);
+    if (!cookie) throw error;
+
+    return fetchRemoteJson(
+      endpointUrl,
+      {
+        Accept: "application/json",
+        Cookie: cookie
+      },
+      label
+    );
+  }
+}
+
 function configuredWebsiteProductsUrl(req) {
   const localConfig = localFrontendConfig(req);
   const explicitUrl = process.env.WEBSITE_PRODUCTS_URL
@@ -1285,11 +1313,7 @@ async function fetchWebsiteProducts(req) {
   let missingEndpointError = null;
   for (const candidate of productUrlCandidates(websiteProductsUrl)) {
     try {
-      data = await fetchRemoteJson(
-        candidate,
-        await websiteRequestHeaders(req, candidate),
-        "Website product import"
-      );
+      data = await fetchWebsiteJsonWithAuth(req, candidate, "Website product import");
       endpointUrl = candidate;
       break;
     } catch (error) {
