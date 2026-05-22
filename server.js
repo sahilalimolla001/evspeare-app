@@ -639,22 +639,30 @@ async function handleProductImage(req, res) {
   }
 }
 
-async function pushOrderToWebsite(order, req) {
+async function storeOrderAndPushWebsite(order, req) {
+  const result = {
+    orderId: order.orderId
+  };
+
   try {
     const dbResult = await database.insertOrder(order);
-    if (dbResult) return dbResult;
+    if (dbResult) Object.assign(result, dbResult);
   } catch (error) {
     console.error("Database order insert failed", error);
     if (!process.env.WEBSITE_ORDERS_URL) {
       throw error;
     }
+    result.databaseError = error.message;
   }
 
   if (!process.env.WEBSITE_ORDERS_URL) {
-    const dataDir = path.join(rootDir, "data");
-    fs.mkdirSync(dataDir, { recursive: true });
-    fs.appendFileSync(path.join(dataDir, "orders.jsonl"), `${JSON.stringify(order)}\n`);
-    return { storedLocally: true, orderId: order.orderId };
+    if (!result.storedInDatabase) {
+      const dataDir = path.join(rootDir, "data");
+      fs.mkdirSync(dataDir, { recursive: true });
+      fs.appendFileSync(path.join(dataDir, "orders.jsonl"), `${JSON.stringify(order)}\n`);
+      result.storedLocally = true;
+    }
+    return result;
   }
 
   if (req && isSelfReference(req, process.env.WEBSITE_ORDERS_URL, "/api/mobile/orders")) {
@@ -671,7 +679,11 @@ async function pushOrderToWebsite(order, req) {
   if (!response.ok) {
     throw new Error(data.message || data.error || "Website order push failed");
   }
-  return data;
+  return {
+    ...result,
+    websitePushed: true,
+    website: data
+  };
 }
 
 function trackingSteps(status) {
@@ -727,7 +739,7 @@ async function fetchWarehouseTracking(orderId) {
 }
 
 async function persistAndPushOrder(order, req) {
-  const result = await pushOrderToWebsite(order, req);
+  const result = await storeOrderAndPushWebsite(order, req);
   try {
     const warehouse = await pushOrderToWarehouse(order);
     return {
@@ -745,6 +757,40 @@ async function persistAndPushOrder(order, req) {
   }
 }
 
+async function validateOrderInventory(order) {
+  try {
+    const products = await database.fetchProducts();
+    if (!products) return null;
+
+    const byId = new Map();
+    products.forEach((product) => {
+      byId.set(String(product.id), product);
+      if (product.sourceId !== null && product.sourceId !== undefined) byId.set(String(product.sourceId), product);
+    });
+
+    for (const item of order.items || []) {
+      const product = byId.get(String(item.productId)) || byId.get(String(item.appProductId));
+      if (!product) continue;
+
+      const quantity = Number(product.stockQuantity);
+      const status = String(product.stock || "").toLowerCase();
+      if (Number.isFinite(quantity) && quantity <= 0) {
+        return `${product.title} is out of stock`;
+      }
+      if (["out_of_stock", "out of stock", "sold_out", "sold out", "unavailable"].includes(status)) {
+        return `${product.title} is out of stock`;
+      }
+      if (Number.isFinite(quantity) && Number(item.quantity || 0) > quantity) {
+        return `Only ${quantity} ${product.title} available in warehouse`;
+      }
+    }
+  } catch (error) {
+    console.error("Inventory validation skipped", error.message);
+  }
+
+  return null;
+}
+
 async function handleOrder(req, res) {
   const user = verifyToken(req);
   if (!user && process.env.ALLOW_UNAUTHENTICATED_ORDERS !== "true") {
@@ -754,6 +800,11 @@ async function handleOrder(req, res) {
   const order = await readBody(req);
   if (!Array.isArray(order.items) || !order.items.length) {
     return send(res, 400, { message: "Order items are required" });
+  }
+
+  const inventoryError = await validateOrderInventory(order);
+  if (inventoryError) {
+    return send(res, 409, { message: inventoryError });
   }
 
   const response = await persistAndPushOrder({
@@ -857,6 +908,11 @@ async function handlePaymentCreate(req, res) {
   const order = await readBody(req);
   if (!process.env.PAYU_KEY || !process.env.PAYU_SALT) {
     return send(res, 503, { message: "PayU env vars are missing" });
+  }
+
+  const inventoryError = await validateOrderInventory(order);
+  if (inventoryError) {
+    return send(res, 409, { message: inventoryError });
   }
 
   const origin = getOrigin(req);

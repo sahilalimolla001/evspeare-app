@@ -498,6 +498,11 @@ svg {
   box-shadow: 0 1px 0 rgba(23, 32, 51, 0.05);
 }
 
+.product-card.out-of-stock .product-media img {
+  filter: grayscale(0.65);
+  opacity: 0.72;
+}
+
 .product-media {
   aspect-ratio: 1 / 0.82;
   position: relative;
@@ -527,6 +532,30 @@ svg {
 
 .wishlist-button.active {
   color: var(--red);
+}
+
+.stock-badge {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  max-width: calc(100% - 52px);
+  border-radius: 999px;
+  padding: 5px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: white;
+  background: rgba(23, 32, 51, 0.82);
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.stock-badge.in {
+  background: rgba(16, 137, 52, 0.9);
+}
+
+.stock-badge.out {
+  background: rgba(217, 48, 37, 0.92);
 }
 
 .product-body {
@@ -1111,6 +1140,14 @@ svg {
 }
 
 .checkout-button:disabled {
+  cursor: not-allowed;
+  color: #8793a5;
+  background: #e4e9f2;
+}
+
+.add-button:disabled,
+.buy-button:disabled,
+.qty-control button:disabled {
   cursor: not-allowed;
   color: #8793a5;
   background: #e4e9f2;

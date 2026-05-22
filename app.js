@@ -331,6 +331,27 @@ function productById(productId) {
   return products.find((product) => String(product.id) === String(productId));
 }
 
+function stockQuantity(product) {
+  if (product?.stockQuantity === null || product?.stockQuantity === undefined || product?.stockQuantity === "") return null;
+  const parsed = Number(product.stockQuantity);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isProductAvailable(product) {
+  if (!product) return false;
+  const quantity = stockQuantity(product);
+  const status = String(product.stock || "").toLowerCase();
+  if (quantity !== null) return quantity > 0;
+  return !["out_of_stock", "out of stock", "sold_out", "sold out", "unavailable"].includes(status);
+}
+
+function stockLabel(product) {
+  const quantity = stockQuantity(product);
+  if (!isProductAvailable(product)) return "Out of stock";
+  if (quantity !== null) return `${quantity} in warehouse`;
+  return "In stock";
+}
+
 function filteredProducts() {
   const text = state.query.trim().toLowerCase();
   const selected = state.activeFilter;
@@ -382,11 +403,13 @@ function renderFilters() {
 function productCard(product) {
   const wished = state.wishlist.has(product.id);
   const off = discount(product);
+  const available = isProductAvailable(product);
 
   return `
-    <article class="product-card" data-open-product="${escapeHtml(product.id)}">
+    <article class="product-card ${available ? "" : "out-of-stock"}" data-open-product="${escapeHtml(product.id)}">
       <div class="product-media">
         <img ${imageAttrs(product)} alt="${escapeHtml(product.title)}" loading="lazy" />
+        <span class="stock-badge ${available ? "in" : "out"}">${escapeHtml(stockLabel(product))}</span>
         <button class="wishlist-button ${wished ? "active" : ""}" type="button" aria-label="Add ${escapeHtml(product.title)} to wishlist" data-wishlist="${escapeHtml(product.id)}">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" />
@@ -406,8 +429,8 @@ function productCard(product) {
         </div>
         <p class="delivery-line">${escapeHtml(product.delivery || "Delivery available")}</p>
         <div class="card-actions">
-          <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}">Add to cart</button>
-          <button class="buy-button" type="button" aria-label="Buy ${escapeHtml(product.title)}" data-buy-now="${escapeHtml(product.id)}">
+          <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? "Add to cart" : "Out of stock"}</button>
+          <button class="buy-button" type="button" aria-label="Buy ${escapeHtml(product.title)}" data-buy-now="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 12h14M13 5l7 7-7 7" />
             </svg>
@@ -478,7 +501,7 @@ function renderCart() {
                     <div class="qty-control" aria-label="Quantity for ${escapeHtml(item.title)}">
                       <button type="button" data-decrease="${escapeHtml(item.id)}" aria-label="Decrease quantity">-</button>
                       <span>${item.quantity}</span>
-                      <button type="button" data-increase="${escapeHtml(item.id)}" aria-label="Increase quantity">+</button>
+                      <button type="button" data-increase="${escapeHtml(item.id)}" aria-label="Increase quantity" ${stockQuantity(item) !== null && item.quantity >= stockQuantity(item) ? "disabled" : ""}>+</button>
                     </div>
                     <button class="remove-button" type="button" data-remove="${escapeHtml(item.id)}">Remove</button>
                   </div>
@@ -569,6 +592,7 @@ function renderProductPage(productId) {
   if (!product) return;
   state.selectedProductId = product.id;
   const off = discount(product);
+  const available = isProductAvailable(product);
 
   nodes.productPage.innerHTML = `
     <div class="page-header">
@@ -590,13 +614,13 @@ function renderProductPage(productId) {
         ${off ? `<span>${off}% off</span>` : ""}
       </div>
       <div class="detail-service">
-        <span>Warehouse stock: ${escapeHtml(product.stock || "available")}</span>
+        <span>Warehouse inventory: ${escapeHtml(stockLabel(product))}</span>
         <span>${escapeHtml(product.delivery || "Delivery available")}</span>
         <span>Secure checkout with COD and PayU</span>
       </div>
       <div class="detail-actions">
-        <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}">Add to cart</button>
-        <button class="checkout-button" type="button" data-buy-now="${escapeHtml(product.id)}">Buy now</button>
+        <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? "Add to cart" : "Out of stock"}</button>
+        <button class="checkout-button" type="button" data-buy-now="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>Buy now</button>
       </div>
     </div>
   `;
@@ -626,7 +650,7 @@ function renderCartPage() {
               <div class="qty-control">
                 <button type="button" data-decrease="${escapeHtml(item.id)}">-</button>
                 <span>${item.quantity}</span>
-                <button type="button" data-increase="${escapeHtml(item.id)}">+</button>
+                <button type="button" data-increase="${escapeHtml(item.id)}" ${stockQuantity(item) !== null && item.quantity >= stockQuantity(item) ? "disabled" : ""}>+</button>
               </div>
               <button class="remove-button" type="button" data-remove="${escapeHtml(item.id)}">Remove</button>
             </div>
@@ -737,8 +761,19 @@ function setFilter(filter) {
 }
 
 function addToCart(productId, openCart = false) {
-  if (!productById(productId)) return;
-  state.cart.set(productId, (state.cart.get(productId) || 0) + 1);
+  const product = productById(productId);
+  if (!product) return;
+  if (!isProductAvailable(product)) {
+    showToast("Product is out of stock");
+    return;
+  }
+  const current = state.cart.get(productId) || 0;
+  const quantity = stockQuantity(product);
+  if (quantity !== null && current >= quantity) {
+    showToast(`Only ${quantity} available in warehouse`);
+    return;
+  }
+  state.cart.set(productId, current + 1);
   persistShoppingState();
   renderCart();
   showToast("Added to cart");
@@ -906,6 +941,18 @@ function validateCheckout() {
     return null;
   }
 
+  for (const item of cartTotals().entries) {
+    if (!isProductAvailable(item)) {
+      showToast(`${item.title} is out of stock`);
+      return null;
+    }
+    const quantity = stockQuantity(item);
+    if (quantity !== null && item.quantity > quantity) {
+      showToast(`Only ${quantity} ${item.title} available`);
+      return null;
+    }
+  }
+
   if (!name) {
     showToast("Enter customer name");
     nameNode.focus();
@@ -944,7 +991,8 @@ function buildOrder(customer, payment) {
       title: item.title,
       price: item.price,
       quantity: item.quantity,
-      total: item.price * item.quantity
+      total: item.price * item.quantity,
+      stockQuantity: stockQuantity(item)
     })),
     amounts: {
       currency: appConfig.currency || "INR",
@@ -1240,9 +1288,7 @@ document.addEventListener("click", async (event) => {
   }
 
   if (increaseId) {
-    state.cart.set(increaseId, (state.cart.get(increaseId) || 0) + 1);
-    persistShoppingState();
-    renderCart();
+    addToCart(increaseId);
   }
 
   if (decreaseId) {

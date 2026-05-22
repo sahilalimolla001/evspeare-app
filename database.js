@@ -184,12 +184,31 @@ async function productSelectSql() {
       ${selectAlias(columns, "reviews", ["reviews", "rating_count", "review_count"])},
       ${selectAlias(columns, "rating_count", ["rating_count", "review_count", "reviews"])},
       ${selectAlias(columns, "stock_status", ["stock_status", "status", "availability"])},
-      ${selectAlias(columns, "in_stock", ["in_stock", "stock", "stock_quantity"])}
+      ${selectAlias(columns, "in_stock", ["in_stock", "is_in_stock"])},
+      ${selectAlias(columns, "stock_quantity", ["stock_quantity", "inventory", "inventory_qty", "inventory_quantity", "available_quantity", "available_stock", "qty", "quantity", "stock"])}
     FROM ${table}
     ${activeClause}
     ${orderClause}
     LIMIT ${limit}
   `;
+}
+
+function numericOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "boolean") return value ? null : 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function productStockStatus(row) {
+  const quantity = numericOrNull(row.stock_quantity);
+  const status = String(row.stock_status || "").toLowerCase();
+  const inStock = row.in_stock;
+
+  if (quantity !== null && quantity <= 0) return "out_of_stock";
+  if (["out_of_stock", "out of stock", "sold_out", "sold out", "unavailable"].includes(status)) return "out_of_stock";
+  if (inStock === false || inStock === 0 || inStock === "0" || String(inStock).toLowerCase() === "false") return "out_of_stock";
+  return row.stock_status || "available";
 }
 
 function asProduct(row, index) {
@@ -209,7 +228,8 @@ function asProduct(row, index) {
     delivery: row.delivery || row.shipping_text || "Delivery available",
     tags: ["Deals", category],
     image: publicImageUrl(row.image || row.image_url) || "https://images.unsplash.com/photo-1607082350899-7e105aa886ae?auto=format&fit=crop&w=420&q=80",
-    stock: row.stock_status || row.in_stock || "available"
+    stock: productStockStatus(row),
+    stockQuantity: numericOrNull(row.stock_quantity)
   };
 }
 

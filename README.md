@@ -56,10 +56,11 @@ PAYU_ENV=production
 ## How It Works
 
 - `GET /api/mobile/products` imports products from database first, then falls back to `WEBSITE_PRODUCTS_URL`.
+- Product inventory is auto-detected from columns like `stock_quantity`, `inventory`, `available_stock`, `qty`, or `stock`. Quantity `0` is shown as out of stock and cannot be ordered.
 - `POST /api/mobile/auth/request-otp` sends OTP through Twilio Verify.
 - `POST /api/mobile/auth/verify-otp` verifies OTP through Twilio and returns a saved login token.
 - `GET /api/mobile/diagnostics` checks whether Twilio, PayU, and website env vars are set without exposing secrets.
-- `POST /api/mobile/orders` inserts COD orders into database first, then falls back to `WEBSITE_ORDERS_URL`.
+- `POST /api/mobile/orders` validates warehouse inventory, inserts COD orders into database, and also pushes to `WEBSITE_ORDERS_URL` when configured.
 - If `WAREHOUSE_ORDERS_URL` is set, every placed order is pushed to the warehouse system after DB save.
 - `GET /api/mobile/orders` returns customer orders and merges live warehouse tracking from `WAREHOUSE_TRACKING_URL`.
 - `GET /api/mobile/images?src=...` serves warehouse product images through the backend, including private `gs://` Google Storage images when `GOOGLE_SERVICE_ACCOUNT_JSON` is configured.
