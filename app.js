@@ -1241,6 +1241,7 @@ async function placeOrder() {
 
     const order = buildOrder(customer, payment);
     const response = await api.pushOrder(order);
+    const pushedToWarehouse = response.warehousePushed || response.websitePushed;
     saveLocalOrder({
       ...order,
       amountTotal: order.amounts.total,
@@ -1248,7 +1249,7 @@ async function placeOrder() {
       paymentStatus: order.payment.status,
       tracking: {
         status: "placed",
-        label: response.warehousePushed ? "Sent to warehouse" : "Order placed",
+        label: pushedToWarehouse ? "Sent to warehouse" : "Order placed",
         steps: [
           { key: "placed", label: "Order placed", done: true },
           { key: "picked", label: "Warehouse picked", done: false },
@@ -1265,7 +1266,7 @@ async function placeOrder() {
     await loadOrders({ silent: true });
     renderOrdersPage();
     openPage("orders");
-    showToast(response.warehousePushed ? "Order sent to warehouse" : "Order placed successfully");
+    showToast(pushedToWarehouse ? "Order sent to warehouse" : "Order placed successfully");
   } catch (error) {
     showToast(error.message || "Order failed");
   } finally {

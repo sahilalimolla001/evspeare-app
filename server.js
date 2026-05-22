@@ -347,13 +347,33 @@ function configuredWebsiteProductsUrl(req) {
   return absoluteEndpoint(localApiBaseUrl, localConfig.productsEndpoint);
 }
 
+function configuredWebsiteOrdersUrl(req) {
+  const localConfig = localFrontendConfig(req);
+  const explicitUrl = process.env.WEBSITE_ORDERS_URL
+    || localConfig.websiteOrdersUrl
+    || "";
+
+  if (explicitUrl) return explicitUrl;
+
+  const productsUrl = configuredWebsiteProductsUrl(req);
+  if (!productsUrl) return "";
+
+  try {
+    return new URL("/add-order", new URL(productsUrl).origin).toString();
+  } catch (error) {
+    return "";
+  }
+}
+
 function publicConfig(req) {
   const websiteProductsUrl = configuredWebsiteProductsUrl(req);
+  const websiteOrdersUrl = configuredWebsiteOrdersUrl(req);
   return {
     businessName: process.env.BUSINESS_NAME || "Ev Speare",
     currency: process.env.CURRENCY || "INR",
     apiBaseUrl: getOrigin(req),
     websiteProductsUrl,
+    websiteOrdersUrl,
     productsEndpoint: "/api/mobile/products",
     ordersEndpoint: "/api/mobile/orders",
     otpRequestEndpoint: "/api/mobile/auth/request-otp",
@@ -1012,6 +1032,7 @@ async function fetchRemoteJson(endpointUrl, headers, label) {
 
 function publicDiagnostics(req) {
   const websiteProductsUrl = configuredWebsiteProductsUrl(req);
+  const websiteOrdersUrl = configuredWebsiteOrdersUrl(req);
   const localConfig = localFrontendConfig(req);
   const websiteCredentialSet = Boolean(
     process.env.WEBSITE_API_TOKEN ||
@@ -1036,13 +1057,14 @@ function publicDiagnostics(req) {
     website: {
       productsUrlSet: Boolean(websiteProductsUrl),
       productsUrlSource: process.env.WEBSITE_PRODUCTS_URL ? "env" : websiteProductsUrl ? "config.js" : null,
-      ordersUrlSet: Boolean(process.env.WEBSITE_ORDERS_URL),
+      ordersUrlSet: Boolean(websiteOrdersUrl),
+      ordersUrlSource: process.env.WEBSITE_ORDERS_URL ? "env" : websiteOrdersUrl ? "derived" : null,
       apiTokenSet: websiteCredentialSet,
       loginCredentialsSet: websiteLoginSet,
       productsUrl: safeUrlSummary(websiteProductsUrl),
-      ordersUrl: safeUrlSummary(process.env.WEBSITE_ORDERS_URL),
+      ordersUrl: safeUrlSummary(websiteOrdersUrl),
       productsUrlSelfReference: isSelfReference(req, websiteProductsUrl, "/api/mobile/products"),
-      ordersUrlSelfReference: isSelfReference(req, process.env.WEBSITE_ORDERS_URL, "/api/mobile/orders")
+      ordersUrlSelfReference: isSelfReference(req, websiteOrdersUrl, "/api/mobile/orders")
     },
     warehouse: {
       productsUrlSet: Boolean(process.env.WAREHOUSE_PRODUCTS_URL),
@@ -1518,6 +1540,7 @@ async function storeOrderAndPushWebsite(order, req) {
   const result = {
     orderId: order.orderId
   };
+  const websiteOrdersUrl = configuredWebsiteOrdersUrl(req);
 
   if (appDatabaseEnabled()) {
     try {
@@ -1525,14 +1548,14 @@ async function storeOrderAndPushWebsite(order, req) {
       if (dbResult) Object.assign(result, dbResult);
     } catch (error) {
       console.error("Database order insert failed", error);
-      if (!process.env.WEBSITE_ORDERS_URL) {
+      if (!websiteOrdersUrl) {
         throw error;
       }
       result.databaseError = error.message;
     }
   }
 
-  if (!process.env.WEBSITE_ORDERS_URL) {
+  if (!websiteOrdersUrl) {
     if (!result.storedInDatabase && process.env.DISABLE_LOCAL_ORDER_STORE !== "true") {
       const dataDir = path.join(rootDir, "data");
       fs.mkdirSync(dataDir, { recursive: true });
@@ -1542,11 +1565,19 @@ async function storeOrderAndPushWebsite(order, req) {
     return result;
   }
 
-  if (req && isSelfReference(req, process.env.WEBSITE_ORDERS_URL, "/api/mobile/orders")) {
+  if (req && isSelfReference(req, websiteOrdersUrl, "/api/mobile/orders")) {
     throw new Error("WEBSITE_ORDERS_URL points back to this app. Set DATABASE_URL or your real website orders API URL.");
   }
 
-  const response = await fetchWithTimeout(process.env.WEBSITE_ORDERS_URL, {
+  if (isWebsiteOrderFormUrl(websiteOrdersUrl)) {
+    return {
+      ...result,
+      websitePushed: true,
+      website: await pushOrderToWebsiteForm(order, req, websiteOrdersUrl)
+    };
+  }
+
+  const response = await fetchWithTimeout(websiteOrdersUrl, {
     method: "POST",
     headers: websiteHeaders({ "Content-Type": "application/json" }, req),
     body: JSON.stringify(order)
@@ -1560,6 +1591,92 @@ async function storeOrderAndPushWebsite(order, req) {
     ...result,
     websitePushed: true,
     website: data
+  };
+}
+
+function isWebsiteOrderFormUrl(value) {
+  try {
+    const url = new URL(value);
+    return !url.pathname.startsWith("/api/") || url.pathname === "/add-order";
+  } catch (error) {
+    return false;
+  }
+}
+
+async function pushOrderToWebsiteForm(order, req, endpointUrl) {
+  const submissions = [];
+  const customer = order.customer || {};
+  const items = order.items && order.items.length ? order.items : [];
+  if (!items.length) throw new Error("Order has no items to push");
+
+  const cookie = await websiteLoginCookie(req, endpointUrl);
+  if (!cookie) throw new Error("Website login credentials are required for order push");
+
+  for (const [index, item] of items.entries()) {
+    const formResponse = await fetchWithTimeout(endpointUrl, {
+      headers: {
+        Accept: "text/html",
+        Cookie: cookie
+      }
+    });
+    const formHtml = await formResponse.text();
+    if (!formResponse.ok) throw new Error(`Website order form failed with ${formResponse.status}`);
+
+    const csrfToken = csrfTokenFromHtml(formHtml);
+    if (!csrfToken) throw new Error("Website order form CSRF token was not found");
+
+    const orderNumber = items.length > 1 ? `${order.orderId}-${index + 1}` : order.orderId;
+    const body = new URLSearchParams({
+      _csrf_token: csrfToken,
+      order_number: orderNumber,
+      customer_name: customer.name || "Customer",
+      customer_phone: customer.phone || "",
+      product_id: String(item.productId || item.sourceId || item.appProductId || item.id || ""),
+      quantity: String(Math.max(1, Number(item.quantity || 1))),
+      priority: "normal",
+      assigned_to_id: "",
+      customer_address: [
+        customer.address || "",
+        `Mobile order: ${order.orderId}`,
+        `Item: ${item.title || item.productId || ""}`,
+        `Payment: ${order.payment?.method || "cod"} / ${order.payment?.status || "pending"}`,
+        `Amount: ${order.amounts?.currency || "INR"} ${order.amounts?.total || ""}`
+      ].filter(Boolean).join("\n")
+    });
+
+    const response = await fetchWithTimeout(endpointUrl, {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        Accept: "text/html,application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+        Cookie: cookie
+      },
+      body
+    });
+    const text = await response.text();
+    if (![200, 302, 303].includes(response.status)) {
+      const sample = text.replace(/\s+/g, " ").trim().slice(0, 180);
+      throw new Error(`Website order form failed with ${response.status}${sample ? `: ${sample}` : ""}`);
+    }
+    if (response.status === 200 && /alert-danger|invalid|required|not found/i.test(text)) {
+      const sample = text.replace(/\s+/g, " ").trim().slice(0, 180);
+      throw new Error(`Website order form rejected item ${item.title || item.productId || index + 1}${sample ? `: ${sample}` : ""}`);
+    }
+
+    submissions.push({
+      orderNumber,
+      productId: String(item.productId || item.sourceId || item.appProductId || item.id || ""),
+      quantity: Number(item.quantity || 1),
+      status: response.status
+    });
+  }
+
+  return {
+    mode: "warehouse_form",
+    endpoint: safeUrlSummary(endpointUrl),
+    submitted: submissions.length,
+    submissions
   };
 }
 

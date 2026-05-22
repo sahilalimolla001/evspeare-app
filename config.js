@@ -10,6 +10,7 @@ window.EVSPEARE_CONFIG = {
    * Local websiteAuthHeader, websiteCookie, and websiteLogin* are only for testing.
    */
   websiteProductsUrl: "https://evsphere-warehouse-backend-production.up.railway.app/api/products",
+  websiteOrdersUrl: "",
   websiteAuthHeader: "",
   websiteCookie: "",
   websiteLoginUrl: "https://evsphere-warehouse-backend-production.up.railway.app/login",
