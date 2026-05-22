@@ -406,7 +406,6 @@ function productCard(product) {
         </div>
         <p class="delivery-line">${escapeHtml(product.delivery || "Delivery available")}</p>
         <div class="card-actions">
-          <button class="view-button" type="button" data-open-product="${escapeHtml(product.id)}">View</button>
           <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}">Add to cart</button>
           <button class="buy-button" type="button" aria-label="Buy ${escapeHtml(product.title)}" data-buy-now="${escapeHtml(product.id)}">
             <svg viewBox="0 0 24 24" aria-hidden="true">
