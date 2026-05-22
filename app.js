@@ -691,6 +691,17 @@ function setSyncStatus(message) {
   nodes.syncStatus.textContent = message;
 }
 
+function catalogSourceLabel(source) {
+  const labels = {
+    website: "Website",
+    warehouse: "Warehouse",
+    database: "Database",
+    website_not_configured: "Website import URL missing",
+    api_not_configured: "API not configured"
+  };
+  return labels[source] || "Live catalog";
+}
+
 function setActiveNav(name) {
   document.querySelectorAll("[data-nav]").forEach((button) => {
     button.classList.toggle("active", button.dataset.nav === name);
@@ -709,19 +720,27 @@ async function syncProducts({ silent = false } = {}) {
   setSyncStatus("Syncing products...");
 
   try {
-    const remoteProducts = await api.fetchProducts();
+    const catalog = api.fetchCatalog
+      ? await api.fetchCatalog()
+      : { source: "website", products: await api.fetchProducts() };
+    const remoteProducts = catalog.products || [];
+    const sourceLabel = catalogSourceLabel(catalog.source);
+
     if (remoteProducts.length) {
       products = remoteProducts;
       categories = buildCategories(products);
       state.activeFilter = "All";
-      setSyncStatus(`Live catalog synced: ${remoteProducts.length} products`);
-      if (!silent) showToast("Products imported from website");
+      setSyncStatus(`${sourceLabel} synced: ${remoteProducts.length} products`);
+      if (!silent) showToast(`Products imported from ${sourceLabel.toLowerCase()}`);
     } else {
       products = [];
       categories = [];
       state.activeFilter = "All";
-      setSyncStatus("No live products found");
-      if (!silent) showToast("No live products found on website");
+      const message = catalog.source === "website_not_configured" || catalog.source === "api_not_configured"
+        ? sourceLabel
+        : `No products found from ${sourceLabel.toLowerCase()}`;
+      setSyncStatus(message);
+      if (!silent) showToast(message);
     }
     renderAll();
   } catch (error) {

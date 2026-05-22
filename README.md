@@ -10,6 +10,18 @@ npm start
 
 Open `http://localhost:3000`.
 
+For local website import, put your product API URL in `config.js`:
+
+```js
+websiteProductsUrl: "https://yourwebsite.com/api/mobile/products"
+```
+
+On Railway, set `WEBSITE_PRODUCTS_URL`; that env value takes priority.
+If the product API is private, set `WEBSITE_API_TOKEN` or `WEBSITE_COOKIE` in
+the server environment.
+For local testing against a form-login warehouse, you can also set
+`websiteLoginUrl`, `websiteLoginEmail`, and `websiteLoginPassword` in `config.js`.
+
 ## Railway Environment Variables
 
 Set these in Railway before using the live app:

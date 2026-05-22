@@ -3,9 +3,18 @@ window.EVSPEARE_CONFIG = {
   currency: "INR",
 
   /*
-   * Put your existing website API base URL here.
-   * Example: "https://yourwebsite.com"
+   * Put your website product API URL here for local testing, for example:
+   * "https://yourwebsite.com/api/mobile/products"
+   * On Railway, WEBSITE_PRODUCTS_URL env still takes priority.
+   * If the API is private, use WEBSITE_API_TOKEN/WEBSITE_COOKIE env vars.
+   * Local websiteAuthHeader, websiteCookie, and websiteLogin* are only for testing.
    */
+  websiteProductsUrl: "https://evsphere-warehouse-backend-production.up.railway.app/api/products",
+  websiteAuthHeader: "",
+  websiteCookie: "",
+  websiteLoginUrl: "https://evsphere-warehouse-backend-production.up.railway.app/login",
+  websiteLoginEmail: "",
+  websiteLoginPassword: "",
   apiBaseUrl: window.location.protocol === "file:" ? "" : window.location.origin,
 
   /*

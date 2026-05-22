@@ -2,14 +2,42 @@ const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
+const vm = require("vm");
 const { URLSearchParams } = require("url");
 const database = require("./database");
 
 const rootDir = __dirname;
+
+function loadDotEnv() {
+  const envPath = path.join(rootDir, ".env");
+  if (!fs.existsSync(envPath)) return;
+
+  const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex <= 0) return;
+
+    const key = trimmed.slice(0, eqIndex).trim();
+    let value = trimmed.slice(eqIndex + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (!process.env[key]) process.env[key] = value;
+  });
+}
+
+loadDotEnv();
+
 const port = Number(process.env.PORT || 3000);
 const fallbackPort = 3000;
 const pendingPayuOrders = new Map();
 let googleAccessTokenCache = null;
+let websiteLoginCache = null;
 
 function envFlag(name) {
   return ["1", "true", "yes", "on"].includes(String(process.env[name] || "").toLowerCase());
@@ -79,16 +107,225 @@ function readBody(req) {
 }
 
 function getOrigin(req) {
-  const protocol = req.headers["x-forwarded-proto"] || "https";
+  const forwardedProtocol = req.headers["x-forwarded-proto"];
   const host = req.headers["x-forwarded-host"] || req.headers.host;
+  if (forwardedProtocol) {
+    const protocol = String(forwardedProtocol).split(",")[0].trim();
+    return `${protocol}://${host}`;
+  }
+
+  const protocol = req.socket?.encrypted ? "https" : "http";
   return `${protocol}://${host}`;
 }
 
+function localFrontendConfig(req) {
+  try {
+    const source = fs.readFileSync(path.join(rootDir, "config.js"), "utf8");
+    const origin = getOrigin(req);
+    const parsedOrigin = new URL(origin);
+    const sandbox = {
+      window: {
+        location: {
+          protocol: parsedOrigin.protocol,
+          origin
+        }
+      },
+      console: {
+        log() {},
+        warn() {},
+        error() {}
+      }
+    };
+
+    vm.runInNewContext(source, sandbox, {
+      filename: "config.js",
+      timeout: 100
+    });
+
+    return sandbox.window.EVSPEARE_CONFIG || sandbox.window.BAZAARGO_CONFIG || {};
+  } catch (error) {
+    console.warn("Unable to read config.js import settings", error.message);
+    return {};
+  }
+}
+
+function absoluteEndpoint(baseUrl, endpointPath) {
+  try {
+    return new URL(endpointPath || "/api/mobile/products", `${String(baseUrl).replace(/\/+$/g, "")}/`).toString();
+  } catch (error) {
+    return "";
+  }
+}
+
+function productImportUrl(value, endpointPath) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    if ((url.pathname === "/" || url.pathname === "") && !url.search && !url.hash) {
+      return absoluteEndpoint(url.toString(), endpointPath);
+    }
+  } catch (error) {
+    return String(value || "");
+  }
+  return String(value);
+}
+
+function productUrlCandidates(value) {
+  const candidates = [value].filter(Boolean);
+  try {
+    const url = new URL(value);
+    candidates.push(new URL("/api/products", url.origin).toString());
+    candidates.push(new URL("/api/mobile/products", url.origin).toString());
+  } catch (error) {
+    return candidates;
+  }
+  return [...new Set(candidates)];
+}
+
+function setCookiesFromHeaders(headers) {
+  if (!headers) return [];
+  if (typeof headers.getSetCookie === "function") return headers.getSetCookie();
+  const value = headers.get("set-cookie");
+  if (!value) return [];
+  return value.split(/,(?=\s*[^;,\s]+=)/g);
+}
+
+function cookieHeaderFromSetCookies(setCookies) {
+  const pairs = new Map();
+  setCookies.forEach((cookie) => {
+    const pair = String(cookie || "").split(";")[0].trim();
+    const eqIndex = pair.indexOf("=");
+    if (eqIndex > 0) pairs.set(pair.slice(0, eqIndex), pair.slice(eqIndex + 1));
+  });
+  return Array.from(pairs.entries())
+    .map(([name, value]) => `${name}=${value}`)
+    .join("; ");
+}
+
+function mergeCookieHeaders(...cookieHeaders) {
+  return cookieHeaderFromSetCookies(
+    cookieHeaders
+      .filter(Boolean)
+      .flatMap((header) => String(header).split(/;\s*(?=[^;=\s]+=)/g))
+  );
+}
+
+function csrfTokenFromHtml(html) {
+  const match = String(html || "").match(/name=["']_csrf_token["'][^>]*value=["']([^"']+)/i)
+    || String(html || "").match(/value=["']([^"']+)["'][^>]*name=["']_csrf_token["']/i);
+  return match ? match[1] : "";
+}
+
+function websiteLoginSettings(req, endpointUrl) {
+  const localConfig = localFrontendConfig(req);
+  const origin = (() => {
+    try {
+      return new URL(endpointUrl).origin;
+    } catch (error) {
+      return "";
+    }
+  })();
+
+  return {
+    email: process.env.WEBSITE_LOGIN_EMAIL || localConfig.websiteLoginEmail || "",
+    password: process.env.WEBSITE_LOGIN_PASSWORD || localConfig.websiteLoginPassword || "",
+    loginUrl: process.env.WEBSITE_LOGIN_URL || localConfig.websiteLoginUrl || (origin ? `${origin}/login` : "")
+  };
+}
+
+async function websiteLoginCookie(req, endpointUrl) {
+  const settings = websiteLoginSettings(req, endpointUrl);
+  if (!settings.email || !settings.password || !settings.loginUrl) return "";
+
+  const cacheKey = `${settings.loginUrl}|${settings.email}`;
+  if (websiteLoginCache?.cacheKey === cacheKey && websiteLoginCache.expiresAt > Date.now()) {
+    return websiteLoginCache.cookie;
+  }
+
+  const loginPage = await fetchWithTimeout(settings.loginUrl, {
+    headers: { Accept: "text/html,application/xhtml+xml" }
+  });
+  const loginHtml = await loginPage.text();
+  const csrfToken = csrfTokenFromHtml(loginHtml);
+  const loginCookies = cookieHeaderFromSetCookies(setCookiesFromHeaders(loginPage.headers));
+  if (!loginPage.ok) {
+    throw new Error(`Website login page failed with ${loginPage.status}`);
+  }
+  if (!csrfToken) {
+    throw new Error("Website login form CSRF token was not found");
+  }
+
+  const body = new URLSearchParams({
+    _csrf_token: csrfToken,
+    email: settings.email,
+    password: settings.password
+  });
+
+  const loginResponse = await fetchWithTimeout(settings.loginUrl, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      Accept: "text/html,application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+      Cookie: loginCookies
+    },
+    body
+  });
+  const responseCookies = cookieHeaderFromSetCookies(setCookiesFromHeaders(loginResponse.headers));
+  const cookie = mergeCookieHeaders(loginCookies, responseCookies);
+
+  if (![200, 302, 303].includes(loginResponse.status) || !cookie) {
+    throw new Error(`Website login failed with ${loginResponse.status}`);
+  }
+
+  const loginText = loginResponse.status === 200 ? await loginResponse.text() : "";
+  if (/name=["']password["']|Login required|Invalid/i.test(loginText)) {
+    throw new Error("Website login failed. Check websiteLoginEmail/websiteLoginPassword.");
+  }
+
+  websiteLoginCache = {
+    cacheKey,
+    cookie,
+    expiresAt: Date.now() + 20 * 60 * 1000
+  };
+
+  return cookie;
+}
+
+function isMissingRemoteEndpoint(error) {
+  return /\b404\b|not found/i.test(error.message || "");
+}
+
+function configuredWebsiteProductsUrl(req) {
+  const localConfig = localFrontendConfig(req);
+  const explicitUrl = process.env.WEBSITE_PRODUCTS_URL
+    || localConfig.websiteProductsUrl
+    || localConfig.productImportUrl
+    || "";
+
+  if (explicitUrl) return productImportUrl(explicitUrl, localConfig.productsEndpoint);
+
+  const localApiBaseUrl = String(localConfig.apiBaseUrl || "");
+  if (!/^https?:\/\//i.test(localApiBaseUrl)) return "";
+
+  try {
+    const localApiBase = new URL(localApiBaseUrl);
+    const appOrigin = new URL(getOrigin(req));
+    if (localApiBase.host === appOrigin.host) return "";
+  } catch (error) {
+    return "";
+  }
+
+  return absoluteEndpoint(localApiBaseUrl, localConfig.productsEndpoint);
+}
+
 function publicConfig(req) {
+  const websiteProductsUrl = configuredWebsiteProductsUrl(req);
   return {
     businessName: process.env.BUSINESS_NAME || "Ev Speare",
     currency: process.env.CURRENCY || "INR",
     apiBaseUrl: getOrigin(req),
+    websiteProductsUrl,
     productsEndpoint: "/api/mobile/products",
     ordersEndpoint: "/api/mobile/orders",
     otpRequestEndpoint: "/api/mobile/auth/request-otp",
@@ -391,7 +628,7 @@ function isSelfReference(req, value, endpointPath) {
 }
 
 async function fetchWithTimeout(url, options = {}) {
-  const timeoutMs = Number(process.env.OUTBOUND_FETCH_TIMEOUT_MS || 8000);
+  const timeoutMs = Number(process.env.OUTBOUND_FETCH_TIMEOUT_MS || 20000);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -430,12 +667,24 @@ function numericValue(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function arrayFromPayload(payload, keys = ["products", "items", "data"], depth = 0) {
-  if (Array.isArray(payload)) return payload;
+function unwrapConnectionItem(item) {
+  if (item && typeof item === "object") {
+    if (item.node && typeof item.node === "object") return item.node;
+    if (item.product && typeof item.product === "object") return item.product;
+  }
+  return item;
+}
+
+function arrayFromPayload(payload, keys = ["products", "items", "data", "results", "records", "nodes"], depth = 0) {
+  if (Array.isArray(payload)) return payload.map(unwrapConnectionItem);
   if (!payload || typeof payload !== "object" || depth > 2) return [];
 
   for (const key of keys) {
-    if (Array.isArray(payload[key])) return payload[key];
+    if (Array.isArray(payload[key])) return payload[key].map(unwrapConnectionItem);
+  }
+
+  if (Array.isArray(payload.edges)) {
+    return payload.edges.map(unwrapConnectionItem);
   }
 
   for (const key of keys) {
@@ -501,15 +750,22 @@ function firstProductImage(item, endpointUrl) {
     "main_image",
     "mainImage",
     "product_image",
-    "productImage"
+    "productImage",
+    "featuredImage"
   ]);
-  if (direct) return publicProductImageUrl(direct, endpointUrl);
+  if (direct) {
+    const image = typeof direct === "object"
+      ? firstPresent(direct, ["src", "url", "image", "image_url", "path"])
+      : direct;
+    if (image) return publicProductImageUrl(image, endpointUrl);
+  }
 
   const images = firstPresent(item, ["images", "gallery", "photos", "media"]);
-  if (Array.isArray(images) && images[0]) {
-    const first = typeof images[0] === "object"
-      ? firstPresent(images[0], ["src", "url", "image", "image_url", "path"])
-      : images[0];
+  const imageRows = Array.isArray(images) ? images : arrayFromPayload(images, ["images", "items", "data", "nodes"]);
+  if (imageRows[0]) {
+    const first = typeof imageRows[0] === "object"
+      ? firstPresent(imageRows[0], ["src", "url", "image", "image_url", "path"])
+      : imageRows[0];
     if (first) return publicProductImageUrl(first, endpointUrl);
   }
 
@@ -522,11 +778,106 @@ function firstProductCategory(item) {
   if (direct && typeof direct === "object") return direct.name || direct.title || "Deals";
 
   const categories = firstPresent(item, ["categories", "collections"]);
-  if (Array.isArray(categories) && categories[0]) {
-    return categories[0].name || categories[0].title || categories[0].slug || categories[0];
+  const categoryRows = Array.isArray(categories) ? categories : arrayFromPayload(categories, ["categories", "items", "data", "nodes"]);
+  if (categoryRows[0]) {
+    return categoryRows[0].name || categoryRows[0].title || categoryRows[0].slug || (typeof categoryRows[0] === "string" ? categoryRows[0] : "Deals");
   }
 
   return "Deals";
+}
+
+function firstNumericValue(item, names) {
+  return numericValue(firstPresent(item, names));
+}
+
+function productPrice(item, depth = 0) {
+  const direct = firstNumericValue(item, [
+    "price",
+    "sale_price",
+    "salePrice",
+    "selling_price",
+    "sellingPrice",
+    "final_price",
+    "finalPrice",
+    "amount",
+    "display_price",
+    "displayPrice",
+    "price_html",
+    "priceHtml"
+  ]);
+  if (direct !== null) return direct;
+
+  const nested = firstPresent(item, ["prices", "pricing", "price_range", "priceRange"]);
+  if (nested && typeof nested === "object") {
+    const nestedDirect = firstNumericValue(nested, [
+      "price",
+      "sale_price",
+      "salePrice",
+      "selling_price",
+      "sellingPrice",
+      "final_price",
+      "finalPrice",
+      "amount",
+      "min_price",
+      "minPrice",
+      "regular_price",
+      "regularPrice"
+    ]);
+    if (nestedDirect !== null) return nestedDirect;
+
+    const minVariant = firstPresent(nested, ["minVariantPrice", "min_variant_price"]);
+    if (minVariant && typeof minVariant === "object") {
+      const variantPrice = firstNumericValue(minVariant, ["amount", "price"]);
+      if (variantPrice !== null) return variantPrice;
+    }
+  }
+
+  if (depth < 1) {
+    const variants = firstPresent(item, ["variants", "variations"]);
+    const variantRows = Array.isArray(variants)
+      ? variants
+      : arrayFromPayload(variants, ["variants", "items", "data", "nodes"]);
+    if (variantRows[0]) return productPrice(variantRows[0], depth + 1);
+  }
+
+  return null;
+}
+
+function productMrp(item, fallbackPrice) {
+  const direct = firstNumericValue(item, [
+    "mrp",
+    "regular_price",
+    "regularPrice",
+    "compare_at_price",
+    "compareAtPrice",
+    "original_price",
+    "originalPrice"
+  ]);
+  if (direct !== null) return direct;
+
+  const nested = firstPresent(item, ["prices", "pricing", "price_range", "priceRange", "compareAtPriceRange", "compare_at_price_range"]);
+  if (nested && typeof nested === "object") {
+    const nestedMrp = firstNumericValue(nested, [
+      "mrp",
+      "regular_price",
+      "regularPrice",
+      "compare_at_price",
+      "compareAtPrice",
+      "original_price",
+      "originalPrice",
+      "max_price",
+      "maxPrice"
+    ]);
+    if (nestedMrp !== null) return nestedMrp;
+
+    const maxVariant = firstPresent(nested, ["maxVariantPrice", "max_variant_price"]);
+    if (maxVariant && typeof maxVariant === "object") {
+      const variantMrp = firstNumericValue(maxVariant, ["amount", "price"]);
+      if (variantMrp !== null) return variantMrp;
+    }
+  }
+
+  return fallbackPrice;
 }
 
 function stockStatusFromItem(item, quantity) {
@@ -558,8 +909,8 @@ function normalizeRemoteProduct(item, index, endpointUrl, source) {
   const id = firstPresent(item, ["id", "product_id", "productId", "sku", "product_sku", "productSku", "code"]);
   const sourceId = firstPresent(item, ["product_id", "productId", "id", "sku", "product_sku", "productSku", "code"]);
   const sku = firstPresent(item, ["sku", "product_sku", "productSku", "code"]);
-  const price = numericValue(firstPresent(item, ["price", "sale_price", "salePrice", "selling_price", "sellingPrice", "final_price", "finalPrice"]));
-  const mrp = numericValue(firstPresent(item, ["mrp", "regular_price", "regularPrice", "original_price", "originalPrice", "compare_at_price", "compareAtPrice"]));
+  const price = productPrice(item) || 0;
+  const mrp = productMrp(item, price) || price;
   const quantity = numericValue(firstPresent(item, [
     "stock_quantity",
     "stockQuantity",
@@ -616,7 +967,12 @@ async function fetchRemoteJson(endpointUrl, headers, label) {
   try {
     data = text ? JSON.parse(text) : {};
   } catch (error) {
-    throw new Error(`${label} must return JSON data`);
+    const contentType = response.headers.get("content-type") || "unknown content type";
+    const sample = text
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 180);
+    throw new Error(`${label} must return JSON data. Got ${contentType}${sample ? `: ${sample}` : ""}`);
   }
 
   if (!response.ok) {
@@ -627,6 +983,18 @@ async function fetchRemoteJson(endpointUrl, headers, label) {
 }
 
 function publicDiagnostics(req) {
+  const websiteProductsUrl = configuredWebsiteProductsUrl(req);
+  const localConfig = localFrontendConfig(req);
+  const websiteCredentialSet = Boolean(
+    process.env.WEBSITE_API_TOKEN ||
+    process.env.WEBSITE_COOKIE ||
+    localConfig.websiteAuthHeader ||
+    localConfig.websiteCookie
+  );
+  const websiteLoginSet = Boolean(
+    (process.env.WEBSITE_LOGIN_EMAIL || localConfig.websiteLoginEmail) &&
+    (process.env.WEBSITE_LOGIN_PASSWORD || localConfig.websiteLoginPassword)
+  );
   return {
     ok: true,
     service: "ev-speare",
@@ -638,12 +1006,14 @@ function publicDiagnostics(req) {
       env: process.env.PAYU_ENV || "test"
     },
     website: {
-      productsUrlSet: Boolean(process.env.WEBSITE_PRODUCTS_URL),
+      productsUrlSet: Boolean(websiteProductsUrl),
+      productsUrlSource: process.env.WEBSITE_PRODUCTS_URL ? "env" : websiteProductsUrl ? "config.js" : null,
       ordersUrlSet: Boolean(process.env.WEBSITE_ORDERS_URL),
-      apiTokenSet: Boolean(process.env.WEBSITE_API_TOKEN),
-      productsUrl: safeUrlSummary(process.env.WEBSITE_PRODUCTS_URL),
+      apiTokenSet: websiteCredentialSet,
+      loginCredentialsSet: websiteLoginSet,
+      productsUrl: safeUrlSummary(websiteProductsUrl),
       ordersUrl: safeUrlSummary(process.env.WEBSITE_ORDERS_URL),
-      productsUrlSelfReference: isSelfReference(req, process.env.WEBSITE_PRODUCTS_URL, "/api/mobile/products"),
+      productsUrlSelfReference: isSelfReference(req, websiteProductsUrl, "/api/mobile/products"),
       ordersUrlSelfReference: isSelfReference(req, process.env.WEBSITE_ORDERS_URL, "/api/mobile/orders")
     },
     warehouse: {
@@ -752,14 +1122,29 @@ async function handleVerifyOtp(req, res) {
   });
 }
 
-function websiteHeaders(extra = {}) {
+function websiteHeaders(extra = {}, req = null) {
+  const localConfig = req ? localFrontendConfig(req) : {};
   const headers = {
     Accept: "application/json",
     ...extra
   };
-  if (process.env.WEBSITE_API_TOKEN) {
-    headers.Authorization = process.env.WEBSITE_API_TOKEN;
+  const authHeader = process.env.WEBSITE_API_TOKEN || localConfig.websiteAuthHeader || "";
+  const cookie = process.env.WEBSITE_COOKIE || localConfig.websiteCookie || "";
+  if (authHeader) {
+    headers.Authorization = authHeader;
   }
+  if (cookie) {
+    headers.Cookie = cookie;
+  }
+  return headers;
+}
+
+async function websiteRequestHeaders(req, endpointUrl, extra = {}) {
+  const headers = websiteHeaders(extra, req);
+  if (headers.Authorization || headers.Cookie) return headers;
+
+  const cookie = await websiteLoginCookie(req, endpointUrl);
+  if (cookie) headers.Cookie = cookie;
   return headers;
 }
 
@@ -875,28 +1260,59 @@ async function fetchWarehouseProducts(req) {
     warehouseHeaders(),
     "Warehouse product import"
   );
-  const products = arrayFromPayload(data, ["products", "items", "data"])
+  const rows = arrayFromPayload(data, ["products", "items", "data", "results", "records", "nodes"]);
+  const products = rows
     .map((item, index) => normalizeRemoteProduct(item, index, process.env.WAREHOUSE_PRODUCTS_URL, "warehouse"))
     .filter((product) => product.price > 0);
+
+  if (rows.length && !products.length) {
+    throw new Error("Warehouse product import returned rows, but no product had a readable price field.");
+  }
 
   return mergeWarehouseInventory(products, req);
 }
 
 async function fetchWebsiteProducts(req) {
-  if (!process.env.WEBSITE_PRODUCTS_URL) return null;
+  const websiteProductsUrl = configuredWebsiteProductsUrl(req);
+  if (!websiteProductsUrl) return null;
 
-  if (isSelfReference(req, process.env.WEBSITE_PRODUCTS_URL, "/api/mobile/products")) {
-    throw new Error("WEBSITE_PRODUCTS_URL points back to this app. Set DATABASE_URL or your real website products API URL.");
+  if (isSelfReference(req, websiteProductsUrl, "/api/mobile/products")) {
+    throw new Error("Website product import URL points back to this app. Set websiteProductsUrl in config.js or WEBSITE_PRODUCTS_URL in env to your real website products API URL.");
   }
 
-  const data = await fetchRemoteJson(
-    process.env.WEBSITE_PRODUCTS_URL,
-    websiteHeaders(),
-    "Website product import"
-  );
-  const products = arrayFromPayload(data, ["products", "items", "data"])
-    .map((item, index) => normalizeRemoteProduct(item, index, process.env.WEBSITE_PRODUCTS_URL, "website"))
+  let data = null;
+  let endpointUrl = websiteProductsUrl;
+  let missingEndpointError = null;
+  for (const candidate of productUrlCandidates(websiteProductsUrl)) {
+    try {
+      data = await fetchRemoteJson(
+        candidate,
+        await websiteRequestHeaders(req, candidate),
+        "Website product import"
+      );
+      endpointUrl = candidate;
+      break;
+    } catch (error) {
+      if (isMissingRemoteEndpoint(error)) {
+        missingEndpointError = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  if (!data) {
+    throw missingEndpointError || new Error("Website product import endpoint was not found");
+  }
+
+  const rows = arrayFromPayload(data, ["products", "items", "data", "results", "records", "nodes"]);
+  const products = rows
+    .map((item, index) => normalizeRemoteProduct(item, index, endpointUrl, "website"))
     .filter((product) => product.price > 0);
+
+  if (rows.length && !products.length) {
+    throw new Error("Website product import returned rows, but no product had a readable price field.");
+  }
 
   return products;
 }
@@ -904,20 +1320,21 @@ async function fetchWebsiteProducts(req) {
 async function fetchCatalogProducts(req) {
   const errors = [];
   let websiteConfigured = false;
+  const websiteProductsUrl = configuredWebsiteProductsUrl(req);
 
-  if (process.env.WEBSITE_PRODUCTS_URL) {
+  if (websiteProductsUrl) {
     websiteConfigured = true;
     try {
       const products = await fetchWebsiteProducts(req);
-      if (products && products.length) return { source: "website", products };
+      return { source: "website", products: products || [] };
     } catch (error) {
       console.error("Website product import failed", error);
       errors.push(`Website: ${error.message}`);
     }
   }
 
-  if (websiteConfigured) {
-    return { source: "website", products: [] };
+  if (websiteConfigured && errors.length) {
+    throw new Error(errors[0]);
   }
 
   if (process.env.WAREHOUSE_PRODUCTS_URL) {
@@ -945,7 +1362,7 @@ async function fetchCatalogProducts(req) {
     }
   }
 
-  if (errors.length && (process.env.WAREHOUSE_PRODUCTS_URL || process.env.WEBSITE_PRODUCTS_URL || appDatabaseEnabled())) {
+  if (errors.length && (process.env.WAREHOUSE_PRODUCTS_URL || websiteProductsUrl || appDatabaseEnabled())) {
     throw new Error(errors[0]);
   }
 
@@ -1107,7 +1524,7 @@ async function storeOrderAndPushWebsite(order, req) {
 
   const response = await fetchWithTimeout(process.env.WEBSITE_ORDERS_URL, {
     method: "POST",
-    headers: websiteHeaders({ "Content-Type": "application/json" }),
+    headers: websiteHeaders({ "Content-Type": "application/json" }, req),
     body: JSON.stringify(order)
   });
   const text = await response.text();
@@ -1184,7 +1601,7 @@ async function fetchWebsiteCustomerOrders(req, phone) {
 
   const data = await fetchRemoteJson(
     url.toString(),
-    websiteHeaders(),
+    websiteHeaders({}, req),
     "Website orders import"
   );
 
@@ -1241,7 +1658,7 @@ async function validateOrderInventory(order, req) {
     }
   } catch (error) {
     console.error("Inventory validation skipped", error.message);
-    if (process.env.WEBSITE_PRODUCTS_URL || process.env.WAREHOUSE_PRODUCTS_URL || process.env.WAREHOUSE_INVENTORY_URL || appDatabaseEnabled()) {
+    if (configuredWebsiteProductsUrl(req) || process.env.WAREHOUSE_PRODUCTS_URL || process.env.WAREHOUSE_INVENTORY_URL || appDatabaseEnabled()) {
       return "Warehouse inventory is not available right now. Please try again.";
     }
   }

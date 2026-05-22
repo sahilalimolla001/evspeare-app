@@ -231,7 +231,6 @@ svg {
   font-size: 0.74rem;
 }
 
-.service-strip,
 .service-strip[hidden] {
   display: none !important;
 }

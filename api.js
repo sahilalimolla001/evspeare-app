@@ -48,7 +48,12 @@
     });
 
     const text = await response.text();
-    const data = text ? JSON.parse(text) : {};
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (error) {
+      throw new Error(`API returned non-JSON response (${response.status})`);
+    }
 
     if (!response.ok) {
       throw new Error(data.message || data.error || `Request failed with ${response.status}`);
@@ -57,27 +62,65 @@
     return data;
   }
 
-  function asArray(payload) {
-    if (Array.isArray(payload)) return payload;
-    if (Array.isArray(payload.products)) return payload.products;
-    if (Array.isArray(payload.items)) return payload.items;
-    if (Array.isArray(payload.data)) return payload.data;
+  function unwrapConnectionItem(item) {
+    if (item && typeof item === "object") {
+      if (item.node && typeof item.node === "object") return item.node;
+      if (item.product && typeof item.product === "object") return item.product;
+    }
+    return item;
+  }
+
+  function asArray(payload, depth = 0) {
+    if (Array.isArray(payload)) return payload.map(unwrapConnectionItem);
+    if (!payload || typeof payload !== "object" || depth > 2) return [];
+
+    const keys = ["products", "items", "data", "results", "records", "nodes"];
+    for (const key of keys) {
+      if (Array.isArray(payload[key])) return payload[key].map(unwrapConnectionItem);
+    }
+
+    if (Array.isArray(payload.edges)) return payload.edges.map(unwrapConnectionItem);
+
+    for (const key of keys) {
+      const nested = asArray(payload[key], depth + 1);
+      if (nested.length) return nested;
+    }
+
     return [];
   }
 
+  function firstText(value, names = []) {
+    if (typeof value === "string") return value;
+    if (!value || typeof value !== "object") return "";
+    for (const name of names) {
+      const item = value[name];
+      if (typeof item === "string" && item.trim()) return item;
+    }
+    return "";
+  }
+
   function firstImage(item) {
-    if (typeof item.image === "string") return item.image;
-    if (typeof item.image_url === "string") return item.image_url;
-    if (Array.isArray(item.images) && item.images[0]) {
-      return item.images[0].src || item.images[0].url || item.images[0];
+    const direct = firstText(item.image, ["src", "url", "image_url", "path"])
+      || firstText(item.image_url)
+      || firstText(item.imageUrl)
+      || firstText(item.featured_image, ["src", "url"])
+      || firstText(item.featuredImage, ["src", "url"]);
+    if (direct) return direct;
+    const imageRows = Array.isArray(item.images) ? item.images : asArray(item.images);
+    if (imageRows[0]) {
+      const image = typeof imageRows[0] === "object"
+        ? imageRows[0].src || imageRows[0].url || imageRows[0].image || imageRows[0].path
+        : imageRows[0];
+      if (image) return image;
     }
     return "https://images.unsplash.com/photo-1607082350899-7e105aa886ae?auto=format&fit=crop&w=420&q=80";
   }
 
   function firstCategory(item) {
     if (typeof item.category === "string") return item.category;
-    if (Array.isArray(item.categories) && item.categories[0]) {
-      return item.categories[0].name || item.categories[0].title || item.categories[0];
+    const categories = Array.isArray(item.categories) ? item.categories : asArray(item.categories);
+    if (categories[0]) {
+      return categories[0].name || categories[0].title || categories[0].slug || (typeof categories[0] === "string" ? categories[0] : "Deals");
     }
     return "Deals";
   }
@@ -99,6 +142,95 @@
     return Number.isFinite(parsed) ? parsed : null;
   }
 
+  function firstNumeric(item, names) {
+    return numericOrNull(firstPresent(item, names));
+  }
+
+  function productPrice(item, depth = 0) {
+    const direct = firstNumeric(item, [
+      "price",
+      "sale_price",
+      "salePrice",
+      "selling_price",
+      "sellingPrice",
+      "final_price",
+      "finalPrice",
+      "amount",
+      "display_price",
+      "displayPrice",
+      "price_html",
+      "priceHtml"
+    ]);
+    if (direct !== null) return direct;
+
+    const nested = firstPresent(item, ["prices", "pricing", "price_range", "priceRange"]);
+    if (nested && typeof nested === "object") {
+      const nestedDirect = firstNumeric(nested, [
+        "price",
+        "sale_price",
+        "salePrice",
+        "selling_price",
+        "sellingPrice",
+        "final_price",
+        "finalPrice",
+        "amount",
+        "min_price",
+        "minPrice",
+        "regular_price",
+        "regularPrice"
+      ]);
+      if (nestedDirect !== null) return nestedDirect;
+
+      const minVariant = firstPresent(nested, ["minVariantPrice", "min_variant_price"]);
+      if (minVariant && typeof minVariant === "object") {
+        const variantPrice = firstNumeric(minVariant, ["amount", "price"]);
+        if (variantPrice !== null) return variantPrice;
+      }
+    }
+
+    if (depth < 1) {
+      const variants = firstPresent(item, ["variants", "variations"]);
+      const variantRows = Array.isArray(variants) ? variants : asArray(variants);
+      if (variantRows[0]) {
+        const variantPrice = productPrice(variantRows[0], depth + 1);
+        if (variantPrice !== null) return variantPrice;
+      }
+    }
+
+    return null;
+  }
+
+  function productMrp(item, fallbackPrice) {
+    const direct = firstNumeric(item, [
+      "mrp",
+      "regular_price",
+      "regularPrice",
+      "compare_at_price",
+      "compareAtPrice",
+      "original_price",
+      "originalPrice"
+    ]);
+    if (direct !== null) return direct;
+
+    const nested = firstPresent(item, ["prices", "pricing", "price_range", "priceRange"]);
+    if (nested && typeof nested === "object") {
+      const nestedMrp = firstNumeric(nested, [
+        "mrp",
+        "regular_price",
+        "regularPrice",
+        "compare_at_price",
+        "compareAtPrice",
+        "original_price",
+        "originalPrice",
+        "max_price",
+        "maxPrice"
+      ]);
+      if (nestedMrp !== null) return nestedMrp;
+    }
+
+    return fallbackPrice;
+  }
+
   function stockStatus(item, quantity) {
     const raw = firstPresent(item, ["stock_status", "stockStatus", "stock", "availability", "in_stock", "inStock", "is_in_stock", "isInStock", "available"]);
     if (quantity !== null && quantity <= 0) return "out_of_stock";
@@ -108,8 +240,8 @@
   }
 
   function normalizeProduct(item, index) {
-    const price = Number(item.price || item.sale_price || item.selling_price || item.final_price || 0);
-    const mrp = Number(item.mrp || item.regular_price || item.compare_at_price || item.original_price || price);
+    const price = productPrice(item) || 0;
+    const mrp = productMrp(item, price) || price;
     const category = firstCategory(item);
     const tags = Array.isArray(item.tags)
       ? item.tags.map((tag) => tag.name || tag.title || tag)
@@ -135,9 +267,24 @@
   }
 
   async function fetchProducts() {
-    if (!hasEndpoint(config.productsEndpoint)) return [];
+    const catalog = await fetchCatalog();
+    return catalog.products;
+  }
+
+  async function fetchCatalog() {
+    if (!hasEndpoint(config.productsEndpoint)) {
+      return {
+        source: "api_not_configured",
+        products: []
+      };
+    }
     const payload = await request(config.productsEndpoint);
-    return asArray(payload).map(normalizeProduct).filter((product) => product.price > 0);
+    const products = asArray(payload).map(normalizeProduct).filter((product) => product.price > 0);
+    const catalog = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+    return {
+      ...catalog,
+      products
+    };
   }
 
   async function requestOtp(phone) {
@@ -222,6 +369,7 @@
   window.BazaarGoApi = {
     config,
     fetchProducts,
+    fetchCatalog,
     requestOtp,
     verifyOtp,
     createPaymentOrder,
