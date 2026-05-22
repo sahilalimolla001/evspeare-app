@@ -193,7 +193,53 @@ function twilioConfigStatus() {
   };
 }
 
-function publicDiagnostics() {
+function safeUrlSummary(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return {
+      host: url.host,
+      path: url.pathname
+    };
+  } catch (error) {
+    return {
+      invalid: true
+    };
+  }
+}
+
+function isSelfReference(req, value, endpointPath) {
+  if (!value) return false;
+  try {
+    const target = new URL(value);
+    const origin = new URL(getOrigin(req));
+    return target.host === origin.host && target.pathname === endpointPath;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function fetchWithTimeout(url, options = {}) {
+  const timeoutMs = Number(process.env.OUTBOUND_FETCH_TIMEOUT_MS || 8000);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function publicDiagnostics(req) {
   return {
     ok: true,
     service: "ev-speare",
@@ -207,7 +253,11 @@ function publicDiagnostics() {
     website: {
       productsUrlSet: Boolean(process.env.WEBSITE_PRODUCTS_URL),
       ordersUrlSet: Boolean(process.env.WEBSITE_ORDERS_URL),
-      apiTokenSet: Boolean(process.env.WEBSITE_API_TOKEN)
+      apiTokenSet: Boolean(process.env.WEBSITE_API_TOKEN),
+      productsUrl: safeUrlSummary(process.env.WEBSITE_PRODUCTS_URL),
+      ordersUrl: safeUrlSummary(process.env.WEBSITE_ORDERS_URL),
+      productsUrlSelfReference: isSelfReference(req, process.env.WEBSITE_PRODUCTS_URL, "/api/mobile/products"),
+      ordersUrlSelfReference: isSelfReference(req, process.env.WEBSITE_ORDERS_URL, "/api/mobile/orders")
     },
     database: database.status()
   };
@@ -327,18 +377,33 @@ async function handleProducts(req, res) {
     return send(res, 200, { products: [] });
   }
 
-  const response = await fetch(process.env.WEBSITE_PRODUCTS_URL, {
-    headers: websiteHeaders()
-  });
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
+  if (isSelfReference(req, process.env.WEBSITE_PRODUCTS_URL, "/api/mobile/products")) {
+    return send(res, 500, {
+      message: "WEBSITE_PRODUCTS_URL points back to this app. Set DATABASE_URL or your real website products API URL."
+    });
+  }
+
+  let response;
+  let data;
+  try {
+    response = await fetchWithTimeout(process.env.WEBSITE_PRODUCTS_URL, {
+      headers: websiteHeaders()
+    });
+    const text = await response.text();
+    data = text ? JSON.parse(text) : {};
+  } catch (error) {
+    return send(res, 502, {
+      message: `Website product import failed: ${error.message}`
+    });
+  }
+
   if (!response.ok) {
     return send(res, response.status, { message: data.message || data.error || "Product sync failed" });
   }
   send(res, 200, data);
 }
 
-async function pushOrderToWebsite(order) {
+async function pushOrderToWebsite(order, req) {
   try {
     const dbResult = await database.insertOrder(order);
     if (dbResult) return dbResult;
@@ -356,7 +421,11 @@ async function pushOrderToWebsite(order) {
     return { storedLocally: true, orderId: order.orderId };
   }
 
-  const response = await fetch(process.env.WEBSITE_ORDERS_URL, {
+  if (req && isSelfReference(req, process.env.WEBSITE_ORDERS_URL, "/api/mobile/orders")) {
+    throw new Error("WEBSITE_ORDERS_URL points back to this app. Set DATABASE_URL or your real website orders API URL.");
+  }
+
+  const response = await fetchWithTimeout(process.env.WEBSITE_ORDERS_URL, {
     method: "POST",
     headers: websiteHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(order)
@@ -383,7 +452,7 @@ async function handleOrder(req, res) {
   const response = await pushOrderToWebsite({
     ...order,
     verifiedCustomer: user || null
-  });
+  }, req);
   send(res, 200, response);
 }
 
@@ -529,7 +598,7 @@ async function handlePayuCallback(req, res, success) {
   };
 
   try {
-    await pushOrderToWebsite(order);
+    await pushOrderToWebsite(order, req);
     deletePendingPayuOrder(fields.txnid);
     return sendHtml(
       res,
@@ -622,7 +691,7 @@ async function router(req, res) {
     }
 
     if (req.method === "GET" && url.pathname === "/api/mobile/diagnostics") {
-      return send(res, 200, publicDiagnostics());
+      return send(res, 200, publicDiagnostics(req));
     }
 
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);
