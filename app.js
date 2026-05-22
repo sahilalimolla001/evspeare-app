@@ -347,8 +347,7 @@ function renderCart() {
   nodes.checkoutForm.hidden = itemCount === 0;
   nodes.subtotal.textContent = formatPrice(subtotal);
   nodes.total.textContent = formatPrice(total);
-  nodes.checkoutButton.disabled = itemCount === 0;
-  nodes.checkoutButton.textContent = isLoggedIn() ? "Place order" : "Login to place order";
+  setCheckoutActionState();
 
   nodes.cartItems.innerHTML =
     entries.length === 0
@@ -535,38 +534,132 @@ function checkoutField(selector, fallbackNode) {
   return document.querySelector(`[data-page-panel="checkout"] ${selector}`) || fallbackNode;
 }
 
+function setCheckoutActionState(processing = false) {
+  const disabled = processing || cartTotals().itemCount === 0;
+  const label = processing ? "Processing..." : isLoggedIn() ? "Place order" : "Login to place order";
+  document.querySelectorAll("[data-action='checkout']").forEach((button) => {
+    button.disabled = disabled;
+    button.textContent = label;
+  });
+}
+
+function checkoutItemsPreview(entries) {
+  if (!entries.length) {
+    return `<div class="checkout-empty">Your cart is empty.</div>`;
+  }
+
+  const visible = entries.slice(0, 3);
+  const extraCount = entries.length - visible.length;
+  return `
+    <div class="checkout-items">
+      ${visible.map((item) => `
+        <article class="checkout-item">
+          <img ${imageAttrs(item)} alt="${escapeHtml(item.title)}" />
+          <div>
+            <h3>${escapeHtml(item.title)}</h3>
+            <span>${item.quantity} x ${formatPrice(item.price)}</span>
+          </div>
+          <strong>${formatPrice(item.price * item.quantity)}</strong>
+        </article>
+      `).join("")}
+      ${extraCount > 0 ? `<div class="checkout-more">+${extraCount} more ${extraCount === 1 ? "item" : "items"}</div>` : ""}
+    </div>
+  `;
+}
+
 function renderCheckoutPage() {
   const totals = cartTotals();
-  const phone = state.session?.user?.phone || nodes.checkoutPhone.value || "";
-  const name = nodes.checkoutName.value || state.session?.user?.name || "";
-  const address = nodes.checkoutAddress.value || "";
+  const nameNode = checkoutField("[data-page-checkout-name]", nodes.checkoutName);
+  const phoneNode = checkoutField("[data-page-checkout-phone]", nodes.checkoutPhone);
+  const addressNode = checkoutField("[data-page-checkout-address]", nodes.checkoutAddress);
+  const phone = state.session?.user?.phone || phoneNode.value || "";
+  const name = nameNode.value || state.session?.user?.name || "";
+  const address = addressNode.value || "";
+  const checkoutLabel = isLoggedIn() ? "Place order" : "Login to place order";
 
   nodes.checkoutPage.innerHTML = `
     <div class="page-header">
       <button class="icon-button" type="button" data-action="open-cart" aria-label="Back">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
       </button>
-      <div><h2>Checkout</h2><span>${formatPrice(totals.total)}</span></div>
+      <div><h2>Checkout</h2><span>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"} - ${formatPrice(totals.total)}</span></div>
+      <button class="icon-button" type="button" data-action="open-orders" aria-label="Orders">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4V7ZM7 7a5 5 0 0 1 10 0M9 12h6" /></svg>
+      </button>
     </div>
-    <form class="checkout-form checkout-page-form" data-page-checkout-form>
-      <label>Full name<input type="text" data-page-checkout-name value="${escapeHtml(name)}" placeholder="Customer name" autocomplete="name" /></label>
-      <label>Mobile number<input type="tel" data-page-checkout-phone value="${escapeHtml(phone)}" placeholder="10 digit mobile" autocomplete="tel" /></label>
-      <label>Delivery address<textarea data-page-checkout-address placeholder="House no, street, city, pincode" rows="4">${escapeHtml(address)}</textarea></label>
-      <div class="payment-options" role="radiogroup" aria-label="Payment method">
-        <label><input type="radio" name="page-payment" value="cod" ${state.paymentMethod === "cod" ? "checked" : ""} data-payment-method /><span>Cash on Delivery</span></label>
-        <label><input type="radio" name="page-payment" value="online" ${state.paymentMethod === "online" ? "checked" : ""} data-payment-method /><span>PayU Online</span></label>
+
+    <div class="checkout-hero">
+      <div>
+        <span>Order total</span>
+        <strong>${formatPrice(totals.total)}</strong>
       </div>
-      <p class="gateway-note" data-page-gateway-note></p>
-    </form>
-    <div class="page-total">
-      <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
-      <div><span>Delivery</span><strong>Free</strong></div>
-      <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
-      <div class="total"><span>Total</span><strong>${formatPrice(totals.total)}</strong></div>
+      <div class="checkout-hero-meta">
+        <span>Free delivery</span>
+        <span>${state.paymentMethod === "cod" ? "COD selected" : "PayU selected"}</span>
+      </div>
     </div>
-    <button class="checkout-button" type="button" data-action="checkout">${isLoggedIn() ? "Place order" : "Login to place order"}</button>
+
+    <form class="checkout-form checkout-page-form" data-page-checkout-form>
+      <section class="checkout-section">
+        <div class="checkout-section-head">
+          <div>
+            <span>Step 1</span>
+            <h3>Delivery details</h3>
+          </div>
+          <b>${isLoggedIn() ? "Logged in" : "Login needed"}</b>
+        </div>
+        <div class="checkout-field-grid">
+          <label>Full name<input type="text" data-page-checkout-name value="${escapeHtml(name)}" placeholder="Customer name" autocomplete="name" /></label>
+          <label>Mobile number<input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(phone)}" placeholder="10 digit mobile" autocomplete="tel" /></label>
+          <label class="wide">Delivery address<textarea data-page-checkout-address placeholder="House no, street, city, pincode" rows="4">${escapeHtml(address)}</textarea></label>
+        </div>
+      </section>
+
+      <section class="checkout-section">
+        <div class="checkout-section-head">
+          <div>
+            <span>Step 2</span>
+            <h3>Payment method</h3>
+          </div>
+        </div>
+        <div class="payment-options checkout-payment-options" role="radiogroup" aria-label="Payment method">
+          <label>
+            <input type="radio" name="page-payment" value="cod" ${state.paymentMethod === "cod" ? "checked" : ""} data-payment-method />
+            <span><strong>Cash on Delivery</strong><small>Pay at doorstep</small></span>
+          </label>
+          <label>
+            <input type="radio" name="page-payment" value="online" ${state.paymentMethod === "online" ? "checked" : ""} data-payment-method />
+            <span><strong>PayU Online</strong><small>Secure prepaid order</small></span>
+          </label>
+        </div>
+        <p class="gateway-note" data-page-gateway-note></p>
+      </section>
+    </form>
+
+    <section class="checkout-section checkout-summary">
+      <div class="checkout-section-head">
+        <div>
+          <span>Step 3</span>
+          <h3>Order summary</h3>
+        </div>
+        <b>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"}</b>
+      </div>
+      ${checkoutItemsPreview(totals.entries)}
+      <div class="checkout-price-panel">
+        <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
+        <div><span>Delivery</span><strong>Free</strong></div>
+        <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
+        <div class="total"><span>Total</span><strong>${formatPrice(totals.total)}</strong></div>
+      </div>
+    </section>
+
+    <div class="checkout-sticky-bar">
+      <div><span>Total</span><strong>${formatPrice(totals.total)}</strong></div>
+      <button class="checkout-button" type="button" data-action="checkout" ${totals.itemCount ? "" : "disabled"}>${checkoutLabel}</button>
+    </div>
   `;
   renderGatewayNote();
+  setCheckoutActionState();
 }
 
 function trackingStepsHtml(order) {
@@ -1034,8 +1127,7 @@ async function placeOrder() {
   const totals = cartTotals();
   if (!totals.itemCount) return;
 
-  nodes.checkoutButton.disabled = true;
-  nodes.checkoutButton.textContent = "Processing...";
+  setCheckoutActionState(true);
 
   try {
     let payment = {
@@ -1079,8 +1171,7 @@ async function placeOrder() {
   } catch (error) {
     showToast(error.message || "Order failed");
   } finally {
-    nodes.checkoutButton.disabled = cartTotals().itemCount === 0;
-    nodes.checkoutButton.textContent = isLoggedIn() ? "Place order" : "Login to place order";
+    setCheckoutActionState();
   }
 }
 
