@@ -148,7 +148,7 @@ const fallbackCategoryImages = {
   Deals: "https://images.unsplash.com/photo-1607082350899-7e105aa886ae?auto=format&fit=crop&w=160&q=80"
 };
 
-let products = [...fallbackProducts];
+let products = [];
 let categories = buildCategories(products);
 
 const api = window.BazaarGoApi;
@@ -853,13 +853,20 @@ async function syncProducts({ silent = false } = {}) {
       setSyncStatus(`Live catalog synced: ${remoteProducts.length} products`);
       if (!silent) showToast("Products imported from website");
     } else {
-      setSyncStatus("Demo catalog active - add website API URL");
-      if (!silent) showToast("Add API URL in config.js to import products");
+      products = [];
+      categories = [];
+      state.activeFilter = "All";
+      setSyncStatus("No live products found");
+      if (!silent) showToast("No live products found on website");
     }
     renderAll();
   } catch (error) {
     console.error(error);
-    setSyncStatus("Product sync failed - demo catalog active");
+    products = [];
+    categories = [];
+    state.activeFilter = "All";
+    renderAll();
+    setSyncStatus("Product sync failed");
     if (!silent) showToast(error.message || "Product sync failed");
   } finally {
     state.syncing = false;

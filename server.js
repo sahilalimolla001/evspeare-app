@@ -903,8 +903,10 @@ async function fetchWebsiteProducts(req) {
 
 async function fetchCatalogProducts(req) {
   const errors = [];
+  let websiteConfigured = false;
 
   if (process.env.WEBSITE_PRODUCTS_URL) {
+    websiteConfigured = true;
     try {
       const products = await fetchWebsiteProducts(req);
       if (products && products.length) return { source: "website", products };
@@ -912,6 +914,10 @@ async function fetchCatalogProducts(req) {
       console.error("Website product import failed", error);
       errors.push(`Website: ${error.message}`);
     }
+  }
+
+  if (websiteConfigured) {
+    return { source: "website", products: [] };
   }
 
   if (process.env.WAREHOUSE_PRODUCTS_URL) {
