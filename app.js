@@ -1210,8 +1210,10 @@ async function loadOrders({ silent = false } = {}) {
   try {
     const response = await api.fetchOrders();
     if (Array.isArray(response.orders)) {
-      state.orders = response.orders;
-      saveJson(storageKeys.orders, state.orders);
+      if (response.orders.length || !state.orders.length) {
+        state.orders = response.orders;
+        saveJson(storageKeys.orders, state.orders);
+      }
     }
   } catch (error) {
     if (!silent) showToast(error.message || "Orders not available");

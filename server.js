@@ -11,6 +11,15 @@ const fallbackPort = 3000;
 const pendingPayuOrders = new Map();
 let googleAccessTokenCache = null;
 
+function envFlag(name) {
+  return ["1", "true", "yes", "on"].includes(String(process.env[name] || "").toLowerCase());
+}
+
+function appDatabaseEnabled() {
+  if (envFlag("DISABLE_DATABASE")) return false;
+  return envFlag("ENABLE_DATABASE") || envFlag("USE_DATABASE");
+}
+
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -653,7 +662,10 @@ function publicDiagnostics(req) {
       googleStorageConfigured: googleStorageConfigured(),
       proxyAllowedHostsSet: Boolean(process.env.IMAGE_PROXY_ALLOWED_HOSTS)
     },
-    database: database.status()
+    database: {
+      ...database.status(),
+      enabledForApp: appDatabaseEnabled()
+    }
   };
 }
 
@@ -892,29 +904,6 @@ async function fetchWebsiteProducts(req) {
 async function fetchCatalogProducts(req) {
   const errors = [];
 
-  if (process.env.WAREHOUSE_PRODUCTS_URL) {
-    try {
-      const products = await fetchWarehouseProducts(req);
-      if (products && products.length) return { source: "warehouse", products };
-    } catch (error) {
-      console.error("Warehouse product import failed", error);
-      errors.push(`Warehouse: ${error.message}`);
-    }
-  }
-
-  try {
-    const dbProducts = await database.fetchProducts();
-    if (dbProducts && dbProducts.length) {
-      return {
-        source: "database",
-        products: dbProducts
-      };
-    }
-  } catch (error) {
-    console.error("Database product import failed", error);
-    errors.push(`Database: ${error.message}`);
-  }
-
   if (process.env.WEBSITE_PRODUCTS_URL) {
     try {
       const products = await fetchWebsiteProducts(req);
@@ -925,11 +914,36 @@ async function fetchCatalogProducts(req) {
     }
   }
 
-  if (errors.length && (process.env.WAREHOUSE_PRODUCTS_URL || process.env.WEBSITE_PRODUCTS_URL || database.status().configured)) {
+  if (process.env.WAREHOUSE_PRODUCTS_URL) {
+    try {
+      const products = await fetchWarehouseProducts(req);
+      if (products && products.length) return { source: "warehouse", products };
+    } catch (error) {
+      console.error("Warehouse product import failed", error);
+      errors.push(`Warehouse: ${error.message}`);
+    }
+  }
+
+  if (appDatabaseEnabled()) {
+    try {
+      const dbProducts = await database.fetchProducts();
+      if (dbProducts && dbProducts.length) {
+        return {
+          source: "database",
+          products: dbProducts
+        };
+      }
+    } catch (error) {
+      console.error("Database product import failed", error);
+      errors.push(`Database: ${error.message}`);
+    }
+  }
+
+  if (errors.length && (process.env.WAREHOUSE_PRODUCTS_URL || process.env.WEBSITE_PRODUCTS_URL || appDatabaseEnabled())) {
     throw new Error(errors[0]);
   }
 
-  return { source: "empty", products: [] };
+  return { source: "website_not_configured", products: [] };
 }
 
 async function warehouseInventoryDiagnostics(req) {
@@ -1058,19 +1072,21 @@ async function storeOrderAndPushWebsite(order, req) {
     orderId: order.orderId
   };
 
-  try {
-    const dbResult = await database.insertOrder(order);
-    if (dbResult) Object.assign(result, dbResult);
-  } catch (error) {
-    console.error("Database order insert failed", error);
-    if (!process.env.WEBSITE_ORDERS_URL) {
-      throw error;
+  if (appDatabaseEnabled()) {
+    try {
+      const dbResult = await database.insertOrder(order);
+      if (dbResult) Object.assign(result, dbResult);
+    } catch (error) {
+      console.error("Database order insert failed", error);
+      if (!process.env.WEBSITE_ORDERS_URL) {
+        throw error;
+      }
+      result.databaseError = error.message;
     }
-    result.databaseError = error.message;
   }
 
   if (!process.env.WEBSITE_ORDERS_URL) {
-    if (!result.storedInDatabase) {
+    if (!result.storedInDatabase && process.env.DISABLE_LOCAL_ORDER_STORE !== "true") {
       const dataDir = path.join(rootDir, "data");
       fs.mkdirSync(dataDir, { recursive: true });
       fs.appendFileSync(path.join(dataDir, "orders.jsonl"), `${JSON.stringify(order)}\n`);
@@ -1152,6 +1168,23 @@ async function fetchWarehouseTracking(orderId) {
   return data;
 }
 
+async function fetchWebsiteCustomerOrders(req, phone) {
+  const endpoint = process.env.WEBSITE_CUSTOMER_ORDERS_URL || process.env.WEBSITE_ORDERS_URL;
+  if (!endpoint) return [];
+  if (req && isSelfReference(req, endpoint, "/api/mobile/orders")) return [];
+
+  const url = new URL(endpoint);
+  url.searchParams.set("phone", phone);
+
+  const data = await fetchRemoteJson(
+    url.toString(),
+    websiteHeaders(),
+    "Website orders import"
+  );
+
+  return arrayFromPayload(data, ["orders", "items", "data"]);
+}
+
 async function persistAndPushOrder(order, req) {
   const result = await storeOrderAndPushWebsite(order, req);
   try {
@@ -1202,7 +1235,7 @@ async function validateOrderInventory(order, req) {
     }
   } catch (error) {
     console.error("Inventory validation skipped", error.message);
-    if (process.env.WAREHOUSE_PRODUCTS_URL || process.env.WAREHOUSE_INVENTORY_URL || database.status().configured) {
+    if (process.env.WEBSITE_PRODUCTS_URL || process.env.WAREHOUSE_PRODUCTS_URL || process.env.WAREHOUSE_INVENTORY_URL || appDatabaseEnabled()) {
       return "Warehouse inventory is not available right now. Please try again.";
     }
   }
@@ -1237,7 +1270,17 @@ async function handleCustomerOrders(req, res) {
   const user = verifyToken(req);
   if (!user) return send(res, 401, { message: "Login required" });
 
-  const orders = (await database.fetchCustomerOrders(user.phone)) || [];
+  let orders = [];
+  try {
+    orders = await fetchWebsiteCustomerOrders(req, user.phone);
+  } catch (error) {
+    console.error("Website orders import failed", error.message);
+  }
+
+  if (!orders.length && appDatabaseEnabled()) {
+    orders = (await database.fetchCustomerOrders(user.phone)) || [];
+  }
+
   const enriched = [];
 
   for (const order of orders) {
@@ -1510,7 +1553,9 @@ async function router(req, res) {
 
     if (req.method === "GET" && url.pathname === "/api/mobile/inventory-diagnostics") {
       const [db, warehouse] = await Promise.all([
-        database.inventoryDiagnostics().catch((error) => ({ error: error.message })),
+        appDatabaseEnabled()
+          ? database.inventoryDiagnostics().catch((error) => ({ error: error.message }))
+          : Promise.resolve({ configured: database.status().configured, enabledForApp: false }),
         warehouseInventoryDiagnostics(req)
       ]);
       return send(res, 200, { database: db, warehouse });

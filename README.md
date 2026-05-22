@@ -21,6 +21,7 @@ SESSION_SECRET=use-a-long-random-secret
 
 WEBSITE_PRODUCTS_URL=https://yourwebsite.com/api/mobile/products
 WEBSITE_ORDERS_URL=https://yourwebsite.com/api/mobile/orders
+WEBSITE_CUSTOMER_ORDERS_URL=https://yourwebsite.com/api/mobile/customer-orders
 WEBSITE_API_TOKEN=Bearer your_backend_api_token
 
 WAREHOUSE_ORDERS_URL=https://yourwarehouse.com/api/orders
@@ -31,6 +32,7 @@ WAREHOUSE_API_TOKEN=Bearer your_warehouse_token
 GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 IMAGE_PROXY_ALLOWED_HOSTS=yourwarehouse.com,cdn.yourwarehouse.com
 
+ENABLE_DATABASE=false
 DATABASE_CLIENT=mysql
 DATABASE_URL=mysql://user:password@host:3306/database
 DB_PRODUCTS_TABLE=products
@@ -58,24 +60,24 @@ PAYU_ENV=production
 
 ## How It Works
 
-- `GET /api/mobile/products` imports products from `WAREHOUSE_PRODUCTS_URL` first, merges stock from `WAREHOUSE_INVENTORY_URL`, then falls back to database and `WEBSITE_PRODUCTS_URL`.
+- `GET /api/mobile/products` imports products directly from `WEBSITE_PRODUCTS_URL` first. If warehouse endpoints are set, it can also use `WAREHOUSE_PRODUCTS_URL` and merge stock from `WAREHOUSE_INVENTORY_URL`.
 - Product inventory is auto-detected from columns like `stock_quantity`, `inventory`, `available_stock`, `qty`, or `stock`. Quantity `0` is shown as out of stock and cannot be ordered.
-- If inventory is stored in a separate warehouse table, set `DB_INVENTORY_TABLE`. The app auto-detects product columns like `product_id`/`sku` and quantity columns like `quantity`/`available_stock`/`warehouse_stock`.
+- Database mode is off by default. Set `ENABLE_DATABASE=true` only if you intentionally want DB fallback.
 - `POST /api/mobile/auth/request-otp` sends OTP through Twilio Verify.
 - `POST /api/mobile/auth/verify-otp` verifies OTP through Twilio and returns a saved login token.
 - `GET /api/mobile/diagnostics` checks whether Twilio, PayU, and website env vars are set without exposing secrets.
-- `POST /api/mobile/orders` validates warehouse inventory, inserts COD orders into database, and also pushes to `WEBSITE_ORDERS_URL` when configured.
-- If `WAREHOUSE_ORDERS_URL` is set, every placed order is pushed to the warehouse system after DB save.
-- `GET /api/mobile/orders` returns customer orders and merges live warehouse tracking from `WAREHOUSE_TRACKING_URL`.
+- `POST /api/mobile/orders` validates live catalog inventory and pushes COD/paid orders to `WEBSITE_ORDERS_URL`.
+- If `WAREHOUSE_ORDERS_URL` is set, every placed order is also pushed to the warehouse system.
+- `GET /api/mobile/orders` returns customer orders from `WEBSITE_CUSTOMER_ORDERS_URL` or `WEBSITE_ORDERS_URL`, then merges live warehouse tracking from `WAREHOUSE_TRACKING_URL`.
 - `GET /api/mobile/inventory-diagnostics` shows safe warehouse product/inventory mapping samples without exposing API tokens.
 - `GET /api/mobile/images?src=...` serves warehouse product images through the backend, including private `gs://` Google Storage images when `GOOGLE_SERVICE_ACCOUNT_JSON` is configured.
 - `POST /api/mobile/payments/create` creates a PayU hosted checkout form with server-generated SHA-512 hash.
 - `/payment/payu/success` verifies PayU response hash, then pushes paid order to your website.
 - `/payment/payu/failure` returns the customer to the app after failed/cancelled payment.
 
-## Database Mode
+## Optional Database Mode
 
-Set `DATABASE_URL` and `DATABASE_CLIENT` in Railway to connect directly to your website database from the backend.
+Database is disconnected by default. Set `ENABLE_DATABASE=true`, `DATABASE_URL`, and `DATABASE_CLIENT` in Railway only if you want the backend to use direct database fallback.
 
 Supported clients:
 
