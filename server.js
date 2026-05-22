@@ -556,6 +556,6 @@ async function router(req, res) {
   }
 }
 
-http.createServer(router).listen(port, () => {
-  console.log(`Ev Speare app running on port ${port}`);
+http.createServer(router).listen(port, "0.0.0.0", () => {
+  console.log(`Ev Speare app running on 0.0.0.0:${port}`);
 });
