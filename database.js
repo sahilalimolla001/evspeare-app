@@ -304,9 +304,10 @@ async function applyInventory(products) {
 
   const placeholders = ids.map((_, index) => placeholder(index + 1)).join(",");
   const rows = await query(
-    `SELECT ${quoteId(info.productColumn)} AS product_id, ${quoteId(info.quantityColumn)} AS stock_quantity
+    `SELECT ${quoteId(info.productColumn)} AS product_id, SUM(${quoteId(info.quantityColumn)}) AS stock_quantity
      FROM ${quoteId(info.table)}
-     WHERE ${quoteId(info.productColumn)} IN (${placeholders})`,
+     WHERE ${quoteId(info.productColumn)} IN (${placeholders})
+     GROUP BY ${quoteId(info.productColumn)}`,
     ids
   );
   const inventory = new Map(rows.map((row) => [String(row.product_id), numericOrNull(row.stock_quantity)]));
