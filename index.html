@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#2874f0" />
+    <title>BazaarGo - Mobile Commerce App</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="top-app-bar">
+        <div class="brand-row">
+          <button class="icon-button" type="button" aria-label="Open menu" data-action="open-menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
+          <div class="brand-lockup">
+            <strong>BazaarGo</strong>
+            <span>Plus deals live</span>
+          </div>
+          <button class="account-pill" type="button" data-action="open-account" data-account-pill>Login</button>
+          <button class="icon-button" type="button" aria-label="Open wishlist" data-action="show-wishlist">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" />
+            </svg>
+            <span class="dot-badge" data-wishlist-count>0</span>
+          </button>
+        </div>
+
+        <form class="search-form" data-search-form>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
+          </svg>
+          <input
+            type="search"
+            name="search"
+            autocomplete="off"
+            placeholder="Search mobiles, shoes, appliances"
+            aria-label="Search products"
+            data-search-input
+          />
+          <button type="button" aria-label="Use voice search">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 1 0 6 0V6a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v3M8 21h8" />
+            </svg>
+          </button>
+        </form>
+
+        <button class="location-strip" type="button" data-action="select-address">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 21s7-5.1 7-12A7 7 0 1 0 5 9c0 6.9 7 12 7 12Z" />
+            <path d="M12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
+          </svg>
+          <span>Deliver to Delhi 110001</span>
+          <strong>Change</strong>
+        </button>
+
+        <div class="service-strip">
+          <span data-sync-status>Demo catalog</span>
+          <button type="button" data-action="refresh-products">Sync products</button>
+        </div>
+      </header>
+
+      <main class="content" data-view="home">
+        <section class="promo-band" aria-label="Festival offers">
+          <div>
+            <p>Fresh drop</p>
+            <h1>Mobile mega sale</h1>
+            <span>Up to 45% off with bank offers</span>
+          </div>
+          <img
+            src="https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=420&q=80"
+            alt="Smartphone on a bright shopping offer background"
+          />
+        </section>
+
+        <section class="quick-actions" aria-label="Fast actions">
+          <button type="button" data-filter-chip="Deals">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 12v8H4v-8M22 7H2v5h20V7ZM12 20V7M12 7H7.5A2.5 2.5 0 1 1 10 4.5C10 7 12 7 12 7Zm0 0h4.5A2.5 2.5 0 1 0 14 4.5C14 7 12 7 12 7Z" />
+            </svg>
+            Deals
+          </button>
+          <button type="button" data-filter-chip="Grocery">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 2h12l1 7H5l1-7ZM5 9h14l-1.2 13H6.2L5 9Z" />
+              <path d="M9 13h6M10 17h4" />
+            </svg>
+            Grocery
+          </button>
+          <button type="button" data-filter-chip="Fashion">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 4h8l4 5-3 3-2-2v10H9V10l-2 2-3-3 4-5Z" />
+            </svg>
+            Fashion
+          </button>
+          <button type="button" data-action="open-cart">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6h15l-1.5 8.5H8L6 3H3" />
+              <path d="M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM18 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
+            </svg>
+            Cart
+          </button>
+        </section>
+
+        <section class="section-block" aria-labelledby="category-title">
+          <div class="section-heading">
+            <h2 id="category-title">Shop by category</h2>
+            <button type="button" data-action="clear-filters">All</button>
+          </div>
+          <div class="category-rail" data-category-rail></div>
+        </section>
+
+        <section class="deal-strip" aria-label="Limited time offer">
+          <div>
+            <span>Bank offer</span>
+            <strong>10% instant discount</strong>
+          </div>
+          <button type="button" data-filter-chip="Deals">View deals</button>
+        </section>
+
+        <section class="section-block" aria-labelledby="product-title">
+          <div class="section-heading">
+            <h2 id="product-title">Recommended for you</h2>
+            <button type="button" data-action="sort-products">Sort</button>
+          </div>
+          <div class="filter-row" data-filter-row></div>
+          <div class="product-grid" data-product-grid></div>
+          <p class="empty-state" data-empty-state hidden>No products found. Try another search.</p>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Primary navigation">
+        <button class="active" type="button" data-nav="home">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m3 11 9-8 9 8v10h-6v-6H9v6H3V11Z" />
+          </svg>
+          Home
+        </button>
+        <button type="button" data-nav="categories">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 4h7v7H4V4ZM13 4h7v7h-7V4ZM4 13h7v7H4v-7ZM13 13h7v7h-7v-7Z" />
+          </svg>
+          Categories
+        </button>
+        <button type="button" data-nav="orders">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7h16v13H4V7ZM7 7a5 5 0 0 1 10 0M9 12h6" />
+          </svg>
+          Orders
+        </button>
+        <button type="button" data-action="open-cart" data-nav="cart">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6h15l-1.5 8.5H8L6 3H3" />
+            <path d="M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM18 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
+          </svg>
+          <span>Cart</span>
+          <em data-cart-count>0</em>
+        </button>
+      </nav>
+    </div>
+
+    <aside class="side-drawer" data-drawer aria-hidden="true">
+      <div class="drawer-panel">
+        <div class="drawer-head">
+          <div>
+            <strong>Hello, Shopper</strong>
+            <span>Manage account and offers</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Close menu" data-action="close-menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <button type="button" data-filter-chip="Deals">SuperCoin offers</button>
+        <button type="button" data-filter-chip="Mobiles">Top mobiles</button>
+        <button type="button" data-filter-chip="Appliances">Appliances</button>
+        <button type="button" data-action="show-wishlist">Wishlist</button>
+        <button type="button" data-action="open-account">Login and profile</button>
+        <button type="button" data-action="refresh-products">Import products</button>
+        <button type="button" data-action="open-cart">Cart and checkout</button>
+      </div>
+    </aside>
+
+    <aside class="cart-sheet" data-cart-sheet aria-hidden="true">
+      <div class="sheet-backdrop" data-action="close-cart"></div>
+      <section class="sheet-panel" aria-label="Shopping cart">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+          <div>
+            <h2>Your cart</h2>
+            <span data-cart-summary>0 items</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Close cart" data-action="close-cart">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="cart-items" data-cart-items></div>
+        <form class="checkout-form" data-checkout-form>
+          <h3>Checkout details</h3>
+          <label>
+            Full name
+            <input type="text" data-checkout-name placeholder="Customer name" autocomplete="name" />
+          </label>
+          <label>
+            Mobile number
+            <input type="tel" data-checkout-phone placeholder="10 digit mobile" autocomplete="tel" />
+          </label>
+          <label>
+            Delivery address
+            <textarea data-checkout-address placeholder="House no, street, city, pincode" rows="3"></textarea>
+          </label>
+          <div class="payment-options" role="radiogroup" aria-label="Payment method">
+            <label>
+              <input type="radio" name="payment" value="cod" checked data-payment-method />
+              <span>Cash on Delivery</span>
+            </label>
+            <label>
+              <input type="radio" name="payment" value="online" data-payment-method />
+              <span>Online Payment</span>
+            </label>
+          </div>
+          <p class="gateway-note" data-gateway-note>COD enabled. Online gateway runs after API keys are configured.</p>
+        </form>
+        <div class="price-box" data-price-box hidden>
+          <div><span>Subtotal</span><strong data-subtotal>Rs. 0</strong></div>
+          <div><span>Delivery</span><strong data-delivery>Free</strong></div>
+          <div><span>Platform fee</span><strong>Rs. 9</strong></div>
+          <div class="total"><span>Total</span><strong data-total>Rs. 0</strong></div>
+        </div>
+        <button class="checkout-button" type="button" data-action="checkout">Place order</button>
+      </section>
+    </aside>
+
+    <aside class="auth-modal" data-auth-modal aria-hidden="true">
+      <div class="modal-backdrop" data-action="close-account"></div>
+      <section class="auth-card" aria-label="Account login">
+        <div class="sheet-header">
+          <div>
+            <h2 data-auth-title>OTP login</h2>
+            <span data-auth-subtitle>Login stays active until you logout</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Close account" data-action="close-account">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="auth-panel" data-auth-login>
+          <label>
+            Mobile number
+            <input type="tel" inputmode="numeric" maxlength="10" data-login-phone placeholder="Enter 10 digit mobile" autocomplete="tel" />
+          </label>
+          <button class="primary-button" type="button" data-action="request-otp">Send OTP</button>
+          <div class="otp-panel" data-otp-panel hidden>
+            <label>
+              OTP
+              <input type="tel" inputmode="numeric" maxlength="6" data-login-otp placeholder="6 digit OTP" autocomplete="one-time-code" />
+            </label>
+            <button class="primary-button" type="button" data-action="verify-otp">Verify and login</button>
+          </div>
+        </div>
+
+        <div class="profile-panel" data-auth-profile hidden>
+          <div class="profile-card">
+            <span>Logged in as</span>
+            <strong data-profile-phone>Customer</strong>
+            <small>Session saved on this device.</small>
+          </div>
+          <button class="secondary-button" type="button" data-action="logout">Logout</button>
+        </div>
+      </section>
+    </aside>
+
+    <div class="toast" role="status" aria-live="polite" data-toast></div>
+
+    <script src="config.js"></script>
+    <script src="api.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+desktop.ini
+
+node_modules/
+dist/
+build/
+.env
+.env.*
+
+bazaarGo.pendingOrders.json

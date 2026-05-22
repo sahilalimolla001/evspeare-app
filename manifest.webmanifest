@@ -1,0 +1,9 @@
+{
+  "name": "BazaarGo Mobile Commerce",
+  "short_name": "BazaarGo",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f2f5f9",
+  "theme_color": "#2874f0",
+  "description": "A mobile-first e-commerce shopping app prototype."
+}
