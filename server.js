@@ -175,6 +175,42 @@ function phoneE164(value) {
   return `+91${digits}`;
 }
 
+function twilioConfigStatus() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID || "";
+  const authToken = process.env.TWILIO_AUTH_TOKEN || "";
+  const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID || "";
+  const channel = (process.env.TWILIO_VERIFY_CHANNEL || "sms").toLowerCase();
+
+  return {
+    configured: Boolean(accountSid && authToken && serviceSid),
+    accountSidSet: Boolean(accountSid),
+    authTokenSet: Boolean(authToken),
+    serviceSidSet: Boolean(serviceSid),
+    accountSidLooksValid: accountSid.startsWith("AC"),
+    serviceSidLooksValid: serviceSid.startsWith("VA"),
+    channel
+  };
+}
+
+function publicDiagnostics() {
+  return {
+    ok: true,
+    service: "ev-speare",
+    twilio: twilioConfigStatus(),
+    payu: {
+      configured: Boolean(process.env.PAYU_KEY && process.env.PAYU_SALT),
+      keySet: Boolean(process.env.PAYU_KEY),
+      saltSet: Boolean(process.env.PAYU_SALT),
+      env: process.env.PAYU_ENV || "test"
+    },
+    website: {
+      productsUrlSet: Boolean(process.env.WEBSITE_PRODUCTS_URL),
+      ordersUrlSet: Boolean(process.env.WEBSITE_ORDERS_URL),
+      apiTokenSet: Boolean(process.env.WEBSITE_API_TOKEN)
+    }
+  };
+}
+
 async function twilioRequest(pathname, body) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -195,7 +231,14 @@ async function twilioRequest(pathname, body) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.message || data.more_info || "Twilio request failed");
+    console.error("Twilio Verify request failed", {
+      status: response.status,
+      code: data.code,
+      message: data.message,
+      moreInfo: data.more_info
+    });
+    const code = data.code ? `Twilio ${data.code}: ` : "";
+    throw new Error(`${code}${data.message || data.more_info || "Twilio request failed"}`);
   }
   return data;
 }
@@ -205,16 +248,21 @@ async function handleRequestOtp(req, res) {
   const to = phoneE164(body.phone);
   if (!to) return send(res, 400, { message: "Enter a valid 10 digit mobile number" });
 
-  const verification = await twilioRequest("/Verifications", {
-    To: to,
-    Channel: process.env.TWILIO_VERIFY_CHANNEL || "sms"
-  });
+  try {
+    const verification = await twilioRequest("/Verifications", {
+      To: to,
+      Channel: (process.env.TWILIO_VERIFY_CHANNEL || "sms").toLowerCase()
+    });
 
-  send(res, 200, {
-    message: "OTP sent",
-    sid: verification.sid,
-    status: verification.status
-  });
+    send(res, 200, {
+      message: "OTP sent",
+      sid: verification.sid,
+      status: verification.status
+    });
+  } catch (error) {
+    const status = error.message.includes("env vars") ? 503 : 502;
+    send(res, status, { message: error.message });
+  }
 }
 
 async function handleVerifyOtp(req, res) {
@@ -223,10 +271,16 @@ async function handleVerifyOtp(req, res) {
   const code = String(body.otp || "").trim();
   if (!to || code.length < 4) return send(res, 400, { message: "Phone and OTP are required" });
 
-  const check = await twilioRequest("/VerificationCheck", {
-    To: to,
-    Code: code
-  });
+  let check;
+  try {
+    check = await twilioRequest("/VerificationCheck", {
+      To: to,
+      Code: code
+    });
+  } catch (error) {
+    const status = error.message.includes("env vars") ? 503 : 502;
+    return send(res, status, { message: error.message });
+  }
 
   if (check.status !== "approved") {
     return send(res, 401, { message: "Invalid OTP" });
@@ -538,6 +592,10 @@ async function router(req, res) {
         service: "ev-speare",
         time: new Date().toISOString()
       });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/mobile/diagnostics") {
+      return send(res, 200, publicDiagnostics());
     }
 
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);

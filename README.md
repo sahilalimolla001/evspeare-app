@@ -45,6 +45,7 @@ PAYU_ENV=production
 - `GET /api/mobile/products` imports products from `WEBSITE_PRODUCTS_URL`.
 - `POST /api/mobile/auth/request-otp` sends OTP through Twilio Verify.
 - `POST /api/mobile/auth/verify-otp` verifies OTP through Twilio and returns a saved login token.
+- `GET /api/mobile/diagnostics` checks whether Twilio, PayU, and website env vars are set without exposing secrets.
 - `POST /api/mobile/orders` pushes COD orders to `WEBSITE_ORDERS_URL`.
 - `POST /api/mobile/payments/create` creates a PayU hosted checkout form with server-generated SHA-512 hash.
 - `/payment/payu/success` verifies PayU response hash, then pushes paid order to your website.
@@ -88,6 +89,19 @@ The app/backend pushes:
 Never put PayU salt, Twilio auth token, database password, or admin credentials in frontend files. They belong only in Railway environment variables or your backend.
 
 PayU requires server-side hash generation and response hash verification. Twilio Verify requires phone numbers in E.164 format; this app converts Indian 10 digit numbers to `+91`.
+
+If OTP does not send, open:
+
+```text
+https://your-railway-domain/api/mobile/diagnostics
+```
+
+Check that:
+
+- `twilio.configured` is `true`
+- `twilio.accountSidLooksValid` is `true`
+- `twilio.serviceSidLooksValid` is `true`
+- trial Twilio accounts have the recipient phone number verified in Twilio Console
 
 Sources:
 
