@@ -114,6 +114,19 @@ async function tableColumns(table) {
   return new Set(rows.map((row) => String(row.column_name || row.COLUMN_NAME || "").toLowerCase()));
 }
 
+async function tableExists(table) {
+  const rows = clientName().startsWith("postgres")
+    ? await query(
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1 LIMIT 1",
+        [table]
+      )
+    : await query(
+        "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = $1 LIMIT 1",
+        [table]
+      );
+  return rows.length > 0;
+}
+
 function firstExisting(columns, names) {
   return names.find((name) => columns.has(name.toLowerCase())) || "";
 }
@@ -211,6 +224,79 @@ function productStockStatus(row) {
   return row.stock_status || "available";
 }
 
+async function inventoryTableInfo() {
+  const candidates = process.env.DB_INVENTORY_TABLE
+    ? [process.env.DB_INVENTORY_TABLE]
+    : ["warehouse_inventory", "product_inventory", "inventory", "inventories", "stocks", "stock"];
+
+  for (const table of candidates) {
+    if (!/^[a-zA-Z0-9_]+$/.test(table)) continue;
+    if (!(await tableExists(table))) continue;
+
+    const columns = await tableColumns(table);
+    const productColumn = firstExisting(columns, [
+      "product_id",
+      "productid",
+      "product",
+      "item_id",
+      "itemid",
+      "sku",
+      "product_sku"
+    ]);
+    const quantityColumn = firstExisting(columns, [
+      "stock_quantity",
+      "inventory",
+      "inventory_qty",
+      "inventory_quantity",
+      "available_quantity",
+      "available_stock",
+      "warehouse_stock",
+      "warehouse_inventory",
+      "current_stock",
+      "stock_count",
+      "qty",
+      "quantity",
+      "stock",
+      "on_hand"
+    ]);
+
+    if (productColumn && quantityColumn) {
+      return { table, productColumn, quantityColumn };
+    }
+  }
+
+  return null;
+}
+
+async function applyInventory(products) {
+  if (!products.length) return products;
+
+  const info = await inventoryTableInfo();
+  if (!info) return products;
+
+  const ids = [...new Set(products.flatMap((product) => [product.sourceId, product.id]).filter((value) => value !== null && value !== undefined))];
+  if (!ids.length) return products;
+
+  const placeholders = ids.map((_, index) => placeholder(index + 1)).join(",");
+  const rows = await query(
+    `SELECT ${quoteId(info.productColumn)} AS product_id, ${quoteId(info.quantityColumn)} AS stock_quantity
+     FROM ${quoteId(info.table)}
+     WHERE ${quoteId(info.productColumn)} IN (${placeholders})`,
+    ids
+  );
+  const inventory = new Map(rows.map((row) => [String(row.product_id), numericOrNull(row.stock_quantity)]));
+
+  return products.map((product) => {
+    const quantity = inventory.get(String(product.sourceId)) ?? inventory.get(String(product.id)) ?? product.stockQuantity;
+    if (quantity === null || quantity === undefined) return product;
+    return {
+      ...product,
+      stockQuantity: quantity,
+      stock: quantity <= 0 ? "out_of_stock" : "available"
+    };
+  });
+}
+
 function asProduct(row, index) {
   const price = Number(row.price || row.sale_price || row.selling_price || 0);
   const mrp = Number(row.mrp || row.regular_price || row.original_price || price);
@@ -236,7 +322,8 @@ function asProduct(row, index) {
 async function fetchProducts() {
   if (!enabled()) return null;
   const rows = await query(await productSelectSql());
-  return rows.map(asProduct).filter((product) => product.price > 0);
+  const products = rows.map(asProduct).filter((product) => product.price > 0);
+  return applyInventory(products);
 }
 
 async function ensureOrderTables() {
@@ -414,6 +501,7 @@ function status() {
     client: clientName() || null,
     urlSet: Boolean(databaseUrl()),
     productsTable: process.env.DB_PRODUCTS_TABLE || "products",
+    inventoryTable: process.env.DB_INVENTORY_TABLE || "auto",
     ordersTable: process.env.DB_ORDERS_TABLE || "evspeare_orders",
     orderItemsTable: process.env.DB_ORDER_ITEMS_TABLE || "evspeare_order_items",
     autoCreateTables: process.env.DB_AUTO_CREATE_TABLES !== "false"

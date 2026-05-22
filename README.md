@@ -32,6 +32,7 @@ IMAGE_PROXY_ALLOWED_HOSTS=yourwarehouse.com,cdn.yourwarehouse.com
 DATABASE_CLIENT=mysql
 DATABASE_URL=mysql://user:password@host:3306/database
 DB_PRODUCTS_TABLE=products
+DB_INVENTORY_TABLE=warehouse_inventory
 DB_ORDERS_TABLE=evspeare_orders
 DB_ORDER_ITEMS_TABLE=evspeare_order_items
 DB_AUTO_CREATE_TABLES=true
@@ -57,6 +58,7 @@ PAYU_ENV=production
 
 - `GET /api/mobile/products` imports products from database first, then falls back to `WEBSITE_PRODUCTS_URL`.
 - Product inventory is auto-detected from columns like `stock_quantity`, `inventory`, `available_stock`, `qty`, or `stock`. Quantity `0` is shown as out of stock and cannot be ordered.
+- If inventory is stored in a separate warehouse table, set `DB_INVENTORY_TABLE`. The app auto-detects product columns like `product_id`/`sku` and quantity columns like `quantity`/`available_stock`/`warehouse_stock`.
 - `POST /api/mobile/auth/request-otp` sends OTP through Twilio Verify.
 - `POST /api/mobile/auth/verify-otp` verifies OTP through Twilio and returns a saved login token.
 - `GET /api/mobile/diagnostics` checks whether Twilio, PayU, and website env vars are set without exposing secrets.
