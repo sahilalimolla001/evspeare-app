@@ -277,6 +277,21 @@ function parseGcsSource(src) {
   return null;
 }
 
+function gcsPublicCandidates(gcs) {
+  if (!gcs) return [];
+  const encodedObject = gcs.object
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  const firebaseObject = encodeURIComponent(gcs.object);
+
+  return [
+    gcs.publicUrl,
+    `https://${gcs.bucket}.storage.googleapis.com/${encodedObject}`,
+    `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(gcs.bucket)}/o/${firebaseObject}?alt=media`
+  ];
+}
+
 function googleServiceAccount() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "";
   if (raw) {
@@ -583,9 +598,14 @@ async function handleProductImage(req, res) {
       directUrl = gcs.publicUrl;
     }
 
-    let response = await fetchWithTimeout(directUrl, {
-      headers: { Accept: "image/*,*/*;q=0.8" }
-    });
+    let response;
+
+    for (const candidate of gcs ? gcsPublicCandidates(gcs) : [directUrl]) {
+      response = await fetchWithTimeout(candidate, {
+        headers: { Accept: "image/*,*/*;q=0.8" }
+      });
+      if (response.ok) break;
+    }
 
     if (!response.ok && gcs && googleStorageConfigured()) {
       const token = await googleAccessToken();
