@@ -2244,6 +2244,12 @@ svg {
   gap: 12px;
 }
 
+.auth-panel[hidden],
+.profile-panel[hidden],
+.otp-panel[hidden] {
+  display: none !important;
+}
+
 .otp-panel {
   display: grid;
   gap: 10px;
