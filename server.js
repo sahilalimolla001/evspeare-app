@@ -108,11 +108,7 @@ function readBody(req) {
 }
 
 function getOrigin(req) {
-  const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL || "").replace(/\/+$/g, "");
   const forwardedHost = req.headers["x-forwarded-host"] || req.headers.host || "";
-  const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(String(forwardedHost));
-  if (publicBaseUrl && !isLocalHost) return publicBaseUrl;
-
   const forwardedProtocol = req.headers["x-forwarded-proto"];
   const host = forwardedHost;
   if (forwardedProtocol) {
@@ -122,6 +118,14 @@ function getOrigin(req) {
 
   const protocol = req.socket?.encrypted ? "https" : "http";
   return `${protocol}://${host}`;
+}
+
+function publicOrigin(req) {
+  const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL || "").replace(/\/+$/g, "");
+  const requestOrigin = getOrigin(req);
+  const forwardedHost = req.headers["x-forwarded-host"] || req.headers.host || "";
+  const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(String(forwardedHost));
+  return publicBaseUrl && !isLocalHost ? publicBaseUrl : requestOrigin;
 }
 
 function localFrontendConfig(req) {
@@ -2752,7 +2756,7 @@ async function handlePaymentCreate(req, res) {
     return send(res, 409, { message: inventoryError });
   }
 
-  const origin = getOrigin(req);
+  const origin = publicOrigin(req);
   const txnid = `EV${Date.now()}${crypto.randomBytes(3).toString("hex")}`;
   const fields = {
     key: process.env.PAYU_KEY,
