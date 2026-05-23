@@ -29,109 +29,179 @@ const customerTrackingStages = [
 ];
 
 const infoPages = {
-  terms: {
-    title: "Terms and Conditions",
-    subtitle: "Use of Ev Speare",
+  privacy: {
+    title: "Privacy Policy",
+    subtitle: "How customer data is handled",
     sections: [
       {
-        heading: "Order acceptance",
-        body: "Orders placed in the app are subject to product availability, stock verification, address validation, and successful payment where online payment is selected."
+        heading: "Information we collect",
+        body: "We collect only the details needed to run your shopping experience, including your mobile number, OTP login status, name, delivery address, cart items, order details, payment status, and live location only when you choose to share it."
       },
       {
-        heading: "Product information",
-        body: "Prices, images, stock, and product details are synced from the live catalog. Minor differences can occur because parts may be updated by warehouse or supplier systems."
+        heading: "How we use information",
+        body: "Your information is used to verify login, confirm orders, arrange delivery, process payments, show order tracking, handle cancellation or return requests, and improve product availability and customer support."
+      },
+      {
+        heading: "Payments and security",
+        body: "Online payments are processed through PayU secure checkout. We do not store card, UPI, CVV, net banking, or wallet credentials in this app."
+      },
+      {
+        heading: "Sharing with service partners",
+        body: "Order and delivery details may be shared with warehouse, courier, payment, OTP, and website systems only for fulfilment, verification, tracking, payment, or customer support."
+      },
+      {
+        heading: "Data retention",
+        body: "Order records are retained as required for customer support, tax, accounting, dispute resolution, fraud prevention, and legal compliance. You may contact support for data correction requests."
+      },
+      {
+        heading: "Customer choice",
+        body: "You can logout from the profile section, update delivery details before checkout, and choose whether to share live location. Some services may not work if required details are not provided."
+      }
+    ]
+  },
+  terms: {
+    title: "Terms and Conditions",
+    subtitle: "Rules for using Ev Speare",
+    sections: [
+      {
+        heading: "Acceptance of terms",
+        body: "By using Ev Speare, browsing products, logging in, or placing an order, you agree to these terms, our policies, and any applicable warehouse, courier, payment, or platform rules."
+      },
+      {
+        heading: "Product catalogue",
+        body: "Product images, descriptions, prices, discounts, stock, and compatibility details are synced from connected catalogue or warehouse systems. We try to keep them accurate, but updates may take time to reflect."
+      },
+      {
+        heading: "Order confirmation",
+        body: "An order is confirmed only after stock verification, valid customer details, successful payment where applicable, and acceptance by the seller or warehouse."
       },
       {
         heading: "Customer responsibility",
-        body: "Customers should provide accurate name, mobile number, delivery address, and vehicle/part compatibility details before placing an order."
+        body: "You are responsible for entering a correct mobile number, OTP, delivery address, pincode, and part compatibility details. Incorrect details can lead to delay, failed delivery, or non-return eligibility."
       },
       {
-        heading: "Changes and cancellation",
-        body: "Cancellation is available before the order is shipped. After dispatch or out-for-delivery, cancellation may not be available from the app."
+        heading: "Cancellation and refusal",
+        body: "Orders may be cancelled by the customer before shipment. We may cancel or refuse orders because of stock mismatch, pricing error, payment risk, delivery restrictions, suspected misuse, or incomplete information."
+      },
+      {
+        heading: "Limitation",
+        body: "Ev Speare is not responsible for delays caused by courier issues, incorrect address, payment gateway downtime, warehouse dependency, natural events, or third-party service interruptions."
       }
     ]
   },
   shipping: {
     title: "Shipping Policy",
-    subtitle: "Delivery and dispatch",
+    subtitle: "Dispatch, delivery, and tracking",
     sections: [
       {
-        heading: "Dispatch",
-        body: "Orders are sent to the warehouse after checkout. Dispatch time depends on stock confirmation, payment status, packaging, and courier pickup."
+        heading: "Order processing",
+        body: "After checkout, your order is shared with the connected website or warehouse for stock confirmation, packing, invoice preparation, and courier handover."
       },
       {
-        heading: "Delivery timeline",
-        body: "Estimated delivery is generally shown in the order tracking section. Remote or service-limited locations can take longer."
+        heading: "Dispatch timeline",
+        body: "Most eligible orders are prepared for dispatch after confirmation. Dispatch time may vary based on stock location, product type, payment status, public holidays, and courier pickup schedules."
       },
       {
-        heading: "Tracking",
-        body: "Live order updates are fetched from the connected warehouse or website using the order id. Tracking stages update as the warehouse status changes."
+        heading: "Estimated delivery",
+        body: "Estimated delivery is shown in the order tracking section. Delivery to remote, restricted, or service-limited pincodes may take longer than the displayed estimate."
       },
       {
-        heading: "Address issues",
-        body: "If the address or phone number is incomplete, delivery may be delayed or returned by the courier."
+        heading: "Live tracking",
+        body: "Tracking updates are fetched order-id wise from the connected warehouse or website. The tracking line moves as the order status changes to shipped, in transit, out for delivery, or delivered."
+      },
+      {
+        heading: "Delivery attempts",
+        body: "Courier partners may contact you before delivery. Missed calls, unavailable customer, wrong address, or refused delivery can result in delay, return, or cancellation."
+      },
+      {
+        heading: "Shipping charges",
+        body: "Shipping charges, if applicable, are shown at checkout or included in the order total. Additional location-based charges may apply for certain pincodes or bulky parts."
       }
     ]
   },
   returns: {
     title: "Return Policy",
-    subtitle: "Returns and replacement",
+    subtitle: "Return, replacement, and refund rules",
     sections: [
       {
-        heading: "Return eligibility",
-        body: "Returns are accepted only for eligible items that are unused, undamaged, and returned with original packaging, labels, and invoice where required."
+        heading: "Eligibility",
+        body: "Returns are accepted only for eligible products that are unused, unfitted, undamaged, and returned with original packaging, invoice, labels, accessories, manuals, and warranty cards where applicable."
+      },
+      {
+        heading: "Return window",
+        body: "Return or replacement requests should be raised as soon as possible after delivery. The final approval depends on product category, seller policy, and warehouse inspection."
       },
       {
         heading: "Damaged or wrong item",
-        body: "If you receive a damaged, defective, or wrong product, raise a request with order details and clear photos as soon as possible."
+        body: "If you receive a damaged, defective, missing, or wrong item, keep the packaging intact and share order details, photos, and opening/unboxing proof if requested."
       },
       {
-        heading: "Non-returnable cases",
-        body: "Used electrical parts, fitted parts, damaged packaging, missing accessories, and products ordered with wrong compatibility details may not be returnable."
+        heading: "Non-returnable items",
+        body: "Used parts, fitted parts, electrical items after installation, damaged packaging, missing accessories, custom orders, and products ordered with wrong compatibility details may not be returnable."
       },
       {
-        heading: "Inspection",
-        body: "Refund or replacement is processed after the returned item is inspected and approved by the seller or warehouse team."
+        heading: "Inspection and approval",
+        body: "Every return is inspected by the seller or warehouse. Refund, replacement, or rejection is decided after checking product condition, serial number, packaging, and claim details."
+      },
+      {
+        heading: "Refund timeline",
+        body: "Approved refunds are processed to the original payment method or eligible refund mode. Bank, wallet, or payment gateway settlement time may vary."
       }
     ]
   },
   payments: {
     title: "Payment Policy",
-    subtitle: "COD and online payments",
+    subtitle: "COD, PayU, refunds, and security",
     sections: [
       {
-        heading: "Payment options",
-        body: "Ev Speare supports Cash on Delivery and online payment through PayU secure checkout where available."
+        heading: "Available payment modes",
+        body: "Ev Speare supports Cash on Delivery and online payment through PayU secure checkout where available. Payment options may vary by order value, pincode, stock status, and risk checks."
       },
       {
-        heading: "Online payment",
-        body: "For online payment, the app redirects to PayU. Orders are confirmed after successful payment verification."
+        heading: "Online payment security",
+        body: "For online payment, you are redirected to PayU. Payment credentials are entered on the payment gateway page and are not stored by Ev Speare."
       },
       {
-        heading: "Failed payment",
-        body: "If payment fails or is cancelled, the order is not confirmed as paid. You can retry checkout or choose another available option."
+        heading: "Payment confirmation",
+        body: "An online order is treated as paid only after successful gateway verification. If verification fails, the order may remain pending, failed, or cancelled."
       },
       {
-        heading: "COD",
-        body: "COD orders are pushed as pending payment and the payable amount must be paid at delivery, subject to availability and service rules."
+        heading: "Failed or duplicate payment",
+        body: "If money is debited but payment status is not updated, wait for gateway reconciliation or contact support with transaction details. Duplicate successful payments are refunded after verification."
+      },
+      {
+        heading: "Cash on Delivery",
+        body: "COD orders are payable at delivery. COD may be unavailable for selected pincodes, high-value orders, repeated refusals, or products that require prepaid confirmation."
+      },
+      {
+        heading: "Refund mode",
+        body: "Refunds for prepaid orders are generally issued to the original payment method. COD refunds, if approved, may require bank or wallet details for processing."
       }
     ]
   },
   about: {
     title: "About Ev Speare",
-    subtitle: "EV spare parts commerce",
+    subtitle: "EV spare parts and order support",
     sections: [
       {
-        heading: "What we do",
-        body: "Ev Speare helps customers browse EV spare parts, check live warehouse stock, place orders, pay online or by COD, and track order progress."
+        heading: "Who we are",
+        body: "Ev Speare is an EV spare parts commerce experience built to help customers discover parts, check current stock, place orders, and follow fulfilment updates from connected warehouse systems."
       },
       {
-        heading: "Live catalog",
-        body: "Product listings, stock, and pricing are synced from connected website and warehouse systems so customers can shop from current availability."
+        heading: "Live catalogue",
+        body: "The app connects with website and warehouse catalogues to show product information, pricing, stock status, images, and order availability as close to real time as possible."
       },
       {
-        heading: "Order support",
-        body: "Customers can view order status, follow shipment progress, and request cancellation before dispatch from the Orders section."
+        heading: "Checkout and payments",
+        body: "Customers can choose COD where available or pay online through PayU secure checkout. Orders are verified and pushed to the fulfilment system after checkout."
+      },
+      {
+        heading: "Tracking and service",
+        body: "The Orders section provides live status updates, estimated delivery, shipment progress, and cancellation support before dispatch."
+      },
+      {
+        heading: "Customer-first approach",
+        body: "Our goal is to make EV spare part ordering clearer, faster, and easier with transparent policies, stock visibility, and simple mobile-first workflows."
       }
     ]
   }
