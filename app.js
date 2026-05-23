@@ -568,6 +568,76 @@ function cartEntries() {
     .filter(Boolean);
 }
 
+function numberFromConfig(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function coordinatesForPincode(pincode) {
+  const clean = String(pincode || "").replace(/\D/g, "").slice(0, 6);
+  const coordinates = appConfig.pincodeCoordinates?.[clean];
+  if (!coordinates) return null;
+  const latitude = numberFromConfig(coordinates.latitude ?? coordinates.lat);
+  const longitude = numberFromConfig(coordinates.longitude ?? coordinates.lng ?? coordinates.lon);
+  if (latitude === null || longitude === null) return null;
+  return { latitude, longitude };
+}
+
+function storeCoordinates() {
+  const latitude = numberFromConfig(appConfig.storeLatitude);
+  const longitude = numberFromConfig(appConfig.storeLongitude);
+  if (latitude !== null && longitude !== null) return { latitude, longitude };
+  return coordinatesForPincode(appConfig.storePincode);
+}
+
+function distanceKmBetween(origin, destination) {
+  if (!origin || !destination) return null;
+  const earthRadiusKm = 6371;
+  const toRadians = (value) => (value * Math.PI) / 180;
+  const latitudeDelta = toRadians(destination.latitude - origin.latitude);
+  const longitudeDelta = toRadians(destination.longitude - origin.longitude);
+  const a =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(toRadians(origin.latitude)) *
+      Math.cos(toRadians(destination.latitude)) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function fastDeliveryEligibility(pincode) {
+  const clean = String(pincode || "").replace(/\D/g, "").slice(0, 6);
+  const radius = Number(appConfig.fastDeliveryRadiusKm || 20);
+  if (clean.length !== 6) {
+    return { eligible: false, reason: "Enter pincode to check fast delivery" };
+  }
+
+  const configuredPincodes = Array.isArray(appConfig.fastDeliveryPincodes)
+    ? appConfig.fastDeliveryPincodes.map((value) => String(value).replace(/\D/g, "").slice(0, 6))
+    : [];
+  if (configuredPincodes.includes(clean)) {
+    return { eligible: true, reason: `Within ${radius} km fast delivery zone` };
+  }
+
+  const origin = storeCoordinates();
+  const destination = coordinatesForPincode(clean);
+  const distance = distanceKmBetween(origin, destination);
+  if (distance !== null) {
+    return {
+      eligible: distance <= radius,
+      reason: distance <= radius
+        ? `Approx ${Math.max(1, Math.round(distance))} km from warehouse`
+        : `Fast delivery available within ${radius} km only`
+    };
+  }
+
+  const storePincode = String(appConfig.storePincode || "").replace(/\D/g, "").slice(0, 6);
+  if (storePincode && clean.slice(0, 4) === storePincode.slice(0, 4)) {
+    return { eligible: true, reason: `Estimated within ${radius} km delivery zone` };
+  }
+
+  return { eligible: false, reason: `Fast delivery available within ${radius} km only` };
+}
+
 function cartTotals() {
   const entries = cartEntries();
   const itemCount = entries.reduce((sum, item) => sum + item.quantity, 0);
@@ -592,7 +662,7 @@ function fastDeliveryFee(amount) {
   return 799;
 }
 
-function deliveryOptionsHtml(totals) {
+function deliveryOptionsHtml(totals, eligibility) {
   const fastFee = fastDeliveryFee(totals.subtotal);
   return `
     <section class="delivery-options" aria-label="Delivery options">
@@ -604,14 +674,21 @@ function deliveryOptionsHtml(totals) {
         </span>
         <b>Free</b>
       </label>
+      ${eligibility.eligible ? `
       <label class="${state.deliveryMode === "fast" ? "selected" : ""}">
-        <input type="radio" name="delivery-mode" value="fast" data-delivery-mode ${state.deliveryMode === "fast" ? "checked" : ""} />
+        <input type="radio" name="delivery-mode" value="fast" data-delivery-mode ${state.deliveryMode === "fast" ? "checked" : ""} data-fast-delivery />
         <span>
           <strong>Fast delivery</strong>
-          <small>Delivery by tomorrow</small>
+          <small>Delivery by tomorrow - ${escapeHtml(eligibility.reason)}</small>
         </span>
         <b>${formatPrice(fastFee)}</b>
       </label>
+      ` : `
+      <div class="delivery-unavailable">
+        <strong>Fast delivery not available</strong>
+        <span>${escapeHtml(eligibility.reason)}. Default 6-7 days delivery will apply.</span>
+      </div>
+      `}
     </section>
   `;
 }
@@ -1145,12 +1222,6 @@ function paymentOptionRow({ mode, method, icon, title, subtitle, disabled = fals
 }
 
 function renderCheckoutPage() {
-  const totals = cartTotals();
-  const codUnavailable = totals.total > codMaxOrderAmount;
-  if (codUnavailable && state.paymentMethod === "cod") {
-    state.paymentMethod = "online";
-    state.paymentMode = "online";
-  }
   const nameNode = checkoutField("[data-page-checkout-name]", nodes.checkoutName);
   const phoneNode = checkoutField("[data-page-checkout-phone]", nodes.checkoutPhone);
   const addressNode = checkoutField("[data-page-checkout-address]", nodes.checkoutAddress);
@@ -1163,6 +1234,16 @@ function renderCheckoutPage() {
   };
   const name = formatCustomerName(billing) || existingName;
   const address = formatAddress(billing) || addressNode.value || "";
+  const deliveryEligibility = fastDeliveryEligibility(billing.pincode);
+  if (!deliveryEligibility.eligible && state.deliveryMode === "fast") {
+    state.deliveryMode = "free";
+  }
+  const totals = cartTotals();
+  const codUnavailable = totals.total > codMaxOrderAmount;
+  if (codUnavailable && state.paymentMethod === "cod") {
+    state.paymentMethod = "online";
+    state.paymentMode = "online";
+  }
   const checkoutLabel = isLoggedIn() ? "Place order" : "Login to place order";
   const savedLocation = savedLocationDetails();
   const hasSavedLocation = hasLocationDetails(savedLocation);
@@ -1277,7 +1358,7 @@ function renderCheckoutPage() {
         </div>
         <b>${state.deliveryMode === "fast" ? "Fast delivery" : "Free delivery"}</b>
       </div>
-      ${deliveryOptionsHtml(totals)}
+      ${deliveryOptionsHtml(totals, deliveryEligibility)}
       ${checkoutItemsPreview(totals.entries)}
       <div class="checkout-price-panel">
         <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
@@ -1826,6 +1907,14 @@ function validateCheckout() {
     showToast("COD not available above Rs. 1,000. Pay online to place order.");
     state.paymentMethod = "online";
     state.paymentMode = "online";
+    renderCheckoutPage();
+    return null;
+  }
+
+  const deliveryEligibility = fastDeliveryEligibility(billing.pincode);
+  if (state.deliveryMode === "fast" && !deliveryEligibility.eligible) {
+    showToast("Fast delivery is not available for this pincode");
+    state.deliveryMode = "free";
     renderCheckoutPage();
     return null;
   }
@@ -2434,9 +2523,15 @@ document.addEventListener("click", async (event) => {
 
 document.addEventListener("change", async (event) => {
   if (event.target.matches("[data-delivery-mode]")) {
+    if (event.target.value === "fast" && event.target.disabled) return;
     state.deliveryMode = event.target.value === "fast" ? "fast" : "free";
     renderCheckoutPage();
     renderCart();
+    return;
+  }
+
+  if (event.target.matches("[data-page-checkout-pincode]")) {
+    renderCheckoutPage();
     return;
   }
 

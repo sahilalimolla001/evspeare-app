@@ -1705,6 +1705,27 @@ svg {
   font-size: 0.84rem;
 }
 
+.delivery-unavailable {
+  border: 1px dashed #d8dee8;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  background: #f7f9fc;
+}
+
+.delivery-unavailable strong {
+  color: #6b7280;
+  font-size: 0.84rem;
+}
+
+.delivery-unavailable span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
 .checkout-item img {
   width: 48px;
   height: 48px;

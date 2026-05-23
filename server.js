@@ -369,12 +369,29 @@ function configuredWebsiteOrdersUrl(req) {
 function publicConfig(req) {
   const websiteProductsUrl = configuredWebsiteProductsUrl(req);
   const websiteOrdersUrl = configuredWebsiteOrdersUrl(req);
+  const fastDeliveryPincodes = String(process.env.FAST_DELIVERY_PINCODES || "")
+    .split(",")
+    .map((value) => value.replace(/\D/g, "").slice(0, 6))
+    .filter((value) => value.length === 6);
+  const pincodeCoordinates = (() => {
+    try {
+      return process.env.PINCODE_COORDINATES_JSON ? JSON.parse(process.env.PINCODE_COORDINATES_JSON) : {};
+    } catch (error) {
+      return {};
+    }
+  })();
   return {
     businessName: process.env.BUSINESS_NAME || "Ev Speare",
     currency: process.env.CURRENCY || "INR",
     apiBaseUrl: getOrigin(req),
     websiteProductsUrl,
     websiteOrdersUrl,
+    storePincode: String(process.env.STORE_PINCODE || "").replace(/\D/g, "").slice(0, 6),
+    storeLatitude: process.env.STORE_LATITUDE || "",
+    storeLongitude: process.env.STORE_LONGITUDE || "",
+    fastDeliveryRadiusKm: Number(process.env.FAST_DELIVERY_RADIUS_KM || 20),
+    fastDeliveryPincodes,
+    pincodeCoordinates,
     productsEndpoint: "/api/mobile/products",
     ordersEndpoint: "/api/mobile/orders",
     orderCancelEndpoint: "/api/mobile/orders/cancel",

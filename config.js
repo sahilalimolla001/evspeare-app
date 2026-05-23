@@ -17,6 +17,10 @@ window.EVSPEARE_CONFIG = {
   websiteLoginEmail: "",
   websiteLoginPassword: "",
   apiBaseUrl: window.location.protocol === "file:" ? "" : window.location.origin,
+  storePincode: "",
+  fastDeliveryRadiusKm: 20,
+  fastDeliveryPincodes: [],
+  pincodeCoordinates: {},
 
   /*
    * These paths should be provided by your existing website/backend.

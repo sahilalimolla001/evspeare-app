@@ -38,6 +38,12 @@ WEBSITE_ORDERS_URL=https://yourwebsite.com/api/mobile/orders
 WEBSITE_CUSTOMER_ORDERS_URL=https://yourwebsite.com/api/mobile/customer-orders
 WEBSITE_CANCEL_ORDER_URL=https://yourwebsite.com/api/mobile/orders/cancel
 WEBSITE_API_TOKEN=Bearer your_backend_api_token
+STORE_PINCODE=700001
+STORE_LATITUDE=22.5726
+STORE_LONGITUDE=88.3639
+FAST_DELIVERY_RADIUS_KM=20
+FAST_DELIVERY_PINCODES=700001,700002
+PINCODE_COORDINATES_JSON={"700001":{"lat":22.5726,"lng":88.3639}}
 
 WAREHOUSE_ORDERS_URL=https://yourwarehouse.com/api/orders
 WAREHOUSE_TRACKING_URL=https://yourwarehouse.com/api/order-tracking
