@@ -1105,48 +1105,6 @@ function paymentOptionRow({ mode, method, icon, title, subtitle }) {
   `;
 }
 
-function payuCheckoutDropdown() {
-  const selected = state.paymentMethod === "online";
-  return `
-    <div class="payu-dropdown ${selected ? "open" : ""}" data-payu-dropdown ${selected ? "" : "hidden"}>
-      <div class="payu-offer-box">
-        <strong>Bank Offer</strong>
-        <span>Pay securely with PayU. Available payment modes depend on PayU and your bank.</span>
-        <button type="button" data-info-page="payments">Show More</button>
-      </div>
-      <div class="payu-mode-shell">
-        <div class="payu-mode-tabs" aria-label="PayU payment modes">
-          <span class="active">Recommended</span>
-          <span>UPI</span>
-          <span>Credit / Debit Card</span>
-          <span>Wallets</span>
-          <span>Net Banking</span>
-        </div>
-        <div class="payu-mode-panel">
-          <small>Recommended Payment Option</small>
-          <label>
-            <input type="radio" checked />
-            <span>
-              <strong>PayU Secure Checkout</strong>
-              <em>Cards, UPI, wallets and net banking</em>
-            </span>
-            <b>PayU</b>
-          </label>
-          <label>
-            <input type="radio" disabled />
-            <span>
-              <strong>Bank page verification</strong>
-              <em>OTP / UPI PIN will be completed on PayU</em>
-            </span>
-          </label>
-          <p>After continuing, you will be redirected to PayU to finish the payment safely.</p>
-          <button class="payu-continue-button" type="button" data-action="payu-checkout">Continue to PayU</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
 function renderCheckoutPage() {
   const totals = cartTotals();
   const nameNode = checkoutField("[data-page-checkout-name]", nodes.checkoutName);
@@ -1207,9 +1165,8 @@ function renderCheckoutPage() {
           method: "online",
           icon: "online",
           title: "Pay Online",
-          subtitle: "Select to view PayU secure checkout"
+          subtitle: "Redirects to PayU secure checkout"
         })}
-        ${payuCheckoutDropdown()}
       </section>
 
       <p class="gateway-note payment-gateway-note" data-page-gateway-note></p>
@@ -2293,11 +2250,6 @@ document.addEventListener("click", async (event) => {
     case "checkout":
       await placeOrder();
       break;
-    case "payu-checkout":
-      state.paymentMethod = "online";
-      state.paymentMode = "online";
-      await placeOrder();
-      break;
     default:
       break;
   }
@@ -2336,12 +2288,11 @@ document.addEventListener("change", async (event) => {
   event.target.closest(".payment-list")?.querySelectorAll(".payment-option-row").forEach((row) => {
     row.classList.toggle("selected", row.contains(event.target));
   });
-  document.querySelectorAll("[data-payu-dropdown]").forEach((panel) => {
-    panel.hidden = state.paymentMethod !== "online";
-    panel.classList.toggle("open", state.paymentMethod === "online");
-  });
   renderGatewayNote();
-  setCheckoutActionState();
+
+  if (state.paymentMethod === "online") {
+    await placeOrder();
+  }
 });
 
 nodes.searchForm.addEventListener("submit", (event) => {
