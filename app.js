@@ -1513,6 +1513,8 @@ function trackingActiveIndex(order) {
 
   steps.forEach((step) => {
     if (!step.done) return;
+    const stepDate = validDate(step.date || step.createdAt || step.completedAt || step.updatedAt);
+    if (stepDate && stepDate.getTime() > Date.now()) return;
     const index = stageKeys.indexOf(trackingStepStageKey(step));
     if (index > activeIndex) activeIndex = index;
   });
@@ -1557,7 +1559,7 @@ function trackingTimelineEntries(order) {
     order.fulfillment,
     order
   ].filter((item) => item && typeof item === "object" && !Array.isArray(item));
-  const keys = ["timeline", "events", "history", "updates", "trackingUpdates", "tracking_updates", "scans", "steps"];
+  const keys = ["timeline", "events", "history", "updates", "trackingUpdates", "tracking_updates", "scans"];
   let raw = [];
 
   for (const source of sources) {
@@ -1612,6 +1614,9 @@ function trackingTimelineEntries(order) {
         "time",
         "timestamp"
       ]);
+      const eventDate = validDate(date);
+      if (event.done === false || event.completed === false || event.isDone === false || event.is_done === false) return null;
+      if (eventDate && eventDate.getTime() > Date.now()) return null;
       if (!activity && !location && !date) return null;
       return {
         date,
