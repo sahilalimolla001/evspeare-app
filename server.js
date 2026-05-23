@@ -377,6 +377,7 @@ function publicConfig(req) {
     websiteOrdersUrl,
     productsEndpoint: "/api/mobile/products",
     ordersEndpoint: "/api/mobile/orders",
+    orderCancelEndpoint: "/api/mobile/orders/cancel",
     otpRequestEndpoint: "/api/mobile/auth/request-otp",
     otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
     paymentCreateEndpoint: "/api/mobile/payments/create",
@@ -1917,6 +1918,102 @@ async function fetchWebsiteCustomerOrders(req, phone) {
   return arrayFromPayload(data, ["orders", "items", "data"]);
 }
 
+async function postOrderCancel(endpoint, headers, body, label) {
+  if (!endpoint) return null;
+
+  const response = await fetchWithTimeout(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...headers
+    },
+    body: JSON.stringify(body)
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(data.message || data.error || `${label} failed`);
+  return data;
+}
+
+async function handleOrderCancel(req, res) {
+  const user = verifyToken(req);
+  if (!user) return send(res, 401, { message: "Login required" });
+
+  const body = await readBody(req);
+  const orderId = String(body.orderId || body.order_id || "").trim();
+  const reason = String(body.reason || "Customer requested cancellation").trim();
+  if (!orderId) return send(res, 400, { message: "Order id is required" });
+
+  let orders = [];
+  try {
+    orders = await fetchWebsiteCustomerOrders(req, user.phone);
+  } catch (error) {
+    console.error("Website orders import failed before cancel", error.message);
+  }
+
+  if (!orders.length && appDatabaseEnabled()) {
+    orders = (await database.fetchCustomerOrders(user.phone)) || [];
+  }
+
+  const order = orders.find((item) => String(orderTrackingId(item) || "") === orderId);
+  if (!order) return send(res, 404, { message: "Order not found" });
+
+  let tracking = order.tracking || { status: order.status || "placed" };
+  try {
+    const warehouseTracking = await fetchWarehouseTracking(order);
+    if (warehouseTracking) tracking = { ...tracking, ...warehouseTracking };
+  } catch (error) {
+    tracking = { ...tracking, error: error.message };
+  }
+
+  const stage = trackingStage(tracking.status || order.status);
+  if (stage !== "placed") {
+    return send(res, 409, { message: "Cancel unavailable after order is shipped or out for delivery" });
+  }
+
+  const cancelBody = {
+    orderId,
+    order_id: orderId,
+    phone: user.phone,
+    reason,
+    status: "cancel_requested"
+  };
+  const results = {};
+
+  try {
+    const websiteCancelUrl = process.env.WEBSITE_CANCEL_ORDER_URL || process.env.WEBSITE_ORDER_CANCEL_URL || "";
+    const warehouseCancelUrl = process.env.WAREHOUSE_CANCEL_ORDER_URL || process.env.WAREHOUSE_ORDER_CANCEL_URL || "";
+    const websiteCancelHeaders = websiteCancelUrl ? await websiteRequestHeaders(req, websiteCancelUrl) : {};
+
+    const [website, warehouse] = await Promise.all([
+      postOrderCancel(websiteCancelUrl, websiteCancelHeaders, cancelBody, "Website cancel request"),
+      postOrderCancel(warehouseCancelUrl, warehouseHeaders(), cancelBody, "Warehouse cancel request")
+    ]);
+    if (website) results.website = website;
+    if (warehouse) results.warehouse = warehouse;
+  } catch (error) {
+    return send(res, 502, { message: error.message });
+  }
+
+  let databaseResult = null;
+  if (appDatabaseEnabled()) {
+    try {
+      databaseResult = await database.updateOrderStatus(orderId, "cancel_requested");
+    } catch (error) {
+      console.error("Database cancel status update failed", error.message);
+    }
+  }
+
+  send(res, 200, {
+    cancelled: true,
+    orderId,
+    status: "cancel_requested",
+    localOnly: !results.website && !results.warehouse,
+    database: databaseResult,
+    ...results
+  });
+}
+
 async function persistAndPushOrder(order, req) {
   const result = await storeOrderAndPushWebsite(order, req);
   try {
@@ -2318,6 +2415,7 @@ async function router(req, res) {
     if (req.method === "GET" && url.pathname === "/api/mobile/images") return handleProductImage(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/orders") return handleCustomerOrders(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/orders") return handleOrder(req, res);
+    if (req.method === "POST" && url.pathname === "/api/mobile/orders/cancel") return handleOrderCancel(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/payments/create") return handlePaymentCreate(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/payments/verify") return handlePaymentVerify(req, res);
     if (req.method === "POST" && url.pathname === "/payment/payu/success") return handlePayuCallback(req, res, true);

@@ -366,6 +366,17 @@
     return request(config.ordersEndpoint);
   }
 
+  async function cancelOrder(orderId, reason = "Customer requested cancellation") {
+    if (!hasEndpoint(config.orderCancelEndpoint)) {
+      throw new Error("Order cancel endpoint is not configured");
+    }
+
+    return request(config.orderCancelEndpoint, {
+      method: "POST",
+      body: { orderId, reason }
+    });
+  }
+
   window.BazaarGoApi = {
     config,
     fetchProducts,
@@ -376,6 +387,7 @@
     verifyPayment,
     pushOrder,
     fetchOrders,
+    cancelOrder,
     hasEndpoint
   };
 })();

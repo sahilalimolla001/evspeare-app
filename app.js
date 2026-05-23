@@ -70,6 +70,7 @@ const state = {
   ordersLoading: false,
   checkoutProcessing: false,
   ordersRefreshTimer: null,
+  cancellingOrderId: "",
   promoIndex: 0
 };
 
@@ -1073,6 +1074,7 @@ function trackingIconSvg(icon) {
 
 function trackingStageKeyFromText(value) {
   const normalized = String(value || "").toLowerCase().replace(/[\s-]+/g, "_");
+  if (/cancel/.test(normalized)) return "placed";
   if (/delivered|complete/.test(normalized)) return "delivered";
   if (/out_for_delivery|in_transit|transit|dispatch|on_the_way/.test(normalized)) return "transit";
   if (/shipped|picked|packed|ready_to_ship|warehouse_picked/.test(normalized)) return "shipped";
@@ -1107,6 +1109,14 @@ function trackingActiveIndex(order) {
   });
 
   return activeIndex;
+}
+
+function orderIsCancelled(order) {
+  return /cancel/.test([
+    order.status,
+    order.tracking?.status,
+    order.tracking?.label
+  ].filter(Boolean).join(" ").toLowerCase());
 }
 
 function stepDateForStage(order, stage) {
@@ -1168,6 +1178,35 @@ function customerTrackingHtml(order) {
   `;
 }
 
+function orderCancelHtml(order) {
+  const orderId = orderDisplayId(order);
+  const activeIndex = trackingActiveIndex(order);
+
+  if (orderIsCancelled(order)) {
+    return `
+      <div class="order-cancel-row locked">
+        <span>Cancellation requested</span>
+      </div>
+    `;
+  }
+
+  if (activeIndex > 0) {
+    return `
+      <div class="order-cancel-row locked">
+        <span>Cancel unavailable after shipping / out for delivery</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="order-cancel-row">
+      <button type="button" data-cancel-order="${escapeHtml(orderId)}" ${state.cancellingOrderId === orderId ? "disabled" : ""}>
+        ${state.cancellingOrderId === orderId ? "Cancelling..." : "Cancel order"}
+      </button>
+    </div>
+  `;
+}
+
 function renderOrdersPage() {
   nodes.ordersPage.innerHTML = `
     <div class="page-header">
@@ -1198,6 +1237,7 @@ function renderOrdersPage() {
               <span>Estimated Delivery<strong>${escapeHtml(formatOrderDate(estimatedAt, false))}</strong></span>
             </div>
             ${customerTrackingHtml(order)}
+            ${orderCancelHtml(order)}
           </article>
         `;
       }).join("") : `<div class="cart-empty">No orders yet.<br />Place an order to track warehouse status.</div>`}
@@ -1747,6 +1787,39 @@ function syncOrdersAutoRefresh() {
   }, 30000);
 }
 
+async function cancelOrder(orderId) {
+  if (!orderId || state.cancellingOrderId) return;
+
+  state.cancellingOrderId = orderId;
+  renderOrdersPage();
+
+  try {
+    const response = await api.cancelOrder(orderId);
+    state.orders = state.orders.map((order) => {
+      if (String(orderDisplayId(order)) !== String(orderId)) return order;
+      return {
+        ...order,
+        status: response.status || "cancel_requested",
+        tracking: {
+          ...(order.tracking || {}),
+          status: response.status || "cancel_requested",
+          label: "Cancellation requested"
+        }
+      };
+    });
+    saveJson(storageKeys.orders, state.orders);
+    showToast("Cancel request sent");
+    if (!response.localOnly) {
+      await loadOrders({ silent: true, background: true });
+    }
+  } catch (error) {
+    showToast(error.message || "Unable to cancel order");
+  } finally {
+    state.cancellingOrderId = "";
+    renderOrdersPage();
+  }
+}
+
 async function loadOrders({ silent = false, background = false } = {}) {
   if (!isLoggedIn()) {
     if (!silent) openAccount();
@@ -1804,6 +1877,7 @@ document.addEventListener("click", async (event) => {
   const increaseId = target.dataset.increase;
   const decreaseId = target.dataset.decrease;
   const removeId = target.dataset.remove;
+  const cancelOrderId = target.dataset.cancelOrder;
 
   if (filter) {
     setFilter(filter);
@@ -1853,6 +1927,10 @@ document.addEventListener("click", async (event) => {
     state.cart.delete(removeId);
     persistShoppingState();
     renderCart();
+  }
+
+  if (cancelOrderId) {
+    await cancelOrder(cancelOrderId);
   }
 
   switch (target.dataset.action) {

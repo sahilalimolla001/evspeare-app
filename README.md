@@ -36,10 +36,12 @@ SESSION_SECRET=use-a-long-random-secret
 WEBSITE_PRODUCTS_URL=https://yourwebsite.com/api/mobile/products
 WEBSITE_ORDERS_URL=https://yourwebsite.com/api/mobile/orders
 WEBSITE_CUSTOMER_ORDERS_URL=https://yourwebsite.com/api/mobile/customer-orders
+WEBSITE_CANCEL_ORDER_URL=https://yourwebsite.com/api/mobile/orders/cancel
 WEBSITE_API_TOKEN=Bearer your_backend_api_token
 
 WAREHOUSE_ORDERS_URL=https://yourwarehouse.com/api/orders
 WAREHOUSE_TRACKING_URL=https://yourwarehouse.com/api/order-tracking
+WAREHOUSE_CANCEL_ORDER_URL=https://yourwarehouse.com/api/orders/cancel
 WAREHOUSE_PRODUCTS_URL=https://yourwarehouse.com/api/products
 WAREHOUSE_INVENTORY_URL=https://yourwarehouse.com/api/inventory
 WAREHOUSE_API_TOKEN=Bearer your_warehouse_token
@@ -83,6 +85,7 @@ PAYU_ENV=production
 - `POST /api/mobile/orders` validates live catalog inventory and pushes COD/paid orders to `WEBSITE_ORDERS_URL`.
 - If `WAREHOUSE_ORDERS_URL` is set, every placed order is also pushed to the warehouse system.
 - `GET /api/mobile/orders` returns customer orders from `WEBSITE_CUSTOMER_ORDERS_URL` or `WEBSITE_ORDERS_URL`, then merges live warehouse tracking from `WAREHOUSE_TRACKING_URL`.
+- `POST /api/mobile/orders/cancel` accepts customer cancel requests before the order reaches shipped/out-for-delivery; set `WEBSITE_CANCEL_ORDER_URL` or `WAREHOUSE_CANCEL_ORDER_URL` to forward them.
 - `GET /api/mobile/inventory-diagnostics` shows safe warehouse product/inventory mapping samples without exposing API tokens.
 - `GET /api/mobile/images?src=...` serves warehouse product images through the backend, including private `gs://` Google Storage images when `GOOGLE_SERVICE_ACCOUNT_JSON` is configured.
 - `POST /api/mobile/payments/create` creates a PayU hosted checkout form with server-generated SHA-512 hash.

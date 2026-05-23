@@ -1865,6 +1865,44 @@ svg {
   border-color: var(--green);
 }
 
+.order-cancel-row {
+  margin-top: 12px;
+  border-top: 1px solid #edf0f5;
+  padding-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.order-cancel-row button {
+  min-height: 38px;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #9f1239;
+  background: #ffe4ec;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.order-cancel-row button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.order-cancel-row.locked {
+  justify-content: center;
+}
+
+.order-cancel-row.locked span {
+  width: 100%;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #775800;
+  background: #fff4c2;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-align: center;
+}
+
 @keyframes trackingPulse {
   0% {
     box-shadow: 0 0 0 4px white, 0 0 0 4px rgba(40, 116, 240, 0.2);

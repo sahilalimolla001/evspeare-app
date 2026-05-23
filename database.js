@@ -521,6 +521,25 @@ async function fetchCustomerOrders(phone) {
   }
 }
 
+async function updateOrderStatus(orderId, status, extraPayload = {}) {
+  if (!enabled() || !orderId) return null;
+
+  const orders = quoteId(ordersTableName());
+  await execute(
+    `UPDATE ${orders}
+     SET status = $1
+     WHERE order_id = $2`,
+    [status, orderId]
+  );
+
+  return {
+    storedInDatabase: true,
+    orderId,
+    status,
+    ...extraPayload
+  };
+}
+
 function status() {
   return {
     configured: enabled(),
@@ -539,5 +558,6 @@ module.exports = {
   inventoryDiagnostics,
   fetchProducts,
   insertOrder,
-  fetchCustomerOrders
+  fetchCustomerOrders,
+  updateOrderStatus
 };
