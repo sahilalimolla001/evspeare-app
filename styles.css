@@ -336,6 +336,46 @@ svg {
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
 }
 
+.support-card {
+  margin-top: 12px;
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  color: var(--ink);
+  background: white;
+  box-shadow: 0 1px 0 rgba(23, 32, 51, 0.04);
+}
+
+.support-card div {
+  display: grid;
+  gap: 2px;
+}
+
+.support-card span {
+  color: var(--blue);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.support-card strong {
+  font-size: 0.96rem;
+}
+
+.support-card a {
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  color: #1d4ed8;
+  background: #eef3ff;
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-decoration: none;
+}
+
 .quick-actions {
   margin-top: 12px;
   display: grid;
@@ -1767,6 +1807,19 @@ svg {
   font-size: 0.76rem;
 }
 
+.order-id-button {
+  width: max-content;
+  max-width: 100%;
+  padding: 0;
+  color: var(--blue-dark);
+  background: transparent;
+  font-size: 0.96rem;
+  font-weight: 950;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .order-head b {
   flex: 0 0 auto;
   color: var(--ink);
@@ -1800,6 +1853,81 @@ svg {
   text-overflow: ellipsis;
   text-transform: none;
   white-space: nowrap;
+}
+
+.order-details-panel {
+  margin-top: 12px;
+  border: 1px solid #d8e8f7;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  background: #f8fbff;
+}
+
+.order-details-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.order-details-head strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.order-details-head span {
+  color: var(--blue-dark);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.order-detail-items,
+.order-price-breakdown {
+  display: grid;
+  gap: 7px;
+}
+
+.order-detail-items div,
+.order-price-breakdown div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.order-detail-items span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-detail-items small {
+  color: var(--muted);
+}
+
+.order-detail-items strong,
+.order-price-breakdown strong {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.order-detail-items p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.order-price-breakdown {
+  border-top: 1px solid #e2eaf5;
+  padding-top: 8px;
+}
+
+.order-price-breakdown .total {
+  color: var(--ink);
+  font-weight: 950;
 }
 
 .customer-tracking {

@@ -252,6 +252,7 @@ const state = {
   checkoutProcessing: false,
   ordersRefreshTimer: null,
   cancellingOrderId: "",
+  expandedOrderId: "",
   promoIndex: 0
 };
 
@@ -606,7 +607,7 @@ function deliveryOptionsHtml(totals) {
         <input type="radio" name="delivery-mode" value="fast" data-delivery-mode ${state.deliveryMode === "fast" ? "checked" : ""} />
         <span>
           <strong>Fast delivery</strong>
-          <small>Priority dispatch with extra delivery charge</small>
+          <small>Delivery by tomorrow</small>
         </span>
         <b>${formatPrice(fastFee)}</b>
       </label>
@@ -1439,6 +1440,52 @@ function orderCancelHtml(order) {
   `;
 }
 
+function orderDetailsHtml(order) {
+  const orderId = orderDisplayId(order);
+  if (state.expandedOrderId !== String(orderId)) return "";
+
+  const items = Array.isArray(order.items) ? order.items : [];
+  const subtotal = Number(order.amounts?.subtotal || items.reduce((sum, item) => {
+    const price = Number(item.price || item.amount || 0);
+    const quantity = Number(item.quantity || item.qty || 1);
+    return sum + price * quantity;
+  }, 0));
+  const delivery = Number(order.amounts?.delivery || order.delivery?.fee || 0);
+  const platformFee = Number(order.amounts?.platformFee || order.platformFee || 0);
+  const total = Number(order.amountTotal || order.amounts?.total || subtotal + delivery + platformFee);
+  const paymentLabel = [order.paymentMethod || order.payment?.method, order.paymentStatus || order.payment?.status]
+    .filter(Boolean)
+    .join(" / ");
+
+  return `
+    <section class="order-details-panel" aria-label="Order details">
+      <div class="order-details-head">
+        <strong>Order details</strong>
+        <span>${escapeHtml(paymentLabel || "Payment pending")}</span>
+      </div>
+      <div class="order-detail-items">
+        ${items.length ? items.map((item) => {
+          const price = Number(item.price || item.amount || 0);
+          const quantity = Number(item.quantity || item.qty || 1);
+          const title = item.title || item.name || item.productName || "Item";
+          return `
+            <div>
+              <span>${escapeHtml(title)} <small>x${quantity}</small></span>
+              <strong>${formatPrice(price * quantity)}</strong>
+            </div>
+          `;
+        }).join("") : `<p>No item details available.</p>`}
+      </div>
+      <div class="order-price-breakdown">
+        <div><span>Subtotal</span><strong>${formatPrice(subtotal)}</strong></div>
+        <div><span>Delivery</span><strong>${delivery ? formatPrice(delivery) : "Free"}</strong></div>
+        <div><span>Platform fee</span><strong>${formatPrice(platformFee)}</strong></div>
+        <div class="total"><span>Total paid</span><strong>${formatPrice(total)}</strong></div>
+      </div>
+    </section>
+  `;
+}
+
 function renderOrdersPage() {
   nodes.ordersPage.innerHTML = `
     <div class="page-header">
@@ -1459,7 +1506,7 @@ function renderOrdersPage() {
           <article class="order-card">
             <div class="order-head">
               <div>
-                <strong>${escapeHtml(orderDisplayId(order))}</strong>
+                <button class="order-id-button" type="button" data-order-details="${escapeHtml(orderDisplayId(order))}">${escapeHtml(orderDisplayId(order))}</button>
                 <span>${escapeHtml(formatOrderDate(createdAt))}</span>
               </div>
               <b>${formatPrice(order.amountTotal || order.amounts?.total || 0)}</b>
@@ -1469,6 +1516,7 @@ function renderOrdersPage() {
               <span>Estimated Delivery<strong>${escapeHtml(formatOrderDate(estimatedAt, false))}</strong></span>
             </div>
             ${customerTrackingHtml(order)}
+            ${orderDetailsHtml(order)}
             ${orderCancelHtml(order)}
           </article>
         `;
@@ -1827,7 +1875,7 @@ function buildOrder(customer, payment) {
       mode: state.deliveryMode,
       label: state.deliveryMode === "fast" ? "Fast delivery" : "Free delivery",
       fee: totals.delivery,
-      estimatedDays: state.deliveryMode === "fast" ? "Priority dispatch" : "6-7 days"
+      estimatedDays: state.deliveryMode === "fast" ? "Delivery by tomorrow" : "6-7 days"
     },
     payment,
     status: payment.method === "cod" ? "pending_cod" : "paid",
@@ -2148,6 +2196,7 @@ document.addEventListener("click", async (event) => {
   const removeId = target.dataset.remove;
   const cancelOrderId = target.dataset.cancelOrder;
   const infoPageKey = target.dataset.infoPage;
+  const orderDetailsId = target.dataset.orderDetails;
 
   if (filter) {
     setFilter(filter);
@@ -2201,6 +2250,11 @@ document.addEventListener("click", async (event) => {
 
   if (cancelOrderId) {
     await cancelOrder(cancelOrderId);
+  }
+
+  if (orderDetailsId) {
+    state.expandedOrderId = state.expandedOrderId === orderDetailsId ? "" : orderDetailsId;
+    renderOrdersPage();
   }
 
   if (infoPageKey) {
