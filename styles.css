@@ -1206,6 +1206,147 @@ svg {
   color: #202124;
 }
 
+.payu-dropdown {
+  border-bottom: 1px solid #e2e5ea;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  background: #ffffff;
+}
+
+.payu-dropdown[hidden] {
+  display: none !important;
+}
+
+.payu-offer-box {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+  background: #fff;
+}
+
+.payu-offer-box strong {
+  color: #202124;
+  font-size: 0.9rem;
+}
+
+.payu-offer-box span {
+  color: #5f6b7a;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.payu-offer-box button {
+  width: max-content;
+  min-height: 28px;
+  color: #e91e63;
+  background: transparent;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.payu-mode-shell {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 138px minmax(0, 1fr);
+  overflow: hidden;
+  background: white;
+}
+
+.payu-mode-tabs {
+  display: grid;
+  align-content: start;
+  background: #f4f5f7;
+}
+
+.payu-mode-tabs span {
+  min-height: 44px;
+  border-bottom: 1px solid #e2e5ea;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.payu-mode-tabs .active {
+  border-left: 4px solid #ff2d6f;
+  color: #ff2d6f;
+  background: white;
+}
+
+.payu-mode-panel {
+  min-width: 0;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.payu-mode-panel > small {
+  color: #202124;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.payu-mode-panel label {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.payu-mode-panel label + label {
+  border-top: 1px dashed #e5e7eb;
+  padding-top: 10px;
+}
+
+.payu-mode-panel input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue);
+}
+
+.payu-mode-panel span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.payu-mode-panel strong {
+  overflow: hidden;
+  color: #202124;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payu-mode-panel em,
+.payu-mode-panel p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-style: normal;
+  line-height: 1.4;
+}
+
+.payu-mode-panel b {
+  color: #0f766e;
+  font-size: 0.76rem;
+}
+
+.payu-continue-button {
+  min-height: 42px;
+  border-radius: 8px;
+  color: white;
+  background: var(--blue);
+  font-weight: 950;
+}
+
 .payment-gateway-note {
   margin: 12px 0;
   border-radius: 8px;
