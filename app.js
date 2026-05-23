@@ -263,6 +263,7 @@ const nodes = {
   emptyState: document.querySelector("[data-empty-state]"),
   searchForm: document.querySelector("[data-search-form]"),
   searchInput: document.querySelector("[data-search-input]"),
+  supportForm: document.querySelector("[data-support-form]"),
   cartSheet: document.querySelector("[data-cart-sheet]"),
   cartItems: document.querySelector("[data-cart-items]"),
   cartCount: document.querySelector("[data-cart-count]"),
@@ -1748,6 +1749,46 @@ async function verifyOtp() {
   }
 }
 
+async function submitSupportQuery(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const name = String(data.get("name") || "").trim();
+  const phone = phoneDigits(data.get("phone") || state.session?.user?.phone || "");
+  const message = String(data.get("message") || "").trim();
+
+  if (!name) {
+    showToast("Enter your name");
+    form.elements.name?.focus();
+    return;
+  }
+
+  if (phone.length !== 10) {
+    showToast("Enter valid mobile number");
+    form.elements.phone?.focus();
+    return;
+  }
+
+  if (message.length < 5) {
+    showToast("Enter your query");
+    form.elements.message?.focus();
+    return;
+  }
+
+  try {
+    await api.submitSupportQuery({
+      name,
+      phone,
+      message,
+      source: "home_support"
+    });
+    form.reset();
+    showToast("Support query submitted");
+  } catch (error) {
+    showToast(error.message || "Unable to submit query");
+  }
+}
+
 function logout() {
   state.session = null;
   localStorage.removeItem(storageKeys.session);
@@ -2427,6 +2468,8 @@ nodes.searchInput.addEventListener("input", (event) => {
 nodes.checkoutForm.addEventListener("submit", (event) => {
   event.preventDefault();
 });
+
+nodes.supportForm?.addEventListener("submit", submitSupportQuery);
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {

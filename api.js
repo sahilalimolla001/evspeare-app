@@ -377,6 +377,17 @@
     });
   }
 
+  async function submitSupportQuery(query) {
+    if (!hasEndpoint(config.supportEndpoint)) {
+      throw new Error("Support endpoint is not configured");
+    }
+
+    return request(config.supportEndpoint, {
+      method: "POST",
+      body: query
+    });
+  }
+
   window.BazaarGoApi = {
     config,
     fetchProducts,
@@ -388,6 +399,7 @@
     pushOrder,
     fetchOrders,
     cancelOrder,
+    submitSupportQuery,
     hasEndpoint
   };
 })();

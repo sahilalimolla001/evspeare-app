@@ -378,6 +378,7 @@ function publicConfig(req) {
     productsEndpoint: "/api/mobile/products",
     ordersEndpoint: "/api/mobile/orders",
     orderCancelEndpoint: "/api/mobile/orders/cancel",
+    supportEndpoint: "/api/mobile/support",
     otpRequestEndpoint: "/api/mobile/auth/request-otp",
     otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
     paymentCreateEndpoint: "/api/mobile/payments/create",
@@ -1171,6 +1172,53 @@ async function handleVerifyOtp(req, res) {
   send(res, 200, {
     token: signToken(user),
     user
+  });
+}
+
+async function handleSupportQuery(req, res) {
+  const user = verifyToken(req);
+  const body = await readBody(req);
+  const name = String(body.name || user?.name || "").trim();
+  const phone = phoneDigits(body.phone || user?.phone || "");
+  const message = String(body.message || "").trim();
+
+  if (!name) return send(res, 400, { message: "Name is required" });
+  if (phone.length !== 10) return send(res, 400, { message: "Valid mobile number is required" });
+  if (message.length < 5) return send(res, 400, { message: "Query message is required" });
+
+  const query = {
+    id: `SUP-${Date.now()}`,
+    name,
+    phone,
+    message,
+    source: body.source || "mobile_app",
+    user: user || null,
+    createdAt: new Date().toISOString()
+  };
+
+  const dataDir = path.join(rootDir, "data");
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.appendFileSync(path.join(dataDir, "support-queries.jsonl"), `${JSON.stringify(query)}\n`);
+
+  if (process.env.SUPPORT_QUERY_URL) {
+    const response = await fetchWithTimeout(process.env.SUPPORT_QUERY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...(process.env.SUPPORT_QUERY_TOKEN ? { Authorization: process.env.SUPPORT_QUERY_TOKEN } : {})
+      },
+      body: JSON.stringify(query)
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `Support query forward failed with ${response.status}`);
+    }
+  }
+
+  send(res, 200, {
+    submitted: true,
+    id: query.id
   });
 }
 
@@ -2513,6 +2561,7 @@ async function router(req, res) {
 
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/verify-otp") return handleVerifyOtp(req, res);
+    if (req.method === "POST" && url.pathname === "/api/mobile/support") return handleSupportQuery(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/products") return handleProducts(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/images") return handleProductImage(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/orders") return handleCustomerOrders(req, res);

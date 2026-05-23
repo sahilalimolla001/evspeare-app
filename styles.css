@@ -342,9 +342,11 @@ svg {
   padding: 12px;
   display: grid;
   gap: 8px;
-  color: var(--ink);
-  background: white;
-  box-shadow: 0 1px 0 rgba(23, 32, 51, 0.04);
+  grid-column: 1 / -1;
+  color: white;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(10px);
 }
 
 .support-card div {
@@ -353,14 +355,23 @@ svg {
 }
 
 .support-card span {
-  color: var(--blue);
+  display: block;
+  margin: 0;
+  color: var(--yellow);
   font-size: 0.74rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .support-card strong {
+  color: white;
   font-size: 0.96rem;
+}
+
+.support-contact-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .support-card a {
@@ -369,11 +380,37 @@ svg {
   padding: 8px 10px;
   display: flex;
   align-items: center;
-  color: #1d4ed8;
-  background: #eef3ff;
+  color: white;
+  background: rgba(255, 255, 255, 0.14);
   font-size: 0.82rem;
   font-weight: 850;
   text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.support-card input,
+.support-card textarea {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: white;
+  background: rgba(255, 255, 255, 0.12);
+  font: inherit;
+  resize: vertical;
+}
+
+.support-card input::placeholder,
+.support-card textarea::placeholder {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.support-card button {
+  min-height: 38px;
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--yellow);
+  font-weight: 950;
 }
 
 .quick-actions {
