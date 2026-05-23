@@ -211,7 +211,9 @@ const nodes = {
   loginPhone: document.querySelector("[data-login-phone]"),
   loginOtp: document.querySelector("[data-login-otp]"),
   otpPanel: document.querySelector("[data-otp-panel]"),
+  profileName: document.querySelector("[data-profile-name]"),
   profilePhone: document.querySelector("[data-profile-phone]"),
+  profileSavedCount: document.querySelector("[data-profile-saved-count]"),
   checkoutForm: document.querySelector("[data-checkout-form]"),
   checkoutName: document.querySelector("[data-checkout-name]"),
   checkoutPhone: document.querySelector("[data-checkout-phone]"),
@@ -556,6 +558,7 @@ function renderBadges() {
 function renderSession() {
   const loggedIn = isLoggedIn();
   const phone = state.session?.user?.phone || "";
+  const name = state.session?.user?.name || "Ev Speare Customer";
 
   nodes.accountPill.hidden = loggedIn;
   nodes.accountPill.textContent = "Login";
@@ -565,7 +568,9 @@ function renderSession() {
   nodes.authSubtitle.textContent = loggedIn
     ? "You stay logged in until logout"
     : "Login stays active until you logout";
+  nodes.profileName.textContent = loggedIn ? name : "Ev Speare Customer";
   nodes.profilePhone.textContent = loggedIn ? `+91 ${phone}` : "Customer";
+  nodes.profileSavedCount.textContent = state.wishlist.size;
 
   if (loggedIn && !nodes.checkoutPhone.value) {
     nodes.checkoutPhone.value = phone;
@@ -2070,10 +2075,12 @@ document.addEventListener("click", async (event) => {
     renderInfoPage(infoPageKey);
     openPage("info");
     closeDrawer();
+    closeAccount();
   }
 
   switch (target.dataset.action) {
     case "open-cart":
+      closeAccount();
       openCartSheet();
       break;
     case "open-checkout-page":
@@ -2089,6 +2096,7 @@ document.addEventListener("click", async (event) => {
       openPage("orders");
       await loadOrders({ silent: true });
       closeDrawer();
+      closeAccount();
       break;
     case "refresh-orders":
       await loadOrders();
@@ -2137,6 +2145,7 @@ document.addEventListener("click", async (event) => {
       state.locationFormOpen = !hasLocationDetails(savedLocationDetails());
       renderCheckoutPage();
       openPage("checkout");
+      closeAccount();
       break;
     case "edit-location":
       state.locationFormOpen = true;
@@ -2160,6 +2169,7 @@ document.addEventListener("click", async (event) => {
         showToast("Showing wishlist products");
       }
       closeDrawer();
+      closeAccount();
       break;
     case "checkout":
       await placeOrder();
