@@ -369,15 +369,16 @@ function configuredWebsiteOrdersUrl(req) {
 function publicConfig(req) {
   const websiteProductsUrl = configuredWebsiteProductsUrl(req);
   const websiteOrdersUrl = configuredWebsiteOrdersUrl(req);
-  const fastDeliveryPincodes = String(process.env.FAST_DELIVERY_PINCODES || "")
+  const defaultPincodeCoordinates = { 700136: { lat: 22.637112, lng: 88.454125 } };
+  const fastDeliveryPincodes = String(process.env.FAST_DELIVERY_PINCODES || "700136")
     .split(",")
     .map((value) => value.replace(/\D/g, "").slice(0, 6))
     .filter((value) => value.length === 6);
   const pincodeCoordinates = (() => {
     try {
-      return process.env.PINCODE_COORDINATES_JSON ? JSON.parse(process.env.PINCODE_COORDINATES_JSON) : {};
+      return process.env.PINCODE_COORDINATES_JSON ? JSON.parse(process.env.PINCODE_COORDINATES_JSON) : defaultPincodeCoordinates;
     } catch (error) {
-      return {};
+      return defaultPincodeCoordinates;
     }
   })();
   return {
@@ -386,9 +387,9 @@ function publicConfig(req) {
     apiBaseUrl: getOrigin(req),
     websiteProductsUrl,
     websiteOrdersUrl,
-    storePincode: String(process.env.STORE_PINCODE || "").replace(/\D/g, "").slice(0, 6),
-    storeLatitude: process.env.STORE_LATITUDE || "",
-    storeLongitude: process.env.STORE_LONGITUDE || "",
+    storePincode: String(process.env.STORE_PINCODE || "700136").replace(/\D/g, "").slice(0, 6),
+    storeLatitude: process.env.STORE_LATITUDE || "22.637112",
+    storeLongitude: process.env.STORE_LONGITUDE || "88.454125",
     fastDeliveryRadiusKm: Number(process.env.FAST_DELIVERY_RADIUS_KM || 20),
     addressPincodeRadiusKm: Number(process.env.ADDRESS_PINCODE_RADIUS_KM || 25),
     fastDeliveryPincodes,
