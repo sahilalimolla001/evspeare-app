@@ -89,7 +89,7 @@ PAYU_ENV=production
 - `GET /api/mobile/inventory-diagnostics` shows safe warehouse product/inventory mapping samples without exposing API tokens.
 - `GET /api/mobile/images?src=...` serves warehouse product images through the backend, including private `gs://` Google Storage images when `GOOGLE_SERVICE_ACCOUNT_JSON` is configured.
 - `POST /api/mobile/payments/create` creates a PayU hosted checkout form with server-generated SHA-512 hash.
-- `/payment/payu/success` verifies PayU response hash, then pushes paid order to your website.
+- `/payment/payu/success` verifies PayU response hash, confirms transaction status with PayU Verify/Check API, then pushes paid order to your website.
 - `/payment/payu/failure` returns the customer to the app after failed/cancelled payment.
 
 ## Optional Database Mode

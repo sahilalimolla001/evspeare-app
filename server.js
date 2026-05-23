@@ -2209,6 +2209,95 @@ function payuUrl() {
   return "https://test.payu.in/_payment";
 }
 
+function payuPostServiceUrl() {
+  if (process.env.PAYU_ENV === "production") return "https://secure.payu.in/merchant/postservice.php?form=2";
+  return "https://test.payu.in/merchant/postservice.php?form=2";
+}
+
+function payuCommandHash(command, var1) {
+  const key = process.env.PAYU_KEY;
+  const salt = process.env.PAYU_SALT;
+  if (!key || !salt) throw new Error("PAYU_KEY or PAYU_SALT is missing");
+  return crypto.createHash("sha512").update([key, command, var1, salt].join("|")).digest("hex").toLowerCase();
+}
+
+async function payuPostCommand(command, var1) {
+  const body = new URLSearchParams({
+    key: process.env.PAYU_KEY,
+    command,
+    var1,
+    hash: payuCommandHash(command, var1)
+  });
+  const response = await fetchWithTimeout(payuPostServiceUrl(), {
+    method: "POST",
+    headers: {
+      Accept: "application/json,text/plain,*/*",
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body
+  });
+  const text = await response.text();
+  let data = {};
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch (error) {
+    throw new Error(`PayU verify API returned non-JSON response: ${text.slice(0, 120)}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(data.msg || data.message || data.error || `PayU verify API failed with ${response.status}`);
+  }
+
+  return data;
+}
+
+function payuTransactionFromVerification(data, fields) {
+  const details = data?.transaction_details || data?.transactionDetails || data?.details || data?.data;
+  if (details && typeof details === "object" && !Array.isArray(details)) {
+    return details[fields.txnid] || details[fields.mihpayid] || Object.values(details)[0] || details;
+  }
+  return data;
+}
+
+function payuVerificationSucceeded(data, fields) {
+  if (!data || typeof data !== "object") return false;
+  const transaction = payuTransactionFromVerification(data, fields);
+  const status = String(transaction?.status || data.status || "").toLowerCase();
+  const unmapped = String(transaction?.unmappedstatus || transaction?.unmapped_status || "").toLowerCase();
+  const paymentId = String(transaction?.mihpayid || transaction?.payuMoneyId || fields.mihpayid || "");
+  return (
+    (data.status === 1 || data.status === "1" || status === "success") &&
+    (status === "success" || unmapped === "captured" || unmapped === "auth" || Boolean(paymentId))
+  );
+}
+
+async function verifyPayuTransaction(fields) {
+  const attempts = [];
+  if (fields.txnid) attempts.push(["verify_payment", fields.txnid]);
+  if (fields.mihpayid) attempts.push(["check_payment", fields.mihpayid]);
+
+  let lastError = null;
+  for (const [command, var1] of attempts) {
+    try {
+      const data = await payuPostCommand(command, var1);
+      if (payuVerificationSucceeded(data, fields)) {
+        return {
+          verified: true,
+          command,
+          data,
+          transaction: payuTransactionFromVerification(data, fields)
+        };
+      }
+      lastError = new Error(data.msg || data.message || `PayU ${command} did not confirm payment`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("PayU transaction verification failed");
+}
+
 async function handlePaymentCreate(req, res) {
   const user = verifyToken(req);
   if (!user && process.env.ALLOW_UNAUTHENTICATED_ORDERS !== "true") {
@@ -2288,6 +2377,18 @@ async function handlePayuCallback(req, res, success) {
     );
   }
 
+  let payuVerification;
+  try {
+    payuVerification = await verifyPayuTransaction(fields);
+  } catch (error) {
+    console.error("PayU verify API failed", error.message);
+    return sendHtml(
+      res,
+      paymentResultHtml("Payment failed", "PayU could not confirm this transaction.", "/?payment=failure"),
+      400
+    );
+  }
+
   const order = {
     ...pendingOrder,
     payment: {
@@ -2295,8 +2396,9 @@ async function handlePayuCallback(req, res, success) {
       gateway: "payu",
       status: "paid",
       txnid: fields.txnid,
-      mihpayid: fields.mihpayid,
-      mode: fields.mode,
+      mihpayid: fields.mihpayid || payuVerification.transaction?.mihpayid,
+      mode: fields.mode || payuVerification.transaction?.mode,
+      verifyCommand: payuVerification.command,
       verified: true
     },
     status: "paid"
