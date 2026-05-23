@@ -69,6 +69,7 @@ const state = {
   orders: loadJson(storageKeys.orders, []),
   ordersLoading: false,
   checkoutProcessing: false,
+  ordersRefreshTimer: null,
   promoIndex: 0
 };
 
@@ -485,6 +486,7 @@ function openPage(name) {
     panel.classList.toggle("open", active);
     panel.setAttribute("aria-hidden", active ? "false" : "true");
   });
+  syncOrdersAutoRefresh();
 }
 
 function closePages() {
@@ -492,6 +494,7 @@ function closePages() {
     panel.classList.remove("open");
     panel.setAttribute("aria-hidden", "true");
   });
+  syncOrdersAutoRefresh();
 }
 
 function renderPromo() {
@@ -889,31 +892,14 @@ function checkoutItemsPreview(entries) {
 
 function paymentOptionIcon(name) {
   const icons = {
-    upi: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v10H4V7Z" /><path d="M7 10h3v4M14 10h3l-2 4h-3l2-4Z" /></svg>`,
-    card: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v12H3V6Z" /><path d="M3 10h18M7 15h4" /></svg>`,
-    emi: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5V4Z" /><path d="M8 8h8M8 16 16 8M8 12h.01M16 16h.01" /></svg>`,
+    online: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v12H3V6Z" /><path d="M3 10h18M7 15h4" /></svg>`,
     cod: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v11H4V7Z" /><path d="M8 11h7M8 14h4M16 7V5H8v2" /></svg>`,
-    payLater: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" /><path d="M12 3v9h9" /></svg>`
   };
-  return icons[name] || icons.upi;
+  return icons[name] || icons.online;
 }
 
-function paymentOptionRow({ mode, method, icon, title, subtitle, offer, disabled = false }) {
+function paymentOptionRow({ mode, method, icon, title, subtitle }) {
   const selected = state.paymentMode === mode || (!state.paymentMode && state.paymentMethod === method);
-  if (disabled) {
-    return `
-      <div class="payment-option-row unavailable">
-        <span class="payment-option-icon">${paymentOptionIcon(icon)}</span>
-        <div>
-          <strong>${escapeHtml(title)}</strong>
-          ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
-        </div>
-        <b>Unavailable</b>
-        <span class="payment-help">?</span>
-      </div>
-    `;
-  }
-
   return `
     <label class="payment-option-row ${selected ? "selected" : ""}">
       <input class="payment-choice-input" type="radio" name="page-payment" value="${escapeHtml(method)}" data-payment-method data-payment-mode="${escapeHtml(mode)}" ${selected ? "checked" : ""} />
@@ -921,7 +907,6 @@ function paymentOptionRow({ mode, method, icon, title, subtitle, offer, disabled
       <div>
         <strong>${escapeHtml(title)}</strong>
         ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
-        ${offer ? `<em>${escapeHtml(offer)}</em>` : ""}
       </div>
       <svg class="payment-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
     </label>
@@ -977,37 +962,6 @@ function renderCheckoutPage() {
 
     <form class="checkout-form checkout-page-form payment-checkout-form" data-page-checkout-form>
       <section class="payment-list" aria-label="Payment options">
-        <div class="gift-card-row">
-          <span class="gift-card-box"></span>
-          <div>
-            <strong>Use Gift Card</strong>
-            <small>Available Balance Rs. 8</small>
-          </div>
-          <button type="button">Add Gift Card</button>
-        </div>
-        ${paymentOptionRow({
-          mode: "upi",
-          method: "online",
-          icon: "upi",
-          title: "UPI",
-          subtitle: "Pay by any UPI app",
-          offer: "Save upto Rs. 199 - 15 offers available"
-        })}
-        ${paymentOptionRow({
-          mode: "card",
-          method: "online",
-          icon: "card",
-          title: "Credit / Debit / ATM Card",
-          subtitle: "Add and secure cards as per RBI guidelines",
-          offer: "Save upto Rs. 658 - 3 offers available"
-        })}
-        ${paymentOptionRow({
-          mode: "emi",
-          method: "online",
-          icon: "emi",
-          title: "EMI",
-          subtitle: "Ev Speare EMI"
-        })}
         ${paymentOptionRow({
           mode: "cod",
           method: "cod",
@@ -1015,11 +969,11 @@ function renderCheckoutPage() {
           title: "Cash on Delivery"
         })}
         ${paymentOptionRow({
-          mode: "pay3",
+          mode: "online",
           method: "online",
-          icon: "payLater",
-          title: "Pay In 3",
-          disabled: true
+          icon: "online",
+          title: "Pay Online",
+          subtitle: "Redirects to PayU secure checkout"
         })}
       </section>
 
@@ -1773,14 +1727,34 @@ function saveLocalOrder(order) {
   saveJson(storageKeys.orders, state.orders);
 }
 
-async function loadOrders({ silent = false } = {}) {
+function ordersPageIsOpen() {
+  return document.querySelector('[data-page-panel="orders"]')?.classList.contains("open");
+}
+
+function syncOrdersAutoRefresh() {
+  if (!ordersPageIsOpen() || !isLoggedIn()) {
+    if (state.ordersRefreshTimer) {
+      clearInterval(state.ordersRefreshTimer);
+      state.ordersRefreshTimer = null;
+    }
+    return;
+  }
+
+  if (state.ordersRefreshTimer) return;
+  state.ordersRefreshTimer = setInterval(() => {
+    if (!ordersPageIsOpen() || state.ordersLoading) return;
+    loadOrders({ silent: true, background: true });
+  }, 30000);
+}
+
+async function loadOrders({ silent = false, background = false } = {}) {
   if (!isLoggedIn()) {
     if (!silent) openAccount();
     return;
   }
 
   state.ordersLoading = true;
-  renderOrdersPage();
+  if (!background) renderOrdersPage();
   try {
     const response = await api.fetchOrders();
     if (Array.isArray(response.orders)) {

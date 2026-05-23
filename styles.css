@@ -1081,7 +1081,6 @@ svg {
   background: white;
 }
 
-.gift-card-row,
 .checkout-page-form .payment-option-row {
   min-height: 96px;
   border-bottom: 1px solid #e2e5ea;
@@ -1099,21 +1098,18 @@ svg {
   position: relative;
 }
 
-.gift-card-row > div,
 .checkout-page-form .payment-option-row > div {
   min-width: 0;
   display: grid;
   gap: 5px;
 }
 
-.gift-card-row strong,
 .checkout-page-form .payment-option-row strong {
   color: #202124;
   font-size: 1rem;
   line-height: 1.18;
 }
 
-.gift-card-row small,
 .checkout-page-form .payment-option-row small {
   color: #767b84;
   font-size: 0.86rem;
@@ -1121,15 +1117,6 @@ svg {
   line-height: 1.25;
 }
 
-.checkout-page-form .payment-option-row em {
-  color: #188038;
-  font-size: 0.82rem;
-  font-style: normal;
-  font-weight: 760;
-  line-height: 1.25;
-}
-
-.gift-card-box,
 .payment-option-icon {
   width: 28px;
   height: 28px;
@@ -1139,24 +1126,10 @@ svg {
   color: #111827;
 }
 
-.gift-card-box {
-  border: 3px solid #6f747b;
-  border-radius: 5px;
-}
-
 .payment-option-icon svg {
   width: 26px;
   height: 26px;
   stroke-width: 1.8;
-}
-
-.gift-card-row button {
-  min-height: 34px;
-  color: #315fb4;
-  background: transparent;
-  font-size: 0.86rem;
-  font-weight: 900;
-  white-space: nowrap;
 }
 
 .checkout-page-form .payment-choice-input {
@@ -1177,33 +1150,6 @@ svg {
   width: 22px;
   height: 22px;
   color: #202124;
-}
-
-.payment-option-row.unavailable {
-  grid-template-columns: 58px minmax(0, 1fr) auto 24px;
-  color: #9aa0a6;
-}
-
-.payment-option-row.unavailable strong,
-.payment-option-row.unavailable .payment-option-icon,
-.payment-option-row.unavailable b {
-  color: #9aa0a6;
-}
-
-.payment-option-row.unavailable b {
-  font-size: 0.86rem;
-}
-
-.payment-help {
-  width: 22px;
-  height: 22px;
-  border: 2px solid #8d939c;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  color: #7b818a;
-  font-size: 0.8rem;
-  font-weight: 900;
 }
 
 .payment-gateway-note {

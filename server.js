@@ -1718,6 +1718,87 @@ function trackingStage(status) {
   return "placed";
 }
 
+function orderTrackingId(order = {}) {
+  const direct = firstPresent(order, [
+    "orderId",
+    "order_id",
+    "orderNumber",
+    "order_number",
+    "number",
+    "id",
+    "reference",
+    "referenceId",
+    "txnid"
+  ]);
+  if (direct) return direct;
+
+  const nested = firstPresent(order, ["order", "details", "payload"]);
+  if (nested && typeof nested === "object") return orderTrackingId(nested);
+  return null;
+}
+
+function normalizeTrackingStep(step = {}) {
+  const status = firstPresent(step, ["status", "key", "stage", "state", "name", "label", "title"]);
+  return {
+    key: trackingStage(status),
+    label: firstPresent(step, ["label", "title", "name", "status", "stage"]) || "Order update",
+    status: status || "",
+    done: firstPresent(step, ["done", "completed", "isDone", "is_done", "success"]) === false ? false : Boolean(
+      firstPresent(step, ["done", "completed", "isDone", "is_done", "completedAt", "completed_at", "date", "updatedAt", "updated_at"])
+    ),
+    date: firstPresent(step, ["date", "createdAt", "created_at", "completedAt", "completed_at", "updatedAt", "updated_at", "time", "timestamp"]) || ""
+  };
+}
+
+function trackingStepsFromPayload(source = {}) {
+  const rawSteps = firstPresent(source, ["steps", "events", "history", "timeline", "updates", "trackingUpdates"]);
+  if (!Array.isArray(rawSteps)) return null;
+  return rawSteps.map(normalizeTrackingStep).filter((step) => step.label || step.status);
+}
+
+function normalizeWarehouseTracking(payload, orderId) {
+  if (!payload || typeof payload !== "object") return null;
+
+  const rows = arrayFromPayload(payload, ["orders", "items", "data", "results", "records", "tracking"]);
+  let source = payload;
+  if (rows.length) {
+    const normalizedId = String(orderId || "").toLowerCase();
+    source = rows.find((row) => {
+      const rowId = orderTrackingId(row);
+      return rowId && String(rowId).toLowerCase() === normalizedId;
+    }) || rows[0];
+  }
+
+  const nested = firstPresent(source, ["tracking", "shipment", "delivery", "fulfillment"]);
+  const tracking = nested && typeof nested === "object" && !Array.isArray(nested)
+    ? { ...source, ...nested }
+    : source;
+  const status = firstPresent(tracking, [
+    "status",
+    "trackingStatus",
+    "tracking_status",
+    "orderStatus",
+    "order_status",
+    "shipmentStatus",
+    "shipment_status",
+    "deliveryStatus",
+    "delivery_status",
+    "fulfillmentStatus",
+    "fulfillment_status",
+    "stage",
+    "state"
+  ]);
+  const label = firstPresent(tracking, ["label", "statusLabel", "status_label", "message", "description", "title"]) || status;
+  const steps = trackingStepsFromPayload(tracking);
+
+  return {
+    ...tracking,
+    ...(status ? { status } : {}),
+    ...(label ? { label } : {}),
+    ...(steps?.length ? { steps } : {})
+  };
+}
+
 function firstDate(...values) {
   for (const value of values) {
     const date = validDate(value);
@@ -1749,19 +1830,28 @@ function trackingSteps(status, order = {}, tracking = {}) {
       key: "shipped",
       label: "Shipped",
       done: activeIndex >= 1,
-      date: (firstDate(tracking.shippedAt, order.shippedAt) || addDays(createdAt, 2)).toISOString()
+      date: (firstDate(tracking.shippedAt, tracking.shipped_at, order.shippedAt, order.shipped_at) || addDays(createdAt, 2)).toISOString()
     },
     {
       key: "in_transit",
       label: "In Transit",
       done: activeIndex >= 2,
-      date: (firstDate(tracking.inTransitAt, tracking.outForDeliveryAt, order.inTransitAt, order.outForDeliveryAt) || addDays(createdAt, 4)).toISOString()
+      date: (firstDate(
+        tracking.inTransitAt,
+        tracking.in_transit_at,
+        tracking.outForDeliveryAt,
+        tracking.out_for_delivery_at,
+        order.inTransitAt,
+        order.in_transit_at,
+        order.outForDeliveryAt,
+        order.out_for_delivery_at
+      ) || addDays(createdAt, 4)).toISOString()
     },
     {
       key: "delivered",
       label: "Delivered",
       done: activeIndex >= 3,
-      date: (firstDate(tracking.deliveredAt, order.deliveredAt) || estimatedAt).toISOString()
+      date: (firstDate(tracking.deliveredAt, tracking.delivered_at, order.deliveredAt, order.delivered_at) || estimatedAt).toISOString()
     }
   ];
 }
@@ -1786,11 +1876,19 @@ async function pushOrderToWarehouse(order) {
   return data;
 }
 
-async function fetchWarehouseTracking(orderId) {
+async function fetchWarehouseTracking(order) {
   if (!process.env.WAREHOUSE_TRACKING_URL) return null;
 
-  const url = new URL(process.env.WAREHOUSE_TRACKING_URL);
+  const orderId = orderTrackingId(order);
+  if (!orderId) return null;
+
+  const encodedId = encodeURIComponent(String(orderId));
+  const endpoint = process.env.WAREHOUSE_TRACKING_URL
+    .replace(/\{orderId\}/g, encodedId)
+    .replace(/:orderId\b/g, encodedId);
+  const url = new URL(endpoint);
   url.searchParams.set("orderId", orderId);
+  url.searchParams.set("order_id", orderId);
 
   const headers = { Accept: "application/json" };
   if (process.env.WAREHOUSE_API_TOKEN) headers.Authorization = process.env.WAREHOUSE_API_TOKEN;
@@ -1799,7 +1897,7 @@ async function fetchWarehouseTracking(orderId) {
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};
   if (!response.ok) throw new Error(data.message || data.error || "Warehouse tracking failed");
-  return data;
+  return normalizeWarehouseTracking(data, orderId);
 }
 
 async function fetchWebsiteCustomerOrders(req, phone) {
@@ -1932,7 +2030,7 @@ async function handleCustomerOrders(req, res) {
     };
 
     try {
-      const warehouseTracking = await fetchWarehouseTracking(order.orderId);
+      const warehouseTracking = await fetchWarehouseTracking(order);
       if (warehouseTracking) tracking = { ...tracking, ...warehouseTracking };
     } catch (error) {
       tracking = { ...tracking, error: error.message };
