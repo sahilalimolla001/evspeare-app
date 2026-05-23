@@ -848,21 +848,23 @@ function renderGatewayNote() {
   const hasKey = Boolean(appConfig.paymentGateway?.keyId);
   const hasPaymentServer = api?.hasEndpoint?.(appConfig.paymentCreateEndpoint);
   const totals = cartTotals();
+  let message = "";
 
   if (totals.total > codMaxOrderAmount && state.paymentMethod === "cod") {
-    nodes.gatewayNote.textContent = "COD not available above Rs. 1,000. Pay online to place order.";
+    message = "COD not available above Rs. 1,000. Pay online to place order.";
   } else if (state.paymentMethod === "cod") {
-    nodes.gatewayNote.textContent = "COD order will be pushed to your website as pending payment.";
+    message = "";
   } else if (hasKey && hasPaymentServer) {
-    nodes.gatewayNote.textContent = "Online payment will open PayU secure checkout.";
+    message = "Online payment will open PayU secure checkout.";
   } else if (appConfig.demo?.allowDemoPayment) {
-    nodes.gatewayNote.textContent = "Demo online payment is enabled. Configure gateway keys before going live.";
+    message = "Demo online payment is enabled. Configure gateway keys before going live.";
   } else {
-    nodes.gatewayNote.textContent = "Online payment needs PayU key/salt on Railway.";
+    message = "Online payment needs PayU key/salt on Railway.";
   }
 
-  document.querySelectorAll("[data-page-gateway-note]").forEach((node) => {
-    node.textContent = nodes.gatewayNote.textContent;
+  [nodes.gatewayNote, ...document.querySelectorAll("[data-page-gateway-note]")].filter(Boolean).forEach((node) => {
+    node.textContent = message;
+    node.hidden = !message;
   });
 }
 
