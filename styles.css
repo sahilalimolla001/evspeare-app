@@ -1346,33 +1346,6 @@ svg {
   width: 100%;
 }
 
-.checkout-trust-note {
-  min-height: 136px;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 12px;
-  color: #989da5;
-  text-align: center;
-}
-
-.checkout-trust-note strong {
-  max-width: 280px;
-  font-size: 1.3rem;
-  line-height: 1.35;
-}
-
-.checkout-trust-note span {
-  width: 48px;
-  height: 48px;
-  border: 3px solid #c8ccd2;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: 1.6rem;
-  line-height: 1;
-}
-
 .checkout-hero {
   margin-bottom: 12px;
   border-radius: 8px;
@@ -1598,6 +1571,58 @@ svg {
   grid-template-columns: 48px 1fr auto;
   align-items: center;
   gap: 10px;
+}
+
+.delivery-options {
+  display: grid;
+  gap: 8px;
+}
+
+.delivery-options label {
+  min-height: 72px;
+  border: 1px solid #e2e5ea;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  background: white;
+  cursor: pointer;
+}
+
+.delivery-options label.selected {
+  border-color: rgba(40, 116, 240, 0.45);
+  box-shadow: inset 4px 0 0 var(--blue);
+}
+
+.delivery-options input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue);
+}
+
+.delivery-options span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.delivery-options strong {
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.delivery-options small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 760;
+}
+
+.delivery-options b {
+  color: #0f766e;
+  font-size: 0.84rem;
 }
 
 .checkout-item img {

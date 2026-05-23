@@ -242,6 +242,7 @@ const state = {
   pendingPhone: "",
   paymentMethod: "cod",
   paymentMode: "cod",
+  deliveryMode: "free",
   syncing: false,
   selectedProductId: "",
   savedLocation: loadJson(storageKeys.location, null),
@@ -570,7 +571,7 @@ function cartTotals() {
   const itemCount = entries.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = entries.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const platformFee = itemCount ? 9 : 0;
-  const delivery = 0;
+  const delivery = state.deliveryMode === "fast" ? fastDeliveryFee(subtotal) : 0;
 
   return {
     entries,
@@ -580,6 +581,37 @@ function cartTotals() {
     delivery,
     total: subtotal + platformFee + delivery
   };
+}
+
+function fastDeliveryFee(amount) {
+  if (!amount) return 0;
+  if (amount < 2000) return 99;
+  if (amount <= 10000) return 199;
+  return 799;
+}
+
+function deliveryOptionsHtml(totals) {
+  const fastFee = fastDeliveryFee(totals.subtotal);
+  return `
+    <section class="delivery-options" aria-label="Delivery options">
+      <label class="${state.deliveryMode === "free" ? "selected" : ""}">
+        <input type="radio" name="delivery-mode" value="free" data-delivery-mode ${state.deliveryMode === "free" ? "checked" : ""} />
+        <span>
+          <strong>Free delivery</strong>
+          <small>Standard delivery in 6-7 days</small>
+        </span>
+        <b>Free</b>
+      </label>
+      <label class="${state.deliveryMode === "fast" ? "selected" : ""}">
+        <input type="radio" name="delivery-mode" value="fast" data-delivery-mode ${state.deliveryMode === "fast" ? "checked" : ""} />
+        <span>
+          <strong>Fast delivery</strong>
+          <small>Priority dispatch with extra delivery charge</small>
+        </span>
+        <b>${formatPrice(fastFee)}</b>
+      </label>
+    </section>
+  `;
 }
 
 function renderCart() {
@@ -1241,21 +1273,17 @@ function renderCheckoutPage() {
           <span>Order summary</span>
           <h3>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"}</h3>
         </div>
-        <b>Free delivery</b>
+        <b>${state.deliveryMode === "fast" ? "Fast delivery" : "Free delivery"}</b>
       </div>
+      ${deliveryOptionsHtml(totals)}
       ${checkoutItemsPreview(totals.entries)}
       <div class="checkout-price-panel">
         <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
-        <div><span>Delivery</span><strong>Free</strong></div>
+        <div><span>Delivery</span><strong>${totals.delivery ? formatPrice(totals.delivery) : "Free"}</strong></div>
         <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
         <div class="total"><span>Total</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
       </div>
     </section>
-
-    <div class="checkout-trust-note">
-      <strong>35 Crore happy customers and counting!</strong>
-      <span>:)</span>
-    </div>
 
     <div class="checkout-sticky-bar payment-sticky-bar">
       <div><span>Total Amount</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
@@ -1795,6 +1823,12 @@ function buildOrder(customer, payment) {
       platformFee: totals.platformFee,
       total: totals.total
     },
+    delivery: {
+      mode: state.deliveryMode,
+      label: state.deliveryMode === "fast" ? "Fast delivery" : "Free delivery",
+      fee: totals.delivery,
+      estimatedDays: state.deliveryMode === "fast" ? "Priority dispatch" : "6-7 days"
+    },
     payment,
     status: payment.method === "cod" ? "pending_cod" : "paid",
     createdAt: createdAt.toISOString(),
@@ -2304,6 +2338,13 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("change", async (event) => {
+  if (event.target.matches("[data-delivery-mode]")) {
+    state.deliveryMode = event.target.value === "fast" ? "fast" : "free";
+    renderCheckoutPage();
+    renderCart();
+    return;
+  }
+
   if (!event.target.matches("[data-payment-method]")) return;
   if (event.target.disabled) return;
   state.paymentMethod = event.target.value;
