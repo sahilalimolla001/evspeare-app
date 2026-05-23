@@ -28,6 +28,115 @@ const customerTrackingStages = [
   { key: "delivered", label: "Delivered", offsetDays: deliveryEstimateDays, icon: "check" }
 ];
 
+const infoPages = {
+  terms: {
+    title: "Terms and Conditions",
+    subtitle: "Use of Ev Speare",
+    sections: [
+      {
+        heading: "Order acceptance",
+        body: "Orders placed in the app are subject to product availability, stock verification, address validation, and successful payment where online payment is selected."
+      },
+      {
+        heading: "Product information",
+        body: "Prices, images, stock, and product details are synced from the live catalog. Minor differences can occur because parts may be updated by warehouse or supplier systems."
+      },
+      {
+        heading: "Customer responsibility",
+        body: "Customers should provide accurate name, mobile number, delivery address, and vehicle/part compatibility details before placing an order."
+      },
+      {
+        heading: "Changes and cancellation",
+        body: "Cancellation is available before the order is shipped. After dispatch or out-for-delivery, cancellation may not be available from the app."
+      }
+    ]
+  },
+  shipping: {
+    title: "Shipping Policy",
+    subtitle: "Delivery and dispatch",
+    sections: [
+      {
+        heading: "Dispatch",
+        body: "Orders are sent to the warehouse after checkout. Dispatch time depends on stock confirmation, payment status, packaging, and courier pickup."
+      },
+      {
+        heading: "Delivery timeline",
+        body: "Estimated delivery is generally shown in the order tracking section. Remote or service-limited locations can take longer."
+      },
+      {
+        heading: "Tracking",
+        body: "Live order updates are fetched from the connected warehouse or website using the order id. Tracking stages update as the warehouse status changes."
+      },
+      {
+        heading: "Address issues",
+        body: "If the address or phone number is incomplete, delivery may be delayed or returned by the courier."
+      }
+    ]
+  },
+  returns: {
+    title: "Return Policy",
+    subtitle: "Returns and replacement",
+    sections: [
+      {
+        heading: "Return eligibility",
+        body: "Returns are accepted only for eligible items that are unused, undamaged, and returned with original packaging, labels, and invoice where required."
+      },
+      {
+        heading: "Damaged or wrong item",
+        body: "If you receive a damaged, defective, or wrong product, raise a request with order details and clear photos as soon as possible."
+      },
+      {
+        heading: "Non-returnable cases",
+        body: "Used electrical parts, fitted parts, damaged packaging, missing accessories, and products ordered with wrong compatibility details may not be returnable."
+      },
+      {
+        heading: "Inspection",
+        body: "Refund or replacement is processed after the returned item is inspected and approved by the seller or warehouse team."
+      }
+    ]
+  },
+  payments: {
+    title: "Payment Policy",
+    subtitle: "COD and online payments",
+    sections: [
+      {
+        heading: "Payment options",
+        body: "Ev Speare supports Cash on Delivery and online payment through PayU secure checkout where available."
+      },
+      {
+        heading: "Online payment",
+        body: "For online payment, the app redirects to PayU. Orders are confirmed after successful payment verification."
+      },
+      {
+        heading: "Failed payment",
+        body: "If payment fails or is cancelled, the order is not confirmed as paid. You can retry checkout or choose another available option."
+      },
+      {
+        heading: "COD",
+        body: "COD orders are pushed as pending payment and the payable amount must be paid at delivery, subject to availability and service rules."
+      }
+    ]
+  },
+  about: {
+    title: "About Ev Speare",
+    subtitle: "EV spare parts commerce",
+    sections: [
+      {
+        heading: "What we do",
+        body: "Ev Speare helps customers browse EV spare parts, check live warehouse stock, place orders, pay online or by COD, and track order progress."
+      },
+      {
+        heading: "Live catalog",
+        body: "Product listings, stock, and pricing are synced from connected website and warehouse systems so customers can shop from current availability."
+      },
+      {
+        heading: "Order support",
+        body: "Customers can view order status, follow shipment progress, and request cancellation before dispatch from the Orders section."
+      }
+    ]
+  }
+};
+
 const promoSlides = [
   {
     kicker: "Warehouse direct",
@@ -114,6 +223,7 @@ const nodes = {
   cartPage: document.querySelector("[data-cart-page]"),
   checkoutPage: document.querySelector("[data-checkout-page]"),
   ordersPage: document.querySelector("[data-orders-page]"),
+  infoPage: document.querySelector("[data-info-page-content]"),
   promoKicker: document.querySelector("[data-promo-kicker]"),
   promoTitle: document.querySelector("[data-promo-title]"),
   promoCopy: document.querySelector("[data-promo-copy]"),
@@ -1245,6 +1355,27 @@ function renderOrdersPage() {
   `;
 }
 
+function renderInfoPage(pageKey) {
+  const page = infoPages[pageKey] || infoPages.about;
+  nodes.infoPage.innerHTML = `
+    <div class="page-header">
+      <button class="icon-button" type="button" data-action="close-page" aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+      </button>
+      <div><h2>${escapeHtml(page.title)}</h2><span>${escapeHtml(page.subtitle)}</span></div>
+      <span></span>
+    </div>
+    <div class="info-page-body">
+      ${page.sections.map((section) => `
+        <section class="info-section">
+          <h3>${escapeHtml(section.heading)}</h3>
+          <p>${escapeHtml(section.body)}</p>
+        </section>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderAll() {
   renderPromo();
   renderCategories();
@@ -1258,6 +1389,7 @@ function renderAll() {
   renderCartPage();
   renderCheckoutPage();
   renderOrdersPage();
+  renderInfoPage("about");
 }
 
 function setFilter(filter) {
@@ -1878,6 +2010,7 @@ document.addEventListener("click", async (event) => {
   const decreaseId = target.dataset.decrease;
   const removeId = target.dataset.remove;
   const cancelOrderId = target.dataset.cancelOrder;
+  const infoPageKey = target.dataset.infoPage;
 
   if (filter) {
     setFilter(filter);
@@ -1931,6 +2064,12 @@ document.addEventListener("click", async (event) => {
 
   if (cancelOrderId) {
     await cancelOrder(cancelOrderId);
+  }
+
+  if (infoPageKey) {
+    renderInfoPage(infoPageKey);
+    openPage("info");
+    closeDrawer();
   }
 
   switch (target.dataset.action) {

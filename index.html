@@ -185,9 +185,16 @@
         <button type="button" data-filter-chip="Lights">Lights</button>
         <button type="button" data-action="show-wishlist">Wishlist</button>
         <button type="button" data-action="open-account">Login and profile</button>
-        <button type="button" data-action="refresh-products">Import products</button>
         <button type="button" data-action="open-cart">Cart and checkout</button>
         <button type="button" data-action="open-orders">Orders and tracking</button>
+        <section class="drawer-about-section" aria-label="About and policies">
+          <span>About</span>
+          <button type="button" data-info-page="terms">Terms and conditions</button>
+          <button type="button" data-info-page="shipping">Shipping policy</button>
+          <button type="button" data-info-page="returns">Return policy</button>
+          <button type="button" data-info-page="payments">Payment policy</button>
+          <button type="button" data-info-page="about">About Ev Speare</button>
+        </section>
       </div>
     </aside>
 
@@ -205,6 +212,10 @@
 
     <aside class="page-panel" data-page-panel="orders" aria-hidden="true">
       <section class="page-card" data-orders-page></section>
+    </aside>
+
+    <aside class="page-panel" data-page-panel="info" aria-hidden="true">
+      <section class="page-card" data-info-page-content></section>
     </aside>
 
     <aside class="cart-sheet" data-cart-sheet aria-hidden="true">
