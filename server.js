@@ -1081,10 +1081,12 @@ function publicDiagnostics(req) {
       productsUrlSource: process.env.WEBSITE_PRODUCTS_URL ? "env" : websiteProductsUrl ? "config.js" : null,
       ordersUrlSet: Boolean(websiteOrdersUrl),
       ordersUrlSource: process.env.WEBSITE_ORDERS_URL ? "env" : websiteOrdersUrl ? "derived" : null,
+      trackingUrlSet: Boolean(process.env.WEBSITE_TRACKING_URL || process.env.WEBSITE_ORDER_TRACKING_URL),
       apiTokenSet: websiteCredentialSet,
       loginCredentialsSet: websiteLoginSet,
       productsUrl: safeUrlSummary(websiteProductsUrl),
       ordersUrl: safeUrlSummary(websiteOrdersUrl),
+      trackingUrl: safeUrlSummary(process.env.WEBSITE_TRACKING_URL || process.env.WEBSITE_ORDER_TRACKING_URL),
       productsUrlSelfReference: isSelfReference(req, websiteProductsUrl, "/api/mobile/products"),
       ordersUrlSelfReference: isSelfReference(req, websiteOrdersUrl, "/api/mobile/orders")
     },
@@ -1805,12 +1807,80 @@ function orderTrackingId(order = {}) {
   return null;
 }
 
+function trackingAwbNumber(source = {}) {
+  const sources = [
+    source,
+    source.tracking,
+    source.shipment,
+    source.delivery,
+    source.fulfillment,
+    source.courier,
+    source.logistics
+  ].filter((item) => item && typeof item === "object" && !Array.isArray(item));
+
+  for (const item of sources) {
+    const value = firstPresent(item, [
+      "awb",
+      "awbNo",
+      "awb_no",
+      "awbNumber",
+      "awb_number",
+      "airwayBill",
+      "airway_bill",
+      "waybill",
+      "waybillNo",
+      "waybill_no",
+      "waybillNumber",
+      "waybill_number",
+      "trackingNumber",
+      "tracking_number",
+      "trackingId",
+      "tracking_id",
+      "consignmentNo",
+      "consignment_no",
+      "consignmentNumber",
+      "consignment_number"
+    ]);
+    if (value) return String(value).trim();
+  }
+
+  return "";
+}
+
 function normalizeTrackingStep(step = {}) {
   const status = firstPresent(step, ["status", "key", "stage", "state", "name", "label", "title"]);
+  const label = firstPresent(step, ["label", "title", "name", "status", "stage"]) || "Order update";
+  const activity = firstPresent(step, [
+    "activity",
+    "message",
+    "description",
+    "event",
+    "eventDescription",
+    "event_description",
+    "statusDescription",
+    "status_description",
+    "scan",
+    "remarks",
+    "remark",
+    "details"
+  ]) || label;
   return {
     key: trackingStage(status),
-    label: firstPresent(step, ["label", "title", "name", "status", "stage"]) || "Order update",
+    label,
+    activity,
     status: status || "",
+    location: firstPresent(step, [
+      "location",
+      "scanLocation",
+      "scan_location",
+      "city",
+      "hub",
+      "facility",
+      "branch",
+      "place",
+      "currentLocation",
+      "current_location"
+    ]) || "",
     done: firstPresent(step, ["done", "completed", "isDone", "is_done", "success"]) === false ? false : Boolean(
       firstPresent(step, ["done", "completed", "isDone", "is_done", "completedAt", "completed_at", "date", "updatedAt", "updated_at"])
     ),
@@ -1824,16 +1894,19 @@ function trackingStepsFromPayload(source = {}) {
   return rawSteps.map(normalizeTrackingStep).filter((step) => step.label || step.status);
 }
 
-function normalizeWarehouseTracking(payload, orderId) {
+function normalizeWarehouseTracking(payload, orderId, awbNumber = "") {
   if (!payload || typeof payload !== "object") return null;
 
   const rows = arrayFromPayload(payload, ["orders", "items", "data", "results", "records", "tracking"]);
   let source = payload;
   if (rows.length) {
     const normalizedId = String(orderId || "").toLowerCase();
+    const normalizedAwb = String(awbNumber || "").toLowerCase();
     source = rows.find((row) => {
       const rowId = orderTrackingId(row);
-      return rowId && String(rowId).toLowerCase() === normalizedId;
+      const rowAwb = trackingAwbNumber(row);
+      return (rowId && String(rowId).toLowerCase() === normalizedId) ||
+        (rowAwb && String(rowAwb).toLowerCase() === normalizedAwb);
     }) || rows[0];
   }
 
@@ -1858,12 +1931,14 @@ function normalizeWarehouseTracking(payload, orderId) {
   ]);
   const label = firstPresent(tracking, ["label", "statusLabel", "status_label", "message", "description", "title"]) || status;
   const steps = trackingStepsFromPayload(tracking);
+  const resolvedAwbNumber = trackingAwbNumber(tracking) || trackingAwbNumber(source) || awbNumber;
 
   return {
     ...tracking,
     ...(status ? { status } : {}),
     ...(label ? { label } : {}),
-    ...(steps?.length ? { steps } : {})
+    ...(resolvedAwbNumber ? { awbNumber: resolvedAwbNumber } : {}),
+    ...(steps?.length ? { steps, timeline: steps } : {})
   };
 }
 
@@ -1944,28 +2019,71 @@ async function pushOrderToWarehouse(order) {
   return data;
 }
 
-async function fetchWarehouseTracking(order) {
-  if (!process.env.WAREHOUSE_TRACKING_URL) return null;
-
+async function fetchTrackingFromEndpoint(endpoint, headers, order, label) {
   const orderId = orderTrackingId(order);
-  if (!orderId) return null;
+  const awbNumber = trackingAwbNumber(order);
+  if (!orderId && !awbNumber) return null;
 
-  const encodedId = encodeURIComponent(String(orderId));
-  const endpoint = process.env.WAREHOUSE_TRACKING_URL
+  const encodedId = encodeURIComponent(String(orderId || ""));
+  const encodedAwb = encodeURIComponent(String(awbNumber || ""));
+  const resolvedEndpoint = endpoint
     .replace(/\{orderId\}/g, encodedId)
-    .replace(/:orderId\b/g, encodedId);
-  const url = new URL(endpoint);
-  url.searchParams.set("orderId", orderId);
-  url.searchParams.set("order_id", orderId);
-
-  const headers = { Accept: "application/json" };
-  if (process.env.WAREHOUSE_API_TOKEN) headers.Authorization = process.env.WAREHOUSE_API_TOKEN;
+    .replace(/:orderId\b/g, encodedId)
+    .replace(/\{awb\}/g, encodedAwb)
+    .replace(/:awb\b/g, encodedAwb);
+  const url = new URL(resolvedEndpoint);
+  if (orderId) {
+    url.searchParams.set("orderId", orderId);
+    url.searchParams.set("order_id", orderId);
+  }
+  if (awbNumber) {
+    url.searchParams.set("awb", awbNumber);
+    url.searchParams.set("awb_number", awbNumber);
+  }
 
   const response = await fetchWithTimeout(url.toString(), { headers });
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(data.message || data.error || "Warehouse tracking failed");
-  return normalizeWarehouseTracking(data, orderId);
+  if (!response.ok) throw new Error(data.message || data.error || `${label} failed`);
+  return normalizeWarehouseTracking(data, orderId, awbNumber);
+}
+
+async function fetchWebsiteTracking(req, order) {
+  const endpoint = process.env.WEBSITE_TRACKING_URL || process.env.WEBSITE_ORDER_TRACKING_URL || "";
+  if (!endpoint) return null;
+  if (req && isSelfReference(req, endpoint, "/api/mobile/orders")) return null;
+
+  const headers = await websiteRequestHeaders(req, endpoint);
+  return fetchTrackingFromEndpoint(endpoint, headers, order, "Website tracking");
+}
+
+async function fetchWarehouseTracking(order) {
+  if (!process.env.WAREHOUSE_TRACKING_URL) return null;
+  return fetchTrackingFromEndpoint(process.env.WAREHOUSE_TRACKING_URL, warehouseHeaders(), order, "Warehouse tracking");
+}
+
+async function fetchLiveTracking(req, order) {
+  const merged = {};
+  const errors = [];
+
+  try {
+    const websiteTracking = await fetchWebsiteTracking(req, order);
+    if (websiteTracking) Object.assign(merged, websiteTracking);
+  } catch (error) {
+    errors.push(error.message);
+  }
+
+  try {
+    const warehouseTracking = await fetchWarehouseTracking(order);
+    if (warehouseTracking) Object.assign(merged, warehouseTracking);
+  } catch (error) {
+    errors.push(error.message);
+  }
+
+  return {
+    tracking: Object.keys(merged).length ? merged : null,
+    error: errors.filter(Boolean).join("; ")
+  };
 }
 
 async function fetchWebsiteCustomerOrders(req, phone) {
@@ -2026,12 +2144,9 @@ async function handleOrderCancel(req, res) {
   if (!order) return send(res, 404, { message: "Order not found" });
 
   let tracking = order.tracking || { status: order.status || "placed" };
-  try {
-    const warehouseTracking = await fetchWarehouseTracking(order);
-    if (warehouseTracking) tracking = { ...tracking, ...warehouseTracking };
-  } catch (error) {
-    tracking = { ...tracking, error: error.message };
-  }
+  const liveTracking = await fetchLiveTracking(req, order);
+  if (liveTracking.tracking) tracking = { ...tracking, ...liveTracking.tracking };
+  if (liveTracking.error) tracking = { ...tracking, error: liveTracking.error };
 
   const stage = trackingStage(tracking.status || order.status);
   if (stage !== "placed") {
@@ -2193,12 +2308,9 @@ async function handleCustomerOrders(req, res) {
       label: order.status || "Order placed"
     };
 
-    try {
-      const warehouseTracking = await fetchWarehouseTracking(order);
-      if (warehouseTracking) tracking = { ...tracking, ...warehouseTracking };
-    } catch (error) {
-      tracking = { ...tracking, error: error.message };
-    }
+    const liveTracking = await fetchLiveTracking(req, order);
+    if (liveTracking.tracking) tracking = { ...tracking, ...liveTracking.tracking };
+    if (liveTracking.error) tracking = { ...tracking, error: liveTracking.error };
 
     const estimatedAt = orderEstimatedDeliveryDate(order, tracking);
     const status = tracking.status || order.status || "placed";
@@ -2213,6 +2325,7 @@ async function handleCustomerOrders(req, res) {
       },
       tracking: {
         ...tracking,
+        awbNumber: tracking.awbNumber || trackingAwbNumber(tracking) || trackingAwbNumber(order) || "",
         estimatedDays: tracking.estimatedDays || deliveryEstimateDays,
         estimatedDeliveryAt: estimatedAt.toISOString(),
         steps: tracking.steps || trackingSteps(status, order, tracking)

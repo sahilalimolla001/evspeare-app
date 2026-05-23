@@ -403,6 +403,66 @@ function formatOrderDate(value, includeYear = true) {
   });
 }
 
+function formatTrackingDateTime(value) {
+  const date = validDate(value);
+  if (!date) return "";
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function firstValue(item, names) {
+  for (const name of names) {
+    if (!item || !Object.prototype.hasOwnProperty.call(item, name)) continue;
+    const value = item[name];
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+  return "";
+}
+
+function orderAwbNumber(order = {}) {
+  const sources = [
+    order,
+    order.tracking,
+    order.shipment,
+    order.delivery,
+    order.fulfillment,
+    order.courier,
+    order.logistics
+  ].filter((item) => item && typeof item === "object" && !Array.isArray(item));
+
+  for (const source of sources) {
+    const value = firstValue(source, [
+      "awb",
+      "awbNo",
+      "awb_no",
+      "awbNumber",
+      "awb_number",
+      "airwayBill",
+      "airway_bill",
+      "waybill",
+      "waybillNo",
+      "waybill_no",
+      "waybillNumber",
+      "waybill_number",
+      "trackingNumber",
+      "tracking_number",
+      "trackingId",
+      "tracking_id",
+      "consignmentNo",
+      "consignment_no",
+      "consignmentNumber",
+      "consignment_number"
+    ]);
+    if (value) return String(value).trim();
+  }
+
+  return "";
+}
+
 function orderDisplayId(order) {
   return order.orderId || order.order_id || order.id || "Order";
 }
@@ -1489,6 +1549,104 @@ function stageDisplayDate(order, stage) {
   return addDays(createdAt, stage.offsetDays);
 }
 
+function trackingTimelineEntries(order) {
+  const sources = [
+    order.tracking,
+    order.shipment,
+    order.delivery,
+    order.fulfillment,
+    order
+  ].filter((item) => item && typeof item === "object" && !Array.isArray(item));
+  const keys = ["timeline", "events", "history", "updates", "trackingUpdates", "tracking_updates", "scans", "steps"];
+  let raw = [];
+
+  for (const source of sources) {
+    const match = keys.map((key) => source[key]).find(Array.isArray);
+    if (match) {
+      raw = match;
+      break;
+    }
+  }
+
+  return raw
+    .map((event) => {
+      if (!event || typeof event !== "object") return null;
+      const activity = firstValue(event, [
+        "activity",
+        "message",
+        "description",
+        "event",
+        "eventDescription",
+        "event_description",
+        "statusDescription",
+        "status_description",
+        "label",
+        "title",
+        "name",
+        "status",
+        "stage",
+        "scan",
+        "remarks",
+        "remark"
+      ]);
+      const location = firstValue(event, [
+        "location",
+        "scanLocation",
+        "scan_location",
+        "city",
+        "hub",
+        "facility",
+        "branch",
+        "place",
+        "currentLocation",
+        "current_location"
+      ]);
+      const date = firstValue(event, [
+        "date",
+        "createdAt",
+        "created_at",
+        "completedAt",
+        "completed_at",
+        "updatedAt",
+        "updated_at",
+        "time",
+        "timestamp"
+      ]);
+      if (!activity && !location && !date) return null;
+      return {
+        date,
+        activity: activity || "Tracking update",
+        location: location || "Location updating"
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const left = validDate(a.date);
+      const right = validDate(b.date);
+      if (!left || !right) return 0;
+      return right.getTime() - left.getTime();
+    })
+    .slice(0, 5);
+}
+
+function trackingTimelineHtml(order) {
+  const entries = trackingTimelineEntries(order);
+  if (!entries.length) return "";
+
+  return `
+    <div class="tracking-live-timeline" aria-label="Live tracking timeline">
+      <strong>Live timeline</strong>
+      ${entries.map((entry) => `
+        <div class="tracking-live-row">
+          <time>${escapeHtml(formatTrackingDateTime(entry.date) || "Updating")}</time>
+          <span>${escapeHtml(entry.activity)}</span>
+          <small>${escapeHtml(entry.location)}</small>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function customerTrackingHtml(order) {
   const activeIndex = trackingActiveIndex(order);
   const progress = Math.round((activeIndex / (customerTrackingStages.length - 1)) * 75);
@@ -1523,6 +1681,7 @@ function customerTrackingHtml(order) {
           `;
         }).join("")}
       </div>
+      ${trackingTimelineHtml(order)}
     </section>
   `;
 }
@@ -1618,11 +1777,13 @@ function renderOrdersPage() {
       ${state.orders.length ? state.orders.map((order) => {
         const createdAt = orderCreatedDate(order);
         const estimatedAt = orderEstimatedDeliveryDate(order);
+        const awbNumber = orderAwbNumber(order);
         return `
           <article class="order-card">
             <div class="order-head">
               <div>
                 <button class="order-id-button" type="button" data-order-details="${escapeHtml(orderDisplayId(order))}">${escapeHtml(orderDisplayId(order))}</button>
+                <small class="order-awb">AWB: ${escapeHtml(awbNumber || "Pending")}</small>
                 <span>${escapeHtml(formatOrderDate(createdAt))}</span>
               </div>
               <b>${formatPrice(order.amountTotal || order.amounts?.total || 0)}</b>

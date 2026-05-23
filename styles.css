@@ -1902,6 +1902,20 @@ svg {
   font-size: 0.76rem;
 }
 
+.order-awb {
+  width: max-content;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #52657c;
+  background: #f1f5fb;
+  font-size: 0.68rem;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .order-id-button {
   width: max-content;
   max-width: 100%;
@@ -2187,6 +2201,59 @@ svg {
   color: white;
   background: var(--green);
   border-color: var(--green);
+}
+
+.tracking-live-timeline {
+  border: 1px solid #e0eaf5;
+  border-radius: 8px;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  background: #fbfdff;
+}
+
+.tracking-live-timeline > strong {
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.tracking-live-row {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  grid-template-areas:
+    "date activity"
+    "date location";
+  column-gap: 8px;
+  row-gap: 1px;
+  align-items: start;
+}
+
+.tracking-live-row time {
+  grid-area: date;
+  color: var(--blue-dark);
+  font-size: 0.64rem;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.tracking-live-row span {
+  grid-area: activity;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.69rem;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.tracking-live-row small {
+  grid-area: location;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 760;
+  line-height: 1.25;
 }
 
 .order-cancel-row {

@@ -36,6 +36,7 @@ SESSION_SECRET=use-a-long-random-secret
 WEBSITE_PRODUCTS_URL=https://yourwebsite.com/api/mobile/products
 WEBSITE_ORDERS_URL=https://yourwebsite.com/api/mobile/orders
 WEBSITE_CUSTOMER_ORDERS_URL=https://yourwebsite.com/api/mobile/customer-orders
+WEBSITE_TRACKING_URL=https://yourwebsite.com/api/mobile/order-tracking
 WEBSITE_CANCEL_ORDER_URL=https://yourwebsite.com/api/mobile/orders/cancel
 WEBSITE_API_TOKEN=Bearer your_backend_api_token
 STORE_PINCODE=700136
@@ -91,7 +92,7 @@ PAYU_ENV=production
 - `GET /api/mobile/diagnostics` checks whether Twilio, PayU, and website env vars are set without exposing secrets.
 - `POST /api/mobile/orders` validates live catalog inventory and pushes COD/paid orders to `WEBSITE_ORDERS_URL`.
 - If `WAREHOUSE_ORDERS_URL` is set, every placed order is also pushed to the warehouse system.
-- `GET /api/mobile/orders` returns customer orders from `WEBSITE_CUSTOMER_ORDERS_URL` or `WEBSITE_ORDERS_URL`, then merges live warehouse tracking from `WAREHOUSE_TRACKING_URL`.
+- `GET /api/mobile/orders` returns customer orders from `WEBSITE_CUSTOMER_ORDERS_URL` or `WEBSITE_ORDERS_URL`, then merges live website tracking from `WEBSITE_TRACKING_URL` and warehouse tracking from `WAREHOUSE_TRACKING_URL`.
 - `POST /api/mobile/orders/cancel` accepts customer cancel requests before the order reaches shipped/out-for-delivery; set `WEBSITE_CANCEL_ORDER_URL` or `WAREHOUSE_CANCEL_ORDER_URL` to forward them.
 - `GET /api/mobile/inventory-diagnostics` shows safe warehouse product/inventory mapping samples without exposing API tokens.
 - `GET /api/mobile/images?src=...` serves warehouse product images through the backend, including private `gs://` Google Storage images when `GOOGLE_SERVICE_ACCOUNT_JSON` is configured.
@@ -212,6 +213,26 @@ The app/backend pushes:
   "amounts": {},
   "payment": {},
   "status": "pending_cod"
+}
+```
+
+## Website Tracking Payload
+
+`WEBSITE_TRACKING_URL` is called with `orderId`, `order_id`, and AWB query params when available. It may return an object or a list under `data`, `orders`, `tracking`, `events`, `timeline`, or `updates`.
+
+```json
+{
+  "orderId": "BG-...",
+  "awbNumber": "1234567890",
+  "status": "shipped",
+  "label": "Order shipped",
+  "timeline": [
+    {
+      "date": "2026-05-23T12:30:00+05:30",
+      "activity": "Shipment picked up",
+      "location": "Rajarhat Hub"
+    }
+  ]
 }
 ```
 
