@@ -2,7 +2,8 @@ const storageKeys = {
   session: "bazaarGo.session",
   cart: "bazaarGo.cart",
   wishlist: "bazaarGo.wishlist",
-  orders: "bazaarGo.orders"
+  orders: "bazaarGo.orders",
+  location: "bazaarGo.location"
 };
 
 const fallbackCategoryImages = {
@@ -18,6 +19,14 @@ let categories = buildCategories(products);
 const api = window.BazaarGoApi;
 const appConfig = window.EVSPEARE_CONFIG || window.BAZAARGO_CONFIG || {};
 const currency = new Intl.NumberFormat("en-IN");
+const deliveryEstimateDays = 7;
+
+const customerTrackingStages = [
+  { key: "placed", label: "Order Placed", offsetDays: 0, icon: "bag" },
+  { key: "shipped", label: "Shipped", offsetDays: 2, icon: "box" },
+  { key: "transit", label: "In Transit", offsetDays: 4, icon: "truck" },
+  { key: "delivered", label: "Delivered", offsetDays: deliveryEstimateDays, icon: "check" }
+];
 
 const promoSlides = [
   {
@@ -52,10 +61,14 @@ const state = {
   session: loadJson(storageKeys.session, null),
   pendingPhone: "",
   paymentMethod: "cod",
+  paymentMode: "cod",
   syncing: false,
   selectedProductId: "",
+  savedLocation: loadJson(storageKeys.location, null),
+  locationFormOpen: false,
   orders: loadJson(storageKeys.orders, []),
   ordersLoading: false,
+  checkoutProcessing: false,
   promoIndex: 0
 };
 
@@ -77,6 +90,7 @@ const nodes = {
   drawer: document.querySelector("[data-drawer]"),
   toast: document.querySelector("[data-toast]"),
   syncStatus: document.querySelector("[data-sync-status]"),
+  locationStrip: document.querySelector("[data-action='select-address']"),
   accountPill: document.querySelector("[data-account-pill]"),
   authModal: document.querySelector("[data-auth-modal]"),
   authLogin: document.querySelector("[data-auth-login]"),
@@ -157,6 +171,52 @@ function imageAttrs(product) {
 
 function formatPrice(value) {
   return `Rs. ${currency.format(Math.round(Number(value) || 0))}`;
+}
+
+function formatRupeeAmount(value) {
+  return `Rs. ${currency.format(Math.round(Number(value) || 0))}`;
+}
+
+function addDays(date, days) {
+  const next = new Date(date.getTime());
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function validDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function orderCreatedDate(order) {
+  return validDate(order.createdAt || order.created_at || order.orderDate || order.date || order.created) || new Date();
+}
+
+function orderEstimatedDeliveryDate(order) {
+  const createdAt = orderCreatedDate(order);
+  return validDate(
+    order.estimatedDeliveryAt ||
+      order.estimatedDeliveryDate ||
+      order.deliveryDate ||
+      order.eta ||
+      order.deliveryEstimate?.estimatedDeliveryAt ||
+      order.tracking?.estimatedDeliveryAt ||
+      order.tracking?.eta
+  ) || addDays(createdAt, deliveryEstimateDays);
+}
+
+function formatOrderDate(value, includeYear = true) {
+  const date = validDate(value);
+  if (!date) return "";
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    ...(includeYear ? { year: "numeric" } : {})
+  });
+}
+
+function orderDisplayId(order) {
+  return order.orderId || order.order_id || order.id || "Order";
 }
 
 function discount(product) {
@@ -534,48 +594,264 @@ function checkoutField(selector, fallbackNode) {
   return document.querySelector(`[data-page-panel="checkout"] ${selector}`) || fallbackNode;
 }
 
+function splitName(value) {
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || "",
+    lastName: parts.slice(1).join(" ")
+  };
+}
+
+function emptyBillingDetails() {
+  return {
+    firstName: "",
+    lastName: "",
+    phone: "",
+    email: "",
+    alternatePhone: "",
+    country: "India",
+    address1: "",
+    address2: "",
+    city: "",
+    state: "",
+    pincode: "",
+    shippingSame: true,
+    coordinates: null,
+    source: "manual"
+  };
+}
+
 function splitAddress(value) {
   const parts = String(value || "")
     .split(",")
     .map((part) => part.trim());
   return {
-    house: parts[0] || "",
-    street: parts[1] || "",
-    area: parts[2] || "",
+    ...emptyBillingDetails(),
+    address1: parts.slice(0, 3).filter(Boolean).join(", "),
     city: parts[3] || "",
-    pincode: (parts[4] || "").replace(/\D/g, "").slice(0, 6)
+    pincode: (parts[4] || "").replace(/\D/g, "").slice(0, 6),
+    country: "India"
   };
 }
 
-function checkoutAddressParts() {
-  const pagePanel = document.querySelector('[data-page-panel="checkout"]');
-  if (!pagePanel || pagePanel.getAttribute("aria-hidden") === "true") {
-    return splitAddress(nodes.checkoutAddress.value);
-  }
-
-  const values = {
-    house: pagePanel.querySelector("[data-page-checkout-house]")?.value || "",
-    street: pagePanel.querySelector("[data-page-checkout-street]")?.value || "",
-    area: pagePanel.querySelector("[data-page-checkout-area]")?.value || "",
-    city: pagePanel.querySelector("[data-page-checkout-city]")?.value || "",
-    pincode: pagePanel.querySelector("[data-page-checkout-pincode]")?.value || ""
+function normalizeBillingDetails(details = {}, source = details.source || "manual") {
+  const base = {
+    ...emptyBillingDetails(),
+    ...(details || {})
   };
+  return {
+    ...base,
+    firstName: String(base.firstName || "").trim(),
+    lastName: String(base.lastName || "").trim(),
+    phone: phoneDigits(base.phone),
+    email: String(base.email || "").trim(),
+    alternatePhone: phoneDigits(base.alternatePhone),
+    country: String(base.country || "India").trim(),
+    address1: String(base.address1 || base.address || "").trim(),
+    address2: String(base.address2 || "").trim(),
+    city: String(base.city || "").trim(),
+    state: String(base.state || "").trim(),
+    pincode: String(base.pincode || "").replace(/\D/g, "").slice(0, 6),
+    shippingSame: base.shippingSame !== false,
+    coordinates: base.coordinates || null,
+    source,
+    updatedAt: base.updatedAt || new Date().toISOString()
+  };
+}
 
-  if (Object.values(values).some((value) => String(value).trim())) {
+function savedLocationDetails() {
+  return state.savedLocation ? normalizeBillingDetails(state.savedLocation, state.savedLocation.source || "manual") : null;
+}
+
+function hasLocationDetails(details) {
+  return Boolean(details?.address1 || details?.coordinates);
+}
+
+function coordinatesText(coordinates) {
+  if (!coordinates) return "";
+  const latitude = Number(coordinates.latitude);
+  const longitude = Number(coordinates.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return "";
+  return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+}
+
+function checkoutBillingDetails() {
+  const pagePanel = document.querySelector('[data-page-panel="checkout"]');
+  const saved = savedLocationDetails();
+  if (!pagePanel || pagePanel.getAttribute("aria-hidden") === "true") {
+    const nameParts = splitName(nodes.checkoutName.value || state.session?.user?.name || formatCustomerName(saved || {}));
     return {
-      house: String(values.house).trim(),
-      street: String(values.street).trim(),
-      area: String(values.area).trim(),
-      city: String(values.city).trim(),
-      pincode: String(values.pincode).replace(/\D/g, "").slice(0, 6)
+      ...emptyBillingDetails(),
+      ...(saved || splitAddress(nodes.checkoutAddress.value)),
+      ...nameParts,
+      phone: phoneDigits(saved?.phone || nodes.checkoutPhone.value || state.session?.user?.phone || ""),
+      email: saved?.email || "",
+      alternatePhone: saved?.alternatePhone || "",
+      shippingSame: saved?.shippingSame !== false
     };
   }
 
-  return splitAddress(nodes.checkoutAddress.value);
+  const values = {
+    firstName: pagePanel.querySelector("[data-page-checkout-first-name]")?.value || "",
+    lastName: pagePanel.querySelector("[data-page-checkout-last-name]")?.value || "",
+    phone: pagePanel.querySelector("[data-page-checkout-phone]")?.value || "",
+    email: pagePanel.querySelector("[data-page-checkout-email]")?.value || "",
+    alternatePhone: pagePanel.querySelector("[data-page-checkout-alt-phone]")?.value || "",
+    country: pagePanel.querySelector("[data-page-checkout-country]")?.value || "India",
+    address1: pagePanel.querySelector("[data-page-checkout-address1]")?.value || "",
+    address2: pagePanel.querySelector("[data-page-checkout-address2]")?.value || "",
+    city: pagePanel.querySelector("[data-page-checkout-city]")?.value || "",
+    state: pagePanel.querySelector("[data-page-checkout-state]")?.value || "",
+    pincode: pagePanel.querySelector("[data-page-checkout-pincode]")?.value || "",
+    shippingSame: pagePanel.querySelector("[data-page-shipping-same]")?.checked !== false
+  };
+
+  if (Object.entries(values).some(([key, value]) => key !== "shippingSame" && String(value).trim())) {
+    return normalizeBillingDetails({
+      firstName: String(values.firstName).trim(),
+      lastName: String(values.lastName).trim(),
+      phone: phoneDigits(values.phone),
+      email: String(values.email).trim(),
+      alternatePhone: phoneDigits(values.alternatePhone),
+      country: String(values.country || "India").trim(),
+      address1: String(values.address1).trim(),
+      address2: String(values.address2).trim(),
+      city: String(values.city).trim(),
+      state: String(values.state).trim(),
+      pincode: String(values.pincode).replace(/\D/g, "").slice(0, 6),
+      coordinates: saved?.coordinates || null,
+      shippingSame: Boolean(values.shippingSame)
+    }, saved?.source || "manual");
+  }
+
+  return {
+    ...emptyBillingDetails(),
+    ...(saved || splitAddress(nodes.checkoutAddress.value)),
+    ...splitName(nodes.checkoutName.value || state.session?.user?.name || ""),
+    phone: phoneDigits(saved?.phone || nodes.checkoutPhone.value || state.session?.user?.phone || ""),
+    shippingSame: true
+  };
 }
 
-function formatAddress(parts) {
-  return [parts.house, parts.street, parts.area, parts.city, parts.pincode].filter(Boolean).join(", ");
+function formatCustomerName(details) {
+  return [details.firstName, details.lastName].filter(Boolean).join(" ").trim();
+}
+
+function formatAddress(details) {
+  const text = [
+    details.address1,
+    details.address2,
+    details.city,
+    details.state,
+    details.pincode,
+    details.country
+  ].filter(Boolean).join(", ");
+  if (text) return text;
+  const coordinates = coordinatesText(details.coordinates);
+  return coordinates ? `Live location: ${coordinates}` : "";
+}
+
+function locationSummary(details) {
+  const location = normalizeBillingDetails(details || {});
+  const address = formatAddress(location);
+  if (address) return address;
+  return "No saved location";
+}
+
+function locationShortText(details) {
+  const location = normalizeBillingDetails(details || {});
+  const compact = [location.city, location.pincode].filter(Boolean).join(" - ");
+  if (compact) return compact;
+  if (location.address1) return location.address1;
+  const coordinates = coordinatesText(location.coordinates);
+  return coordinates ? `Live location ${coordinates}` : "Add delivery address";
+}
+
+function renderSavedLocation() {
+  const location = savedLocationDetails();
+  const stripText = nodes.locationStrip?.querySelector("span");
+  const stripAction = nodes.locationStrip?.querySelector("strong");
+
+  if (location && hasLocationDetails(location)) {
+    if (stripText) stripText.textContent = locationShortText(location);
+    if (stripAction) stripAction.textContent = "Change";
+    if (!nodes.checkoutAddress.value) nodes.checkoutAddress.value = formatAddress(location);
+    if (!nodes.checkoutPhone.value && location.phone) nodes.checkoutPhone.value = location.phone;
+    if (!nodes.checkoutName.value && formatCustomerName(location)) nodes.checkoutName.value = formatCustomerName(location);
+    return;
+  }
+
+  if (stripText) stripText.textContent = "Add delivery address";
+  if (stripAction) stripAction.textContent = "Change";
+}
+
+function saveCustomerLocation(details, source = "manual", { silent = false, rerender = true } = {}) {
+  const location = {
+    ...normalizeBillingDetails(details, source),
+    updatedAt: new Date().toISOString()
+  };
+  const address = formatAddress(location);
+  state.savedLocation = {
+    ...location,
+    address: address || ""
+  };
+  saveJson(storageKeys.location, state.savedLocation);
+  nodes.checkoutAddress.value = address;
+  if (location.phone) nodes.checkoutPhone.value = location.phone;
+  if (formatCustomerName(location)) nodes.checkoutName.value = formatCustomerName(location);
+  state.locationFormOpen = false;
+  renderSavedLocation();
+  if (rerender && document.querySelector('[data-page-panel="checkout"]')?.classList.contains("open")) {
+    renderCheckoutPage();
+  }
+  if (!silent) showToast(source === "live" ? "Live location saved" : "Location saved");
+  return state.savedLocation;
+}
+
+function saveLocationFromForm() {
+  const location = checkoutBillingDetails();
+  const address1Node = checkoutField("[data-page-checkout-address1]", nodes.checkoutAddress);
+
+  if (!location.address1 && !location.coordinates) {
+    showToast("Enter address or use live location");
+    address1Node.focus();
+    return;
+  }
+
+  saveCustomerLocation(location, "manual");
+}
+
+function useLiveLocation() {
+  if (!navigator.geolocation) {
+    showToast("Live location is not available");
+    return;
+  }
+
+  showToast("Fetching live location...");
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const current = checkoutBillingDetails();
+      const coordinates = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy
+      };
+      const label = `Live location: ${coordinatesText(coordinates)}`;
+      saveCustomerLocation({
+        ...current,
+        address1: current.address1 || label,
+        coordinates
+      }, "live");
+    },
+    () => {
+      showToast("Unable to fetch live location");
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 60000
+    }
+  );
 }
 
 function setCheckoutActionState(processing = false) {
@@ -611,116 +887,219 @@ function checkoutItemsPreview(entries) {
   `;
 }
 
+function paymentOptionIcon(name) {
+  const icons = {
+    upi: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v10H4V7Z" /><path d="M7 10h3v4M14 10h3l-2 4h-3l2-4Z" /></svg>`,
+    card: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v12H3V6Z" /><path d="M3 10h18M7 15h4" /></svg>`,
+    emi: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5V4Z" /><path d="M8 8h8M8 16 16 8M8 12h.01M16 16h.01" /></svg>`,
+    cod: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v11H4V7Z" /><path d="M8 11h7M8 14h4M16 7V5H8v2" /></svg>`,
+    payLater: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" /><path d="M12 3v9h9" /></svg>`
+  };
+  return icons[name] || icons.upi;
+}
+
+function paymentOptionRow({ mode, method, icon, title, subtitle, offer, disabled = false }) {
+  const selected = state.paymentMode === mode || (!state.paymentMode && state.paymentMethod === method);
+  if (disabled) {
+    return `
+      <div class="payment-option-row unavailable">
+        <span class="payment-option-icon">${paymentOptionIcon(icon)}</span>
+        <div>
+          <strong>${escapeHtml(title)}</strong>
+          ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
+        </div>
+        <b>Unavailable</b>
+        <span class="payment-help">?</span>
+      </div>
+    `;
+  }
+
+  return `
+    <label class="payment-option-row ${selected ? "selected" : ""}">
+      <input class="payment-choice-input" type="radio" name="page-payment" value="${escapeHtml(method)}" data-payment-method data-payment-mode="${escapeHtml(mode)}" ${selected ? "checked" : ""} />
+      <span class="payment-option-icon">${paymentOptionIcon(icon)}</span>
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
+        ${offer ? `<em>${escapeHtml(offer)}</em>` : ""}
+      </div>
+      <svg class="payment-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+    </label>
+  `;
+}
+
 function renderCheckoutPage() {
   const totals = cartTotals();
   const nameNode = checkoutField("[data-page-checkout-name]", nodes.checkoutName);
   const phoneNode = checkoutField("[data-page-checkout-phone]", nodes.checkoutPhone);
   const addressNode = checkoutField("[data-page-checkout-address]", nodes.checkoutAddress);
-  const phone = state.session?.user?.phone || phoneNode.value || "";
-  const name = nameNode.value || state.session?.user?.name || "";
-  const address = formatAddress(checkoutAddressParts()) || addressNode.value || "";
-  const addressParts = splitAddress(address);
+  const existingName = nameNode.value || state.session?.user?.name || "";
+  const currentBilling = checkoutBillingDetails();
+  const billing = {
+    ...currentBilling,
+    ...(!currentBilling.firstName && !currentBilling.lastName ? splitName(existingName) : {}),
+    phone: currentBilling.phone || phoneDigits(state.session?.user?.phone || phoneNode.value || "")
+  };
+  const name = formatCustomerName(billing) || existingName;
+  const address = formatAddress(billing) || addressNode.value || "";
   const checkoutLabel = isLoggedIn() ? "Place order" : "Login to place order";
+  const savedLocation = savedLocationDetails();
+  const hasSavedLocation = hasLocationDetails(savedLocation);
+  const showLocationForm = state.locationFormOpen || !hasSavedLocation;
 
   nodes.checkoutPage.innerHTML = `
-    <div class="page-header">
-      <button class="icon-button" type="button" data-action="open-cart" aria-label="Back">
+    <div class="payment-page-header">
+      <button class="payment-back-button" type="button" data-action="open-cart" aria-label="Back">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
       </button>
-      <div><h2>Checkout</h2><span>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"} - ${formatPrice(totals.total)}</span></div>
-      <button class="icon-button" type="button" data-action="open-orders" aria-label="Orders">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4V7ZM7 7a5 5 0 0 1 10 0M9 12h6" /></svg>
-      </button>
-    </div>
-
-    <div class="checkout-hero">
       <div>
-        <span>Order total</span>
-        <strong>${formatPrice(totals.total)}</strong>
+        <span>Step 3 of 3</span>
+        <h2>Payments</h2>
       </div>
-      <div class="checkout-hero-meta">
-        <span>Free delivery</span>
-        <span>${state.paymentMethod === "cod" ? "COD selected" : "PayU selected"}</span>
-      </div>
+      <strong class="secure-badge">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2" /><path d="M5 10h14v10H5V10Z" /></svg>
+        100% Secure
+      </strong>
     </div>
 
-    <form class="checkout-form checkout-page-form" data-page-checkout-form>
-      <section class="checkout-section">
+    <div class="payment-total-card">
+      <button type="button">
+        <span>Total Amount</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      <strong>${formatRupeeAmount(totals.total)}</strong>
+    </div>
+
+    <div class="payment-offer-strip">
+      <span>Claim now with payment offers</span>
+      <div aria-hidden="true"><i></i><i></i><i></i></div>
+    </div>
+
+    <form class="checkout-form checkout-page-form payment-checkout-form" data-page-checkout-form>
+      <section class="payment-list" aria-label="Payment options">
+        <div class="gift-card-row">
+          <span class="gift-card-box"></span>
+          <div>
+            <strong>Use Gift Card</strong>
+            <small>Available Balance Rs. 8</small>
+          </div>
+          <button type="button">Add Gift Card</button>
+        </div>
+        ${paymentOptionRow({
+          mode: "upi",
+          method: "online",
+          icon: "upi",
+          title: "UPI",
+          subtitle: "Pay by any UPI app",
+          offer: "Save upto Rs. 199 - 15 offers available"
+        })}
+        ${paymentOptionRow({
+          mode: "card",
+          method: "online",
+          icon: "card",
+          title: "Credit / Debit / ATM Card",
+          subtitle: "Add and secure cards as per RBI guidelines",
+          offer: "Save upto Rs. 658 - 3 offers available"
+        })}
+        ${paymentOptionRow({
+          mode: "emi",
+          method: "online",
+          icon: "emi",
+          title: "EMI",
+          subtitle: "Ev Speare EMI"
+        })}
+        ${paymentOptionRow({
+          mode: "cod",
+          method: "cod",
+          icon: "cod",
+          title: "Cash on Delivery"
+        })}
+        ${paymentOptionRow({
+          mode: "pay3",
+          method: "online",
+          icon: "payLater",
+          title: "Pay In 3",
+          disabled: true
+        })}
+      </section>
+
+      <p class="gateway-note payment-gateway-note" data-page-gateway-note></p>
+
+      <section class="checkout-section checkout-address-section">
         <div class="checkout-section-head">
           <div>
-            <span>Step 1</span>
-            <h3>Delivery details</h3>
-            <p>Use the address where the warehouse partner should dispatch this order.</p>
+            <span>Delivery details</span>
+            <h3>Billing Address</h3>
+            <p>These details are sent to warehouse with your payment choice.</p>
           </div>
-          <b>${isLoggedIn() ? "Logged in" : "Login needed"}</b>
+          <label class="shipping-toggle">
+            <input type="checkbox" data-page-shipping-same ${billing.shippingSame === false ? "" : "checked"} />
+            <span>Shipping same</span>
+          </label>
         </div>
-        <div class="delivery-card">
-          <div class="delivery-card-head">
+        ${hasSavedLocation ? `
+          <div class="saved-location-card">
             <span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-5.1 7-12A7 7 0 1 0 5 9c0 6.9 7 12 7 12Z" /><path d="M12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /></svg>
             </span>
             <div>
-              <strong>Shipping address</strong>
-              <small>Contact details and full drop location</small>
+              <strong>${savedLocation.source === "live" ? "Saved live location" : "Saved delivery location"}</strong>
+              <p>${escapeHtml(locationSummary(savedLocation))}</p>
             </div>
           </div>
+        ` : ""}
+        <div class="location-action-row">
+          <button type="button" data-action="use-live-location">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" /></svg>
+            Use live location
+          </button>
+          <button type="button" data-action="edit-location">${hasSavedLocation ? "Add location" : "Manual location"}</button>
+        </div>
+        <div class="manual-location-panel ${showLocationForm ? "" : "collapsed"}">
           <div class="checkout-field-grid">
-            <label class="wide">Full name<input type="text" data-page-checkout-name value="${escapeHtml(name)}" placeholder="Customer name" autocomplete="name" /></label>
-            <label class="wide">Mobile number<input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(phone)}" placeholder="10 digit mobile" autocomplete="tel" /></label>
-            <label>House no<input type="text" data-page-checkout-house value="${escapeHtml(addressParts.house)}" placeholder="Flat / house no" autocomplete="address-line1" /></label>
-            <label>Street<input type="text" data-page-checkout-street value="${escapeHtml(addressParts.street)}" placeholder="Street / road" autocomplete="address-line2" /></label>
-            <label>Area<input type="text" data-page-checkout-area value="${escapeHtml(addressParts.area)}" placeholder="Area / locality" /></label>
-            <label>City<input type="text" data-page-checkout-city value="${escapeHtml(addressParts.city)}" placeholder="City" autocomplete="address-level2" /></label>
-            <label>Pincode<input type="tel" inputmode="numeric" maxlength="6" data-page-checkout-pincode value="${escapeHtml(addressParts.pincode)}" placeholder="6 digit pincode" autocomplete="postal-code" /></label>
+            <label>First Name<input type="text" data-page-checkout-first-name value="${escapeHtml(billing.firstName)}" autocomplete="given-name" /></label>
+            <label>Last Name<input type="text" data-page-checkout-last-name value="${escapeHtml(billing.lastName)}" autocomplete="family-name" /></label>
+            <label>Phone<input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(billing.phone)}" autocomplete="tel" /></label>
+            <label>Email<input type="email" data-page-checkout-email value="${escapeHtml(billing.email)}" autocomplete="email" /></label>
+            <label>Alternate Phone<input type="tel" inputmode="numeric" data-page-checkout-alt-phone value="${escapeHtml(billing.alternatePhone)}" /></label>
+            <label>Country<input type="text" data-page-checkout-country value="${escapeHtml(billing.country || "India")}" autocomplete="country-name" /></label>
+            <label class="wide">Address<textarea data-page-checkout-address1 rows="3" autocomplete="address-line1">${escapeHtml(billing.address1)}</textarea></label>
+            <label class="wide">Address 2<textarea data-page-checkout-address2 rows="2" autocomplete="address-line2">${escapeHtml(billing.address2)}</textarea></label>
+            <label>City<input type="text" data-page-checkout-city value="${escapeHtml(billing.city)}" autocomplete="address-level2" /></label>
+            <label>State<input type="text" data-page-checkout-state value="${escapeHtml(billing.state)}" autocomplete="address-level1" /></label>
+            <label>Pincode<input type="tel" inputmode="numeric" maxlength="6" data-page-checkout-pincode value="${escapeHtml(billing.pincode)}" autocomplete="postal-code" /></label>
+            <input type="hidden" data-page-checkout-name value="${escapeHtml(name)}" />
             <input type="hidden" data-page-checkout-address value="${escapeHtml(address)}" />
           </div>
-          <div class="delivery-hint">
-            <span>Include landmark and pincode for faster dispatch.</span>
-            <strong>India only</strong>
-          </div>
+          <button class="save-location-button" type="button" data-action="save-location">Save location</button>
         </div>
-      </section>
-
-      <section class="checkout-section">
-        <div class="checkout-section-head">
-          <div>
-            <span>Step 2</span>
-            <h3>Payment method</h3>
-          </div>
-        </div>
-        <div class="payment-options checkout-payment-options" role="radiogroup" aria-label="Payment method">
-          <label>
-            <input type="radio" name="page-payment" value="cod" ${state.paymentMethod === "cod" ? "checked" : ""} data-payment-method />
-            <span><strong>Cash on Delivery</strong><small>Pay at doorstep</small></span>
-          </label>
-          <label>
-            <input type="radio" name="page-payment" value="online" ${state.paymentMethod === "online" ? "checked" : ""} data-payment-method />
-            <span><strong>PayU Online</strong><small>Secure prepaid order</small></span>
-          </label>
-        </div>
-        <p class="gateway-note" data-page-gateway-note></p>
       </section>
     </form>
 
-    <section class="checkout-section checkout-summary">
+    <section class="checkout-section checkout-summary payment-summary-section">
       <div class="checkout-section-head">
         <div>
-          <span>Step 3</span>
-          <h3>Order summary</h3>
+          <span>Order summary</span>
+          <h3>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"}</h3>
         </div>
-        <b>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"}</b>
+        <b>Free delivery</b>
       </div>
       ${checkoutItemsPreview(totals.entries)}
       <div class="checkout-price-panel">
         <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
         <div><span>Delivery</span><strong>Free</strong></div>
         <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
-        <div class="total"><span>Total</span><strong>${formatPrice(totals.total)}</strong></div>
+        <div class="total"><span>Total</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
       </div>
     </section>
 
-    <div class="checkout-sticky-bar">
-      <div><span>Total</span><strong>${formatPrice(totals.total)}</strong></div>
+    <div class="checkout-trust-note">
+      <strong>35 Crore happy customers and counting!</strong>
+      <span>:)</span>
+    </div>
+
+    <div class="checkout-sticky-bar payment-sticky-bar">
+      <div><span>Total Amount</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
       <button class="checkout-button" type="button" data-action="checkout" ${totals.itemCount ? "" : "disabled"}>${checkoutLabel}</button>
     </div>
   `;
@@ -728,13 +1107,111 @@ function renderCheckoutPage() {
   setCheckoutActionState();
 }
 
-function trackingStepsHtml(order) {
-  const steps = order.tracking?.steps || [];
-  return `<div class="tracking-steps">${steps.map((step) => `
-    <div class="tracking-step ${step.done ? "done" : ""}">
-      <span></span><strong>${escapeHtml(step.label)}</strong>
-    </div>
-  `).join("")}</div>`;
+function trackingIconSvg(icon) {
+  const icons = {
+    bag: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12v13H6V7Z" /><path d="M9 7a3 3 0 0 1 6 0" /></svg>`,
+    box: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8 12 3 3 8l9 5 9-5Z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>`,
+    truck: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h11v10H3V6Z" /><path d="M14 10h4l3 3v3h-7v-6Z" /><path d="M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" /></svg>`,
+    check: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>`
+  };
+  return icons[icon] || icons.bag;
+}
+
+function trackingStageKeyFromText(value) {
+  const normalized = String(value || "").toLowerCase().replace(/[\s-]+/g, "_");
+  if (/delivered|complete/.test(normalized)) return "delivered";
+  if (/out_for_delivery|in_transit|transit|dispatch|on_the_way/.test(normalized)) return "transit";
+  if (/shipped|picked|packed|ready_to_ship|warehouse_picked/.test(normalized)) return "shipped";
+  if (/placed|ordered|pending|paid|cod|processing/.test(normalized)) return "placed";
+  return "";
+}
+
+function orderTrackingStage(order) {
+  return trackingStageKeyFromText(
+    [
+      order.tracking?.status,
+      order.status,
+      order.fulfillmentStatus,
+      order.shippingStatus
+    ].filter(Boolean).join(" ")
+  ) || "placed";
+}
+
+function trackingStepStageKey(step) {
+  return trackingStageKeyFromText([step.key, step.label, step.status].filter(Boolean).join(" "));
+}
+
+function trackingActiveIndex(order) {
+  const stageKeys = customerTrackingStages.map((stage) => stage.key);
+  let activeIndex = Math.max(0, stageKeys.indexOf(orderTrackingStage(order)));
+  const steps = Array.isArray(order.tracking?.steps) ? order.tracking.steps : [];
+
+  steps.forEach((step) => {
+    if (!step.done) return;
+    const index = stageKeys.indexOf(trackingStepStageKey(step));
+    if (index > activeIndex) activeIndex = index;
+  });
+
+  return activeIndex;
+}
+
+function stepDateForStage(order, stage) {
+  const steps = Array.isArray(order.tracking?.steps) ? order.tracking.steps : [];
+  const matchingStep = steps.find((step) => trackingStepStageKey(step) === stage.key);
+  return validDate(
+    matchingStep?.date ||
+      matchingStep?.createdAt ||
+      matchingStep?.completedAt ||
+      matchingStep?.updatedAt ||
+      order.tracking?.[`${stage.key}At`] ||
+      order[`${stage.key}At`]
+  );
+}
+
+function stageDisplayDate(order, stage) {
+  const createdAt = orderCreatedDate(order);
+  const stepDate = stepDateForStage(order, stage);
+  if (stepDate) return stepDate;
+  if (stage.key === "delivered") return orderEstimatedDeliveryDate(order);
+  return addDays(createdAt, stage.offsetDays);
+}
+
+function customerTrackingHtml(order) {
+  const activeIndex = trackingActiveIndex(order);
+  const progress = Math.round((activeIndex / (customerTrackingStages.length - 1)) * 75);
+  const createdAt = orderCreatedDate(order);
+  const estimatedAt = orderEstimatedDeliveryDate(order);
+  const status = order.tracking?.label || order.tracking?.status || order.status || "Order placed";
+
+  return `
+    <section class="customer-tracking" aria-label="Track your order">
+      <div class="customer-tracking-head">
+        <div>
+          <span>Track Your Order</span>
+          <strong>${escapeHtml(status)}</strong>
+        </div>
+        <time datetime="${escapeHtml(estimatedAt.toISOString())}">Delivery by ${escapeHtml(formatOrderDate(estimatedAt, false))}</time>
+      </div>
+      <div class="tracking-date-summary">
+        <span>Order: ${escapeHtml(formatOrderDate(createdAt))}</span>
+        <strong>Estimate: ${deliveryEstimateDays} days</strong>
+      </div>
+      <div class="customer-track-line" style="--tracking-progress: ${progress}%">
+        ${customerTrackingStages.map((stage, index) => {
+          const done = index <= activeIndex;
+          const current = index === activeIndex && activeIndex < customerTrackingStages.length - 1;
+          const date = stageDisplayDate(order, stage);
+          return `
+            <div class="customer-track-stage ${done ? "done" : ""} ${current ? "current" : ""}">
+              <span class="track-icon">${trackingIconSvg(stage.icon)}</span>
+              <strong>${escapeHtml(stage.label)}</strong>
+              <small>${escapeHtml(formatOrderDate(date, false))}</small>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderOrdersPage() {
@@ -750,16 +1227,26 @@ function renderOrdersPage() {
     </div>
     ${state.ordersLoading ? `<div class="cart-empty">Loading orders...</div>` : ""}
     <div class="orders-list">
-      ${state.orders.length ? state.orders.map((order) => `
-        <article class="order-card">
-          <div class="order-head">
-            <div><strong>${escapeHtml(order.orderId)}</strong><span>${escapeHtml(new Date(order.createdAt || Date.now()).toLocaleString())}</span></div>
-            <b>${formatPrice(order.amountTotal || order.amounts?.total || 0)}</b>
-          </div>
-          <p>${escapeHtml(order.tracking?.label || order.tracking?.status || order.status || "Order placed")}</p>
-          ${trackingStepsHtml(order)}
-        </article>
-      `).join("") : `<div class="cart-empty">No orders yet.<br />Place an order to track warehouse status.</div>`}
+      ${state.orders.length ? state.orders.map((order) => {
+        const createdAt = orderCreatedDate(order);
+        const estimatedAt = orderEstimatedDeliveryDate(order);
+        return `
+          <article class="order-card">
+            <div class="order-head">
+              <div>
+                <strong>${escapeHtml(orderDisplayId(order))}</strong>
+                <span>${escapeHtml(formatOrderDate(createdAt))}</span>
+              </div>
+              <b>${formatPrice(order.amountTotal || order.amounts?.total || 0)}</b>
+            </div>
+            <div class="order-date-grid">
+              <span>Order Date<strong>${escapeHtml(formatOrderDate(createdAt, false))}</strong></span>
+              <span>Estimated Delivery<strong>${escapeHtml(formatOrderDate(estimatedAt, false))}</strong></span>
+            </div>
+            ${customerTrackingHtml(order)}
+          </article>
+        `;
+      }).join("") : `<div class="cart-empty">No orders yet.<br />Place an order to track warehouse status.</div>`}
     </div>
   `;
 }
@@ -772,6 +1259,7 @@ function renderAll() {
   renderCart();
   renderBadges();
   renderSession();
+  renderSavedLocation();
   renderGatewayNote();
   renderCartPage();
   renderCheckoutPage();
@@ -980,15 +1468,15 @@ function validateCheckout() {
   const nameNode = checkoutField("[data-page-checkout-name]", nodes.checkoutName);
   const phoneNode = checkoutField("[data-page-checkout-phone]", nodes.checkoutPhone);
   const addressNode = checkoutField("[data-page-checkout-address]", nodes.checkoutAddress);
-  const houseNode = checkoutField("[data-page-checkout-house]", addressNode);
-  const streetNode = checkoutField("[data-page-checkout-street]", addressNode);
-  const areaNode = checkoutField("[data-page-checkout-area]", addressNode);
+  const firstNameNode = checkoutField("[data-page-checkout-first-name]", nameNode);
+  const address1Node = checkoutField("[data-page-checkout-address1]", addressNode);
   const cityNode = checkoutField("[data-page-checkout-city]", addressNode);
   const pincodeNode = checkoutField("[data-page-checkout-pincode]", addressNode);
-  const phone = phoneDigits(phoneNode.value || state.session?.user?.phone);
-  const name = String(nameNode.value || state.session?.user?.name || "").trim();
-  const addressParts = checkoutAddressParts();
-  const address = formatAddress(addressParts);
+  const billing = checkoutBillingDetails();
+  const phone = phoneDigits(billing.phone || phoneNode.value || state.session?.user?.phone);
+  const name = formatCustomerName(billing) || String(nameNode.value || state.session?.user?.name || "").trim();
+  const address = formatAddress(billing);
+  const hasLiveCoordinates = Boolean(billing.coordinates);
 
   if (!isLoggedIn()) {
     openAccount();
@@ -1010,7 +1498,7 @@ function validateCheckout() {
 
   if (!name) {
     showToast("Enter customer name");
-    nameNode.focus();
+    firstNameNode.focus();
     return null;
   }
 
@@ -1020,43 +1508,38 @@ function validateCheckout() {
     return null;
   }
 
-  if (!addressParts.house) {
-    showToast("Enter house number");
-    houseNode.focus();
+  if (!billing.address1 && !hasLiveCoordinates) {
+    showToast("Enter delivery address or use live location");
+    address1Node.focus();
     return null;
   }
 
-  if (!addressParts.street) {
-    showToast("Enter street");
-    streetNode.focus();
-    return null;
-  }
-
-  if (!addressParts.area) {
-    showToast("Enter area");
-    areaNode.focus();
-    return null;
-  }
-
-  if (!addressParts.city) {
+  if (!hasLiveCoordinates && !billing.city) {
     showToast("Enter city");
     cityNode.focus();
     return null;
   }
 
-  if (addressParts.pincode.length !== 6) {
+  if (!hasLiveCoordinates && billing.pincode.length !== 6) {
     showToast("Enter valid 6 digit pincode");
     pincodeNode.focus();
     return null;
   }
 
+  saveCustomerLocation(billing, billing.coordinates ? "live" : "manual", { silent: true, rerender: false });
+  nameNode.value = name;
+  phoneNode.value = phone;
   addressNode.value = address;
+  nodes.checkoutName.value = name;
+  nodes.checkoutPhone.value = phone;
   nodes.checkoutAddress.value = address;
-  return { name, phone, address, addressParts };
+  return { name, phone, address, addressParts: billing, location: state.savedLocation };
 }
 
 function buildOrder(customer, payment) {
   const totals = cartTotals();
+  const createdAt = new Date();
+  const estimatedDeliveryAt = addDays(createdAt, deliveryEstimateDays);
   return {
     orderId: `BG-${Date.now()}`,
     source: "mobile_pwa",
@@ -1064,7 +1547,8 @@ function buildOrder(customer, payment) {
       id: state.session.user.id,
       name: customer.name,
       phone: customer.phone,
-      address: customer.address
+      address: customer.address,
+      location: customer.location || null
     },
     items: totals.entries.map((item) => ({
       productId: item.sourceId || item.id,
@@ -1084,7 +1568,12 @@ function buildOrder(customer, payment) {
     },
     payment,
     status: payment.method === "cod" ? "pending_cod" : "paid",
-    createdAt: new Date().toISOString()
+    createdAt: createdAt.toISOString(),
+    estimatedDeliveryAt: estimatedDeliveryAt.toISOString(),
+    deliveryEstimate: {
+      days: deliveryEstimateDays,
+      estimatedDeliveryAt: estimatedDeliveryAt.toISOString()
+    }
   };
 }
 
@@ -1219,12 +1708,15 @@ async function runOnlinePayment(order) {
 }
 
 async function placeOrder() {
+  if (state.checkoutProcessing) return;
+
   const customer = validateCheckout();
   if (!customer) return;
 
   const totals = cartTotals();
   if (!totals.itemCount) return;
 
+  state.checkoutProcessing = true;
   setCheckoutActionState(true);
 
   try {
@@ -1250,12 +1742,13 @@ async function placeOrder() {
       tracking: {
         status: "placed",
         label: pushedToWarehouse ? "Sent to warehouse" : "Order placed",
+        estimatedDays: deliveryEstimateDays,
+        estimatedDeliveryAt: order.estimatedDeliveryAt,
         steps: [
-          { key: "placed", label: "Order placed", done: true },
-          { key: "picked", label: "Warehouse picked", done: false },
-          { key: "shipped", label: "Shipped", done: false },
-          { key: "out_for_delivery", label: "Out for delivery", done: false },
-          { key: "delivered", label: "Delivered", done: false }
+          { key: "placed", label: "Order Placed", done: true, date: order.createdAt },
+          { key: "shipped", label: "Shipped", done: false, date: addDays(validDate(order.createdAt) || new Date(), 2).toISOString() },
+          { key: "in_transit", label: "In Transit", done: false, date: addDays(validDate(order.createdAt) || new Date(), 4).toISOString() },
+          { key: "delivered", label: "Delivered", done: false, date: order.estimatedDeliveryAt }
         ]
       }
     });
@@ -1270,6 +1763,7 @@ async function placeOrder() {
   } catch (error) {
     showToast(error.message || "Order failed");
   } finally {
+    state.checkoutProcessing = false;
     setCheckoutActionState();
   }
 }
@@ -1449,8 +1943,20 @@ document.addEventListener("click", async (event) => {
       renderProducts();
       break;
     case "select-address":
+      state.locationFormOpen = !hasLocationDetails(savedLocationDetails());
       renderCheckoutPage();
       openPage("checkout");
+      break;
+    case "edit-location":
+      state.locationFormOpen = true;
+      renderCheckoutPage();
+      requestAnimationFrame(() => checkoutField("[data-page-checkout-address1]", nodes.checkoutAddress).focus());
+      break;
+    case "save-location":
+      saveLocationFromForm();
+      break;
+    case "use-live-location":
+      useLiveLocation();
       break;
     case "show-wishlist":
       if (state.wishlist.size === 0) {
@@ -1498,10 +2004,18 @@ document.addEventListener("click", async (event) => {
   }
 });
 
-document.addEventListener("change", (event) => {
+document.addEventListener("change", async (event) => {
   if (!event.target.matches("[data-payment-method]")) return;
   state.paymentMethod = event.target.value;
+  state.paymentMode = event.target.dataset.paymentMode || event.target.value;
+  event.target.closest(".payment-list")?.querySelectorAll(".payment-option-row").forEach((row) => {
+    row.classList.toggle("selected", row.contains(event.target));
+  });
   renderGatewayNote();
+
+  if (state.paymentMethod === "online") {
+    await placeOrder();
+  }
 });
 
 nodes.searchForm.addEventListener("submit", (event) => {

@@ -35,6 +35,7 @@ loadDotEnv();
 
 const port = Number(process.env.PORT || 3000);
 const fallbackPort = 3000;
+const deliveryEstimateDays = 7;
 const pendingPayuOrders = new Map();
 let googleAccessTokenCache = null;
 let websiteLoginCache = null;
@@ -1680,19 +1681,88 @@ async function pushOrderToWebsiteForm(order, req, endpointUrl) {
   };
 }
 
-function trackingSteps(status) {
-  const normalized = String(status || "placed").toLowerCase();
-  const picked = ["picked", "packed", "shipped", "out_for_delivery", "delivered"].includes(normalized);
-  const shipped = ["shipped", "out_for_delivery", "delivered"].includes(normalized);
-  const out = ["out_for_delivery", "delivered"].includes(normalized);
-  const delivered = normalized === "delivered";
+function addDays(date, days) {
+  const next = new Date(date.getTime());
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function validDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function orderCreatedDate(order) {
+  return validDate(order.createdAt || order.created_at || order.orderDate || order.date || order.created) || new Date();
+}
+
+function orderEstimatedDeliveryDate(order, tracking = {}) {
+  const createdAt = orderCreatedDate(order);
+  return validDate(
+    order.estimatedDeliveryAt ||
+      order.estimatedDeliveryDate ||
+      order.deliveryDate ||
+      order.eta ||
+      order.deliveryEstimate?.estimatedDeliveryAt ||
+      tracking.estimatedDeliveryAt ||
+      tracking.estimatedDeliveryDate ||
+      tracking.eta
+  ) || addDays(createdAt, deliveryEstimateDays);
+}
+
+function trackingStage(status) {
+  const normalized = String(status || "placed").toLowerCase().replace(/[\s-]+/g, "_");
+  if (/delivered|complete/.test(normalized)) return "delivered";
+  if (/out_for_delivery|in_transit|transit|dispatch|on_the_way/.test(normalized)) return "in_transit";
+  if (/shipped|picked|packed|ready_to_ship|warehouse_picked/.test(normalized)) return "shipped";
+  return "placed";
+}
+
+function firstDate(...values) {
+  for (const value of values) {
+    const date = validDate(value);
+    if (date) return date;
+  }
+  return null;
+}
+
+function trackingSteps(status, order = {}, tracking = {}) {
+  const createdAt = orderCreatedDate(order);
+  const estimatedAt = orderEstimatedDeliveryDate(order, tracking);
+  const active = trackingStage(status);
+  const stageIndex = {
+    placed: 0,
+    shipped: 1,
+    in_transit: 2,
+    delivered: 3
+  };
+  const activeIndex = stageIndex[active] || 0;
 
   return [
-    { key: "placed", label: "Order placed", done: true },
-    { key: "picked", label: "Warehouse picked", done: picked },
-    { key: "shipped", label: "Shipped", done: shipped },
-    { key: "out_for_delivery", label: "Out for delivery", done: out },
-    { key: "delivered", label: "Delivered", done: delivered }
+    {
+      key: "placed",
+      label: "Order Placed",
+      done: true,
+      date: createdAt.toISOString()
+    },
+    {
+      key: "shipped",
+      label: "Shipped",
+      done: activeIndex >= 1,
+      date: (firstDate(tracking.shippedAt, order.shippedAt) || addDays(createdAt, 2)).toISOString()
+    },
+    {
+      key: "in_transit",
+      label: "In Transit",
+      done: activeIndex >= 2,
+      date: (firstDate(tracking.inTransitAt, tracking.outForDeliveryAt, order.inTransitAt, order.outForDeliveryAt) || addDays(createdAt, 4)).toISOString()
+    },
+    {
+      key: "delivered",
+      label: "Delivered",
+      done: activeIndex >= 3,
+      date: (firstDate(tracking.deliveredAt, order.deliveredAt) || estimatedAt).toISOString()
+    }
   ];
 }
 
@@ -1823,8 +1893,16 @@ async function handleOrder(req, res) {
     return send(res, 409, { message: inventoryError });
   }
 
+  const createdAt = orderCreatedDate(order);
+  const estimatedDeliveryAt = orderEstimatedDeliveryDate(order);
   const response = await persistAndPushOrder({
     ...order,
+    createdAt: (validDate(order.createdAt) || createdAt).toISOString(),
+    estimatedDeliveryAt: estimatedDeliveryAt.toISOString(),
+    deliveryEstimate: {
+      days: order.deliveryEstimate?.days || deliveryEstimateDays,
+      estimatedDeliveryAt: estimatedDeliveryAt.toISOString()
+    },
     verifiedCustomer: user || null
   }, req);
   send(res, 200, response);
@@ -1860,11 +1938,22 @@ async function handleCustomerOrders(req, res) {
       tracking = { ...tracking, error: error.message };
     }
 
+    const estimatedAt = orderEstimatedDeliveryDate(order, tracking);
+    const status = tracking.status || order.status || "placed";
+
     enriched.push({
       ...order,
+      estimatedDeliveryAt: estimatedAt.toISOString(),
+      deliveryEstimate: {
+        ...(order.deliveryEstimate || {}),
+        days: order.deliveryEstimate?.days || tracking.estimatedDays || deliveryEstimateDays,
+        estimatedDeliveryAt: estimatedAt.toISOString()
+      },
       tracking: {
         ...tracking,
-        steps: tracking.steps || trackingSteps(tracking.status || order.status)
+        estimatedDays: tracking.estimatedDays || deliveryEstimateDays,
+        estimatedDeliveryAt: estimatedAt.toISOString(),
+        steps: tracking.steps || trackingSteps(status, order, tracking)
       }
     });
   }
