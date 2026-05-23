@@ -1200,6 +1200,28 @@ svg {
   box-shadow: inset 4px 0 0 var(--blue);
 }
 
+.checkout-page-form .payment-option-row.unavailable {
+  cursor: not-allowed;
+  color: #9aa0a6;
+  background: #f7f9fc;
+}
+
+.checkout-page-form .payment-option-row.unavailable strong,
+.checkout-page-form .payment-option-row.unavailable small,
+.checkout-page-form .payment-option-row.unavailable .payment-option-icon {
+  color: #9aa0a6;
+}
+
+.checkout-page-form .payment-option-row b {
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #9f1239;
+  background: #ffe4ec;
+  font-size: 0.68rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .payment-chevron {
   width: 22px;
   height: 22px;

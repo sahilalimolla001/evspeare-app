@@ -20,6 +20,7 @@ const api = window.BazaarGoApi;
 const appConfig = window.EVSPEARE_CONFIG || window.BAZAARGO_CONFIG || {};
 const currency = new Intl.NumberFormat("en-IN");
 const deliveryEstimateDays = 7;
+const codMaxOrderAmount = 1000;
 
 const customerTrackingStages = [
   { key: "placed", label: "Order Placed", offsetDays: 0, icon: "bag" },
@@ -650,8 +651,11 @@ function renderSession() {
 function renderGatewayNote() {
   const hasKey = Boolean(appConfig.paymentGateway?.keyId);
   const hasPaymentServer = api?.hasEndpoint?.(appConfig.paymentCreateEndpoint);
+  const totals = cartTotals();
 
-  if (state.paymentMethod === "cod") {
+  if (totals.total > codMaxOrderAmount && state.paymentMethod === "cod") {
+    nodes.gatewayNote.textContent = "COD not available above Rs. 1,000. Pay online to place order.";
+  } else if (state.paymentMethod === "cod") {
     nodes.gatewayNote.textContent = "COD order will be pushed to your website as pending payment.";
   } else if (hasKey && hasPaymentServer) {
     nodes.gatewayNote.textContent = "Online payment will open PayU secure checkout.";
@@ -1090,16 +1094,17 @@ function paymentOptionIcon(name) {
   return icons[name] || icons.online;
 }
 
-function paymentOptionRow({ mode, method, icon, title, subtitle }) {
+function paymentOptionRow({ mode, method, icon, title, subtitle, disabled = false, badge = "" }) {
   const selected = state.paymentMode === mode || (!state.paymentMode && state.paymentMethod === method);
   return `
-    <label class="payment-option-row ${selected ? "selected" : ""}">
-      <input class="payment-choice-input" type="radio" name="page-payment" value="${escapeHtml(method)}" data-payment-method data-payment-mode="${escapeHtml(mode)}" ${selected ? "checked" : ""} />
+    <label class="payment-option-row ${selected ? "selected" : ""} ${disabled ? "unavailable" : ""}">
+      <input class="payment-choice-input" type="radio" name="page-payment" value="${escapeHtml(method)}" data-payment-method data-payment-mode="${escapeHtml(mode)}" ${selected ? "checked" : ""} ${disabled ? "disabled" : ""} />
       <span class="payment-option-icon">${paymentOptionIcon(icon)}</span>
       <div>
         <strong>${escapeHtml(title)}</strong>
         ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
       </div>
+      ${badge ? `<b>${escapeHtml(badge)}</b>` : ""}
       <svg class="payment-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
     </label>
   `;
@@ -1107,6 +1112,11 @@ function paymentOptionRow({ mode, method, icon, title, subtitle }) {
 
 function renderCheckoutPage() {
   const totals = cartTotals();
+  const codUnavailable = totals.total > codMaxOrderAmount;
+  if (codUnavailable && state.paymentMethod === "cod") {
+    state.paymentMethod = "online";
+    state.paymentMode = "online";
+  }
   const nameNode = checkoutField("[data-page-checkout-name]", nodes.checkoutName);
   const phoneNode = checkoutField("[data-page-checkout-phone]", nodes.checkoutPhone);
   const addressNode = checkoutField("[data-page-checkout-address]", nodes.checkoutAddress);
@@ -1158,7 +1168,10 @@ function renderCheckoutPage() {
           mode: "cod",
           method: "cod",
           icon: "cod",
-          title: "Cash on Delivery"
+          title: "Cash on Delivery",
+          subtitle: codUnavailable ? "Pay online to place order" : "",
+          disabled: codUnavailable,
+          badge: codUnavailable ? "Not available" : ""
         })}
         ${paymentOptionRow({
           mode: "online",
@@ -1684,6 +1697,7 @@ function validateCheckout() {
   const name = formatCustomerName(billing) || String(nameNode.value || state.session?.user?.name || "").trim();
   const address = formatAddress(billing);
   const hasLiveCoordinates = Boolean(billing.coordinates);
+  const totals = cartTotals();
 
   if (!isLoggedIn()) {
     openAccount();
@@ -1691,7 +1705,15 @@ function validateCheckout() {
     return null;
   }
 
-  for (const item of cartTotals().entries) {
+  if (state.paymentMethod === "cod" && totals.total > codMaxOrderAmount) {
+    showToast("COD not available above Rs. 1,000. Pay online to place order.");
+    state.paymentMethod = "online";
+    state.paymentMode = "online";
+    renderCheckoutPage();
+    return null;
+  }
+
+  for (const item of totals.entries) {
     if (!isProductAvailable(item)) {
       showToast(`${item.title} is out of stock`);
       return null;
@@ -2283,6 +2305,7 @@ document.addEventListener("click", async (event) => {
 
 document.addEventListener("change", async (event) => {
   if (!event.target.matches("[data-payment-method]")) return;
+  if (event.target.disabled) return;
   state.paymentMethod = event.target.value;
   state.paymentMode = event.target.dataset.paymentMode || event.target.value;
   event.target.closest(".payment-list")?.querySelectorAll(".payment-option-row").forEach((row) => {
