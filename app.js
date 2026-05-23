@@ -639,7 +639,8 @@ function fastDeliveryEligibility(pincode) {
 }
 
 function addressMatchesVerifiedLocation(details) {
-  if (!details.coordinates || !details.pincode) return { valid: false, reason: "Live location verification is required" };
+  if (!details.coordinates) return { valid: false, reason: "Use live location to verify this address" };
+  if (!details.pincode || details.pincode.length !== 6) return { valid: false, reason: "Enter valid pincode to verify address" };
   const pincodeCenter = coordinatesForPincode(details.pincode);
   if (!pincodeCenter) return { valid: true, reason: "Live location verified" };
 
@@ -701,14 +702,14 @@ function deliveryOptionsHtml(totals, eligibility) {
         <input type="radio" name="delivery-mode" value="fast" data-delivery-mode ${state.deliveryMode === "fast" ? "checked" : ""} data-fast-delivery />
         <span>
           <strong>Fast delivery</strong>
-          <small>Delivery by tomorrow - ${escapeHtml(eligibility.reason)}</small>
+          <small>Delivery by tomorrow</small>
         </span>
         <b>${formatPrice(fastFee)}</b>
       </label>
       ` : `
       <div class="delivery-unavailable">
         <strong>Fast delivery not available</strong>
-        <span>${escapeHtml(eligibility.reason)}. Default 6-7 days delivery will apply.</span>
+        <span>Default 6-7 days delivery will apply.</span>
       </div>
       `}
     </section>
