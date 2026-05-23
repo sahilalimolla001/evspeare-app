@@ -2264,6 +2264,36 @@ svg {
   justify-content: flex-end;
 }
 
+.order-return-row {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #d6e8f7;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #f8fcff;
+}
+
+.order-return-row div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.order-return-row strong {
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.order-return-row span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
 .order-cancel-row button {
   min-height: 38px;
   border-radius: 8px;
@@ -2274,7 +2304,23 @@ svg {
   font-weight: 900;
 }
 
+.order-return-row button {
+  min-height: 38px;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #0f5f84;
+  background: #dff2ff;
+  font-size: 0.82rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .order-cancel-row button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.order-return-row button:disabled {
   cursor: wait;
   opacity: 0.68;
 }
@@ -2283,7 +2329,12 @@ svg {
   justify-content: center;
 }
 
-.order-cancel-row.locked span {
+.order-return-row.locked {
+  justify-content: center;
+}
+
+.order-cancel-row.locked span,
+.order-return-row.locked span {
   width: 100%;
   border-radius: 8px;
   padding: 10px 12px;

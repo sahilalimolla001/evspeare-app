@@ -108,8 +108,13 @@ function readBody(req) {
 }
 
 function getOrigin(req) {
+  const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL || "").replace(/\/+$/g, "");
+  const forwardedHost = req.headers["x-forwarded-host"] || req.headers.host || "";
+  const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(String(forwardedHost));
+  if (publicBaseUrl && !isLocalHost) return publicBaseUrl;
+
   const forwardedProtocol = req.headers["x-forwarded-proto"];
-  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  const host = forwardedHost;
   if (forwardedProtocol) {
     const protocol = String(forwardedProtocol).split(",")[0].trim();
     return `${protocol}://${host}`;
@@ -397,6 +402,7 @@ function publicConfig(req) {
     productsEndpoint: "/api/mobile/products",
     ordersEndpoint: "/api/mobile/orders",
     orderCancelEndpoint: "/api/mobile/orders/cancel",
+    orderReturnEndpoint: "/api/mobile/orders/return",
     supportEndpoint: "/api/mobile/support",
     otpRequestEndpoint: "/api/mobile/auth/request-otp",
     otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
@@ -1014,6 +1020,7 @@ function normalizeRemoteProduct(item, index, endpointUrl, source) {
     id: String(id || `${source}-${index}`),
     sourceId: sourceId === null || sourceId === undefined ? null : sourceId,
     sku: sku === null || sku === undefined ? null : String(sku),
+    ean: firstPresent(item, ["ean", "EAN", "barcode", "bar_code", "upc", "isbn"]) || sku || null,
     title: firstPresent(item, ["title", "name", "product_name", "productName"]) || "Product",
     category,
     price: price || mrp || 0,
@@ -2115,9 +2122,157 @@ async function postOrderCancel(endpoint, headers, body, label) {
     body: JSON.stringify(body)
   });
   const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
+  let data = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch (error) {
+    data = { raw: text };
+  }
   if (!response.ok) throw new Error(data.message || data.error || `${label} failed`);
   return data;
+}
+
+function orderItemsForRequest(order = {}) {
+  const rows = Array.isArray(order.items) && order.items.length
+    ? order.items
+    : arrayFromPayload(order, ["items", "products", "lineItems", "line_items", "orderItems", "order_items"]);
+
+  return rows.map((item, index) => {
+    const price = numericValue(firstPresent(item, ["price", "sellingPrice", "selling_price", "amount", "unitPrice", "unit_price", "rate"])) || 0;
+    const quantity = numericValue(firstPresent(item, ["quantity", "qty", "count"])) || 1;
+    const ean = firstPresent(item, ["ean", "EAN", "barcode", "barCode", "bar_code", "upc", "isbn", "sku", "productSku", "product_sku"]);
+
+    return {
+      productId: firstPresent(item, ["productId", "product_id", "sourceId", "source_id", "appProductId", "app_product_id", "id", "sku"]) || "",
+      appProductId: firstPresent(item, ["appProductId", "app_product_id", "id"]) || "",
+      title: firstPresent(item, ["title", "name", "productName", "product_name"]) || `Item ${index + 1}`,
+      sku: firstPresent(item, ["sku", "productSku", "product_sku"]) || "",
+      ean: ean ? String(ean) : "",
+      price,
+      quantity,
+      total: numericValue(firstPresent(item, ["total", "lineTotal", "line_total", "amountTotal", "amount_total"])) || price * quantity
+    };
+  });
+}
+
+function orderCustomerForRequest(order = {}, user = null) {
+  const customer = firstPresent(order, ["customer", "billing", "shipping", "user"]) || {};
+  const addressParts = customer.addressParts || customer.location || {};
+  const address = firstPresent(customer, ["address", "fullAddress", "full_address", "customerAddress", "customer_address"]) || [
+    addressParts.address1,
+    addressParts.address2,
+    addressParts.city,
+    addressParts.state,
+    addressParts.pincode
+  ].filter(Boolean).join(", ");
+
+  return {
+    id: firstPresent(customer, ["id", "customerId", "customer_id"]) || user?.id || "",
+    name: firstPresent(customer, ["name", "customerName", "customer_name", "fullName", "full_name"]) || user?.name || "Customer",
+    phone: phoneDigits(firstPresent(customer, ["phone", "mobile", "customerPhone", "customer_phone"]) || user?.phone || ""),
+    address,
+    location: customer.location || null
+  };
+}
+
+function orderAmountsForRequest(order = {}) {
+  const amounts = order.amounts || {};
+  const items = orderItemsForRequest(order);
+  const subtotal = numericValue(firstPresent(amounts, ["subtotal", "subTotal", "itemsTotal", "items_total"])) ||
+    items.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const delivery = numericValue(firstPresent(amounts, ["delivery", "deliveryFee", "delivery_fee", "shipping", "shippingFee", "shipping_fee"])) ||
+    numericValue(order.delivery?.fee) ||
+    0;
+  const platformFee = numericValue(firstPresent(amounts, ["platformFee", "platform_fee", "serviceFee", "service_fee"])) || 0;
+  const total = numericValue(firstPresent(amounts, ["total", "grandTotal", "grand_total", "amountTotal", "amount_total"])) ||
+    numericValue(order.amountTotal) ||
+    subtotal + delivery + platformFee;
+
+  return {
+    currency: amounts.currency || order.currency || "INR",
+    subtotal,
+    delivery,
+    platformFee,
+    total
+  };
+}
+
+function orderDeliveredAt(order = {}, tracking = {}) {
+  const direct = firstDate(
+    tracking.deliveredAt,
+    tracking.delivered_at,
+    tracking.deliveryDate,
+    tracking.delivery_date,
+    order.deliveredAt,
+    order.delivered_at,
+    order.deliveryDate,
+    order.delivery_date,
+    order.delivery?.deliveredAt,
+    order.delivery?.delivered_at
+  );
+  if (direct) return direct;
+
+  const steps = [
+    ...(Array.isArray(tracking.steps) ? tracking.steps : []),
+    ...(Array.isArray(tracking.timeline) ? tracking.timeline : []),
+    ...(Array.isArray(order.tracking?.steps) ? order.tracking.steps : [])
+  ];
+  const deliveredStep = steps.find((step) => trackingStage(firstPresent(step, ["key", "status", "stage", "label", "title"])) === "delivered");
+  return firstDate(
+    deliveredStep?.date,
+    deliveredStep?.createdAt,
+    deliveredStep?.created_at,
+    deliveredStep?.completedAt,
+    deliveredStep?.completed_at,
+    deliveredStep?.updatedAt,
+    deliveredStep?.updated_at,
+    tracking.updatedAt,
+    tracking.updated_at,
+    order.updatedAt,
+    order.updated_at
+  );
+}
+
+function buildOrderActionRequest(type, order, user, details = {}, tracking = {}) {
+  const orderId = String(orderTrackingId(order) || details.orderId || "").trim();
+  const awbNumber = tracking.awbNumber || trackingAwbNumber(tracking) || trackingAwbNumber(order) || "";
+  const items = orderItemsForRequest(order);
+  const deliveredAt = orderDeliveredAt(order, tracking);
+
+  return {
+    requestId: `${type.toUpperCase()}-${Date.now()}`,
+    requestType: type,
+    orderId,
+    order_id: orderId,
+    awbNumber,
+    awb: awbNumber,
+    status: `${type}_requested`,
+    reason: details.reason || "",
+    note: details.note || details.details || "",
+    source: "mobile_app",
+    requestedAt: new Date().toISOString(),
+    deliveredAt: deliveredAt ? deliveredAt.toISOString() : "",
+    customer: orderCustomerForRequest(order, user),
+    items,
+    itemCount: items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+    amounts: orderAmountsForRequest(order),
+    payment: order.payment || {
+      method: order.paymentMethod || "",
+      status: order.paymentStatus || ""
+    },
+    delivery: order.delivery || null,
+    tracking: {
+      ...tracking,
+      awbNumber
+    },
+    orderSnapshot: order
+  };
+}
+
+function appendOrderActionRequest(type, payload) {
+  const dataDir = path.join(rootDir, "data");
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.appendFileSync(path.join(dataDir, `order-${type}-requests.jsonl`), `${JSON.stringify(payload)}\n`);
 }
 
 async function handleOrderCancel(req, res) {
@@ -2140,7 +2295,10 @@ async function handleOrderCancel(req, res) {
     orders = (await database.fetchCustomerOrders(user.phone)) || [];
   }
 
-  const order = orders.find((item) => String(orderTrackingId(item) || "") === orderId);
+  let order = orders.find((item) => String(orderTrackingId(item) || "") === orderId);
+  if (!order && body.order && String(orderTrackingId(body.order) || "") === orderId) {
+    order = body.order;
+  }
   if (!order) return send(res, 404, { message: "Order not found" });
 
   let tracking = order.tracking || { status: order.status || "placed" };
@@ -2148,18 +2306,19 @@ async function handleOrderCancel(req, res) {
   if (liveTracking.tracking) tracking = { ...tracking, ...liveTracking.tracking };
   if (liveTracking.error) tracking = { ...tracking, error: liveTracking.error };
 
-  const stage = trackingStage(tracking.status || order.status);
+  const stage = trackingStage([
+    tracking.status,
+    tracking.label,
+    order.status,
+    order.fulfillmentStatus,
+    order.shippingStatus
+  ].filter(Boolean).join(" "));
   if (stage !== "placed") {
     return send(res, 409, { message: "Cancel unavailable after order is shipped or out for delivery" });
   }
 
-  const cancelBody = {
-    orderId,
-    order_id: orderId,
-    phone: user.phone,
-    reason,
-    status: "cancel_requested"
-  };
+  const cancelBody = buildOrderActionRequest("cancel", order, user, { reason }, tracking);
+  appendOrderActionRequest("cancel", cancelBody);
   const results = {};
 
   try {
@@ -2190,6 +2349,105 @@ async function handleOrderCancel(req, res) {
     cancelled: true,
     orderId,
     status: "cancel_requested",
+    localOnly: !results.website && !results.warehouse,
+    database: databaseResult,
+    ...results
+  });
+}
+
+async function handleOrderReturn(req, res) {
+  const user = verifyToken(req);
+  if (!user) return send(res, 401, { message: "Login required" });
+
+  const body = await readBody(req);
+  const orderId = String(body.orderId || body.order_id || "").trim();
+  const reason = String(body.reason || "").trim();
+  const note = String(body.note || body.details || "").trim();
+  if (!orderId) return send(res, 400, { message: "Order id is required" });
+  if (reason.length < 3) return send(res, 400, { message: "Return reason is required" });
+
+  let orders = [];
+  try {
+    orders = await fetchWebsiteCustomerOrders(req, user.phone);
+  } catch (error) {
+    console.error("Website orders import failed before return", error.message);
+  }
+
+  if (!orders.length && appDatabaseEnabled()) {
+    orders = (await database.fetchCustomerOrders(user.phone)) || [];
+  }
+
+  let order = orders.find((item) => String(orderTrackingId(item) || "") === orderId);
+  if (!order && body.order && String(orderTrackingId(body.order) || "") === orderId) {
+    order = body.order;
+  }
+  if (!order) return send(res, 404, { message: "Order not found" });
+
+  let tracking = order.tracking || { status: order.status || "placed" };
+  const liveTracking = await fetchLiveTracking(req, order);
+  if (liveTracking.tracking) tracking = { ...tracking, ...liveTracking.tracking };
+  if (liveTracking.error) tracking = { ...tracking, error: liveTracking.error };
+
+  const deliveredStep = [
+    ...(Array.isArray(tracking.steps) ? tracking.steps : []),
+    ...(Array.isArray(tracking.timeline) ? tracking.timeline : []),
+    ...(Array.isArray(order.tracking?.steps) ? order.tracking.steps : [])
+  ].some((step) => {
+    if (step.done === false || step.completed === false || step.isDone === false || step.is_done === false) return false;
+    return trackingStage(firstPresent(step, ["key", "status", "stage", "label", "title"])) === "delivered";
+  });
+  const stage = trackingStage([
+    tracking.status,
+    tracking.label,
+    order.status,
+    order.fulfillmentStatus,
+    order.shippingStatus
+  ].filter(Boolean).join(" "));
+  if (stage !== "delivered" && !deliveredStep) {
+    return send(res, 409, { message: "Return is available only after delivery" });
+  }
+
+  const deliveredAt = orderDeliveredAt(order, tracking) || new Date();
+  const returnAvailableUntil = addDays(deliveredAt, 7);
+  if (Date.now() > returnAvailableUntil.getTime()) {
+    return send(res, 409, { message: "Return window expired after 7 days" });
+  }
+
+  const returnBody = buildOrderActionRequest("return", order, user, { reason, note }, tracking);
+  returnBody.returnWindowDays = 7;
+  returnBody.returnAvailableUntil = returnAvailableUntil.toISOString();
+  appendOrderActionRequest("return", returnBody);
+  const results = {};
+
+  try {
+    const websiteReturnUrl = process.env.WEBSITE_RETURN_ORDER_URL || process.env.WEBSITE_ORDER_RETURN_URL || "";
+    const warehouseReturnUrl = process.env.WAREHOUSE_RETURN_ORDER_URL || process.env.WAREHOUSE_ORDER_RETURN_URL || "";
+    const websiteReturnHeaders = websiteReturnUrl ? await websiteRequestHeaders(req, websiteReturnUrl) : {};
+
+    const [website, warehouse] = await Promise.all([
+      postOrderCancel(websiteReturnUrl, websiteReturnHeaders, returnBody, "Website return request"),
+      postOrderCancel(warehouseReturnUrl, warehouseHeaders(), returnBody, "Warehouse return request")
+    ]);
+    if (website) results.website = website;
+    if (warehouse) results.warehouse = warehouse;
+  } catch (error) {
+    return send(res, 502, { message: error.message });
+  }
+
+  let databaseResult = null;
+  if (appDatabaseEnabled()) {
+    try {
+      databaseResult = await database.updateOrderStatus(orderId, "return_requested");
+    } catch (error) {
+      console.error("Database return status update failed", error.message);
+    }
+  }
+
+  send(res, 200, {
+    returnRequested: true,
+    orderId,
+    status: "return_requested",
+    reason,
     localOnly: !results.website && !results.warehouse,
     database: databaseResult,
     ...results
@@ -2699,6 +2957,7 @@ async function router(req, res) {
     if (req.method === "GET" && url.pathname === "/api/mobile/orders") return handleCustomerOrders(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/orders") return handleOrder(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/orders/cancel") return handleOrderCancel(req, res);
+    if (req.method === "POST" && url.pathname === "/api/mobile/orders/return") return handleOrderReturn(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/payments/create") return handlePaymentCreate(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/payments/verify") return handlePaymentVerify(req, res);
     if (req.method === "POST" && url.pathname === "/payment/payu/success") return handlePayuCallback(req, res, true);

@@ -32,6 +32,8 @@ window.EVSPEARE_CONFIG = {
    * The app calls:
    * GET  productsEndpoint       -> import catalog
    * POST ordersEndpoint         -> push customer order
+   * POST orderCancelEndpoint    -> create cancellation request
+   * POST orderReturnEndpoint    -> create return request
    * POST otpRequestEndpoint     -> send OTP
    * POST otpVerifyEndpoint      -> verify OTP and return token/user
    * POST paymentCreateEndpoint  -> create gateway order on server
@@ -40,6 +42,7 @@ window.EVSPEARE_CONFIG = {
   productsEndpoint: "/api/mobile/products",
   ordersEndpoint: "/api/mobile/orders",
   orderCancelEndpoint: "/api/mobile/orders/cancel",
+  orderReturnEndpoint: "/api/mobile/orders/return",
   supportEndpoint: "/api/mobile/support",
   otpRequestEndpoint: "/api/mobile/auth/request-otp",
   otpVerifyEndpoint: "/api/mobile/auth/verify-otp",

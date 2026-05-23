@@ -32,12 +32,14 @@ Set these in Railway before using the live app:
 BUSINESS_NAME=Ev Speare
 CURRENCY=INR
 SESSION_SECRET=use-a-long-random-secret
+PUBLIC_BASE_URL=https://evspeare.shop
 
 WEBSITE_PRODUCTS_URL=https://yourwebsite.com/api/mobile/products
 WEBSITE_ORDERS_URL=https://yourwebsite.com/api/mobile/orders
 WEBSITE_CUSTOMER_ORDERS_URL=https://yourwebsite.com/api/mobile/customer-orders
 WEBSITE_TRACKING_URL=https://yourwebsite.com/api/mobile/order-tracking
 WEBSITE_CANCEL_ORDER_URL=https://yourwebsite.com/api/mobile/orders/cancel
+WEBSITE_RETURN_ORDER_URL=https://yourwebsite.com/api/mobile/orders/return
 WEBSITE_API_TOKEN=Bearer your_backend_api_token
 STORE_PINCODE=700136
 STORE_LATITUDE=22.637112
@@ -50,6 +52,7 @@ PINCODE_COORDINATES_JSON={"700136":{"lat":22.637112,"lng":88.454125}}
 WAREHOUSE_ORDERS_URL=https://yourwarehouse.com/api/orders
 WAREHOUSE_TRACKING_URL=https://yourwarehouse.com/api/order-tracking
 WAREHOUSE_CANCEL_ORDER_URL=https://yourwarehouse.com/api/orders/cancel
+WAREHOUSE_RETURN_ORDER_URL=https://yourwarehouse.com/api/orders/return
 WAREHOUSE_PRODUCTS_URL=https://yourwarehouse.com/api/products
 WAREHOUSE_INVENTORY_URL=https://yourwarehouse.com/api/inventory
 WAREHOUSE_API_TOKEN=Bearer your_warehouse_token
@@ -93,12 +96,14 @@ PAYU_ENV=production
 - `POST /api/mobile/orders` validates live catalog inventory and pushes COD/paid orders to `WEBSITE_ORDERS_URL`.
 - If `WAREHOUSE_ORDERS_URL` is set, every placed order is also pushed to the warehouse system.
 - `GET /api/mobile/orders` returns customer orders from `WEBSITE_CUSTOMER_ORDERS_URL` or `WEBSITE_ORDERS_URL`, then merges live website tracking from `WEBSITE_TRACKING_URL` and warehouse tracking from `WAREHOUSE_TRACKING_URL`.
-- `POST /api/mobile/orders/cancel` accepts customer cancel requests before the order reaches shipped/out-for-delivery; set `WEBSITE_CANCEL_ORDER_URL` or `WAREHOUSE_CANCEL_ORDER_URL` to forward them.
+- `POST /api/mobile/orders/cancel` accepts customer cancel requests before the order reaches shipped/out-for-delivery; set `WEBSITE_CANCEL_ORDER_URL` or `WAREHOUSE_CANCEL_ORDER_URL` to forward full order details.
+- `POST /api/mobile/orders/return` accepts return requests for 7 days after delivered status; set `WEBSITE_RETURN_ORDER_URL` or `WAREHOUSE_RETURN_ORDER_URL` to forward order id, AWB, items, EAN/SKU, customer, address, phone, amount, reason, and tracking details.
 - `GET /api/mobile/inventory-diagnostics` shows safe warehouse product/inventory mapping samples without exposing API tokens.
 - `GET /api/mobile/images?src=...` serves warehouse product images through the backend, including private `gs://` Google Storage images when `GOOGLE_SERVICE_ACCOUNT_JSON` is configured.
 - `POST /api/mobile/payments/create` creates a PayU hosted checkout form with server-generated SHA-512 hash.
 - `/payment/payu/success` verifies PayU response hash, confirms transaction status with PayU Verify/Check API, then pushes paid order to your website.
 - `/payment/payu/failure` returns the customer to the app after failed/cancelled payment.
+- Set `PUBLIC_BASE_URL=https://evspeare.shop` in Railway after adding your custom domain so generated config and payment callbacks use the live domain.
 
 ## Optional Database Mode
 

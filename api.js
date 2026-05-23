@@ -252,6 +252,7 @@
       id: String(item.id || item.product_id || item.sku || `remote-${index}`),
       sourceId: item.sourceId || item.source_id || item.product_id || item.productId || item.id || item.sku || null,
       sku: item.sku || item.product_sku || item.productSku || null,
+      ean: item.ean || item.EAN || item.barcode || item.bar_code || item.upc || item.isbn || item.sku || null,
       title: item.title || item.name || "Product",
       category,
       price: price || mrp || 0,
@@ -366,14 +367,30 @@
     return request(config.ordersEndpoint);
   }
 
-  async function cancelOrder(orderId, reason = "Customer requested cancellation") {
+  async function cancelOrder(orderId, reason = "Customer requested cancellation", order = null) {
     if (!hasEndpoint(config.orderCancelEndpoint)) {
       throw new Error("Order cancel endpoint is not configured");
     }
 
     return request(config.orderCancelEndpoint, {
       method: "POST",
-      body: { orderId, reason }
+      body: { orderId, reason, order }
+    });
+  }
+
+  async function returnOrder(orderId, details = {}) {
+    if (!hasEndpoint(config.orderReturnEndpoint)) {
+      throw new Error("Order return endpoint is not configured");
+    }
+
+    return request(config.orderReturnEndpoint, {
+      method: "POST",
+      body: {
+        orderId,
+        reason: details.reason || "",
+        note: details.note || details.details || "",
+        order: details.order || null
+      }
     });
   }
 
@@ -399,6 +416,7 @@
     pushOrder,
     fetchOrders,
     cancelOrder,
+    returnOrder,
     submitSupportQuery,
     hasEndpoint
   };

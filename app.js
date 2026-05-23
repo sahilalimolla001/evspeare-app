@@ -20,6 +20,7 @@ const api = window.BazaarGoApi;
 const appConfig = window.EVSPEARE_CONFIG || window.BAZAARGO_CONFIG || {};
 const currency = new Intl.NumberFormat("en-IN");
 const deliveryEstimateDays = 7;
+const returnWindowDays = 7;
 const codMaxOrderAmount = 1000;
 
 const customerTrackingStages = [
@@ -252,6 +253,7 @@ const state = {
   checkoutProcessing: false,
   ordersRefreshTimer: null,
   cancellingOrderId: "",
+  returningOrderId: "",
   expandedOrderId: "",
   promoIndex: 0
 };
@@ -1530,6 +1532,50 @@ function orderIsCancelled(order) {
   ].filter(Boolean).join(" ").toLowerCase());
 }
 
+function orderIsReturnRequested(order) {
+  return Boolean(order.returnRequest || order.return_request) || /return/.test([
+    order.status,
+    order.returnStatus,
+    order.return_status,
+    order.tracking?.status,
+    order.tracking?.label
+  ].filter(Boolean).join(" ").toLowerCase());
+}
+
+function orderIsDelivered(order) {
+  if (orderIsCancelled(order)) return false;
+  return orderTrackingStage(order) === "delivered" || trackingActiveIndex(order) >= customerTrackingStages.length - 1;
+}
+
+function orderDeliveredDate(order) {
+  const steps = Array.isArray(order.tracking?.steps) ? order.tracking.steps : [];
+  const deliveredStep = steps.find((step) => trackingStepStageKey(step) === "delivered");
+  const date = validDate(
+    order.deliveredAt ||
+      order.delivered_at ||
+      order.deliveryDate ||
+      order.delivery_date ||
+      order.delivery?.deliveredAt ||
+      order.delivery?.delivered_at ||
+      order.tracking?.deliveredAt ||
+      order.tracking?.delivered_at ||
+      deliveredStep?.date ||
+      deliveredStep?.completedAt ||
+      deliveredStep?.updatedAt ||
+      order.tracking?.updatedAt ||
+      order.tracking?.updated_at
+  );
+  if (date) return date;
+  return orderIsDelivered(order) ? new Date() : null;
+}
+
+function orderCanReturn(order) {
+  if (!orderIsDelivered(order) || orderIsReturnRequested(order)) return false;
+  const deliveredAt = orderDeliveredDate(order);
+  if (!deliveredAt) return false;
+  return Date.now() <= addDays(deliveredAt, returnWindowDays).getTime();
+}
+
 function stepDateForStage(order, stage) {
   const steps = Array.isArray(order.tracking?.steps) ? order.tracking.steps : [];
   const matchingStep = steps.find((step) => trackingStepStageKey(step) === stage.key);
@@ -1657,7 +1703,7 @@ function customerTrackingHtml(order) {
   const progress = Math.round((activeIndex / (customerTrackingStages.length - 1)) * 75);
   const createdAt = orderCreatedDate(order);
   const estimatedAt = orderEstimatedDeliveryDate(order);
-  const status = order.tracking?.label || order.tracking?.status || order.status || "Order placed";
+  const status = orderIsDelivered(order) ? "Delivered" : order.tracking?.label || order.tracking?.status || order.status || "Order placed";
 
   return `
     <section class="customer-tracking" aria-label="Track your order">
@@ -1715,6 +1761,35 @@ function orderCancelHtml(order) {
     <div class="order-cancel-row">
       <button type="button" data-cancel-order="${escapeHtml(orderId)}" ${state.cancellingOrderId === orderId ? "disabled" : ""}>
         ${state.cancellingOrderId === orderId ? "Cancelling..." : "Cancel order"}
+      </button>
+    </div>
+  `;
+}
+
+function orderReturnHtml(order) {
+  const orderId = orderDisplayId(order);
+
+  if (orderIsReturnRequested(order)) {
+    return `
+      <div class="order-return-row locked">
+        <span>Return request sent</span>
+      </div>
+    `;
+  }
+
+  if (!orderCanReturn(order)) return "";
+
+  const deliveredAt = orderDeliveredDate(order);
+  const returnUntil = addDays(deliveredAt, returnWindowDays);
+
+  return `
+    <div class="order-return-row">
+      <div>
+        <strong>Return available</strong>
+        <span>Return before ${escapeHtml(formatOrderDate(returnUntil, false))}</span>
+      </div>
+      <button type="button" data-return-order="${escapeHtml(orderId)}" ${state.returningOrderId === orderId ? "disabled" : ""}>
+        ${state.returningOrderId === orderId ? "Submitting..." : "Return order"}
       </button>
     </div>
   `;
@@ -1782,6 +1857,8 @@ function renderOrdersPage() {
       ${state.orders.length ? state.orders.map((order) => {
         const createdAt = orderCreatedDate(order);
         const estimatedAt = orderEstimatedDeliveryDate(order);
+        const delivered = orderIsDelivered(order);
+        const deliveredAt = orderDeliveredDate(order);
         const awbNumber = orderAwbNumber(order);
         return `
           <article class="order-card">
@@ -1795,9 +1872,10 @@ function renderOrdersPage() {
             </div>
             <div class="order-date-grid">
               <span>Order Date<strong>${escapeHtml(formatOrderDate(createdAt, false))}</strong></span>
-              <span>Estimated Delivery<strong>${escapeHtml(formatOrderDate(estimatedAt, false))}</strong></span>
+              <span>${delivered ? "Delivered" : "Estimated Delivery"}<strong>${escapeHtml(formatOrderDate(delivered && deliveredAt ? deliveredAt : estimatedAt, false))}</strong></span>
             </div>
             ${customerTrackingHtml(order)}
+            ${orderReturnHtml(order)}
             ${orderDetailsHtml(order)}
             ${orderCancelHtml(order)}
           </article>
@@ -2199,6 +2277,8 @@ function buildOrder(customer, payment) {
     items: totals.entries.map((item) => ({
       productId: item.sourceId || item.id,
       appProductId: item.id,
+      sku: item.sku || "",
+      ean: item.ean || item.sku || "",
       title: item.title,
       price: item.price,
       quantity: item.quantity,
@@ -2448,11 +2528,12 @@ function syncOrdersAutoRefresh() {
 async function cancelOrder(orderId) {
   if (!orderId || state.cancellingOrderId) return;
 
+  const order = state.orders.find((item) => String(orderDisplayId(item)) === String(orderId));
   state.cancellingOrderId = orderId;
   renderOrdersPage();
 
   try {
-    const response = await api.cancelOrder(orderId);
+    const response = await api.cancelOrder(orderId, "Customer requested cancellation", order || null);
     state.orders = state.orders.map((order) => {
       if (String(orderDisplayId(order)) !== String(orderId)) return order;
       return {
@@ -2474,6 +2555,54 @@ async function cancelOrder(orderId) {
     showToast(error.message || "Unable to cancel order");
   } finally {
     state.cancellingOrderId = "";
+    renderOrdersPage();
+  }
+}
+
+async function returnOrder(orderId) {
+  if (!orderId || state.returningOrderId) return;
+
+  const order = state.orders.find((item) => String(orderDisplayId(item)) === String(orderId));
+  if (!order || !orderCanReturn(order)) {
+    showToast("Return option is not available for this order");
+    return;
+  }
+
+  const reason = window.prompt("Return reason likhiye");
+  if (reason === null) return;
+  const cleanReason = reason.trim();
+  if (cleanReason.length < 3) {
+    showToast("Enter return reason");
+    return;
+  }
+  const note = (window.prompt("Item condition / pickup note (optional)", "") || "").trim();
+
+  state.returningOrderId = orderId;
+  renderOrdersPage();
+
+  try {
+    const response = await api.returnOrder(orderId, { reason: cleanReason, note, order });
+    state.orders = state.orders.map((item) => {
+      if (String(orderDisplayId(item)) !== String(orderId)) return item;
+      return {
+        ...item,
+        returnRequest: {
+          status: response.status || "return_requested",
+          reason: cleanReason,
+          note,
+          requestedAt: new Date().toISOString()
+        }
+      };
+    });
+    saveJson(storageKeys.orders, state.orders);
+    showToast("Return request sent");
+    if (!response.localOnly) {
+      await loadOrders({ silent: true, background: true });
+    }
+  } catch (error) {
+    showToast(error.message || "Unable to create return request");
+  } finally {
+    state.returningOrderId = "";
     renderOrdersPage();
   }
 }
@@ -2536,6 +2665,7 @@ document.addEventListener("click", async (event) => {
   const decreaseId = target.dataset.decrease;
   const removeId = target.dataset.remove;
   const cancelOrderId = target.dataset.cancelOrder;
+  const returnOrderId = target.dataset.returnOrder;
   const infoPageKey = target.dataset.infoPage;
   const orderDetailsId = target.dataset.orderDetails;
 
@@ -2591,6 +2721,10 @@ document.addEventListener("click", async (event) => {
 
   if (cancelOrderId) {
     await cancelOrder(cancelOrderId);
+  }
+
+  if (returnOrderId) {
+    await returnOrder(returnOrderId);
   }
 
   if (orderDetailsId) {
