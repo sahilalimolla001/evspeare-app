@@ -390,6 +390,7 @@ function publicConfig(req) {
     storeLatitude: process.env.STORE_LATITUDE || "",
     storeLongitude: process.env.STORE_LONGITUDE || "",
     fastDeliveryRadiusKm: Number(process.env.FAST_DELIVERY_RADIUS_KM || 20),
+    addressPincodeRadiusKm: Number(process.env.ADDRESS_PINCODE_RADIUS_KM || 25),
     fastDeliveryPincodes,
     pincodeCoordinates,
     productsEndpoint: "/api/mobile/products",

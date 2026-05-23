@@ -1378,6 +1378,37 @@ svg {
   line-height: 1.35;
 }
 
+.address-verify-card {
+  border: 1px solid #f7d7a8;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  background: #fff8e8;
+}
+
+.address-verify-card.verified {
+  border-color: #b7e2c3;
+  background: #f0fff4;
+}
+
+.address-verify-card strong {
+  color: #775800;
+  font-size: 0.86rem;
+}
+
+.address-verify-card.verified strong {
+  color: #0f7a3d;
+}
+
+.address-verify-card p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
 .location-action-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

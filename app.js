@@ -638,6 +638,28 @@ function fastDeliveryEligibility(pincode) {
   return { eligible: false, reason: `Fast delivery available within ${radius} km only` };
 }
 
+function addressMatchesVerifiedLocation(details) {
+  if (!details.coordinates || !details.pincode) return { valid: false, reason: "Live location verification is required" };
+  const pincodeCenter = coordinatesForPincode(details.pincode);
+  if (!pincodeCenter) return { valid: true, reason: "Live location verified" };
+
+  const distance = distanceKmBetween(
+    {
+      latitude: Number(details.coordinates.latitude),
+      longitude: Number(details.coordinates.longitude)
+    },
+    pincodeCenter
+  );
+  const radius = Number(appConfig.addressPincodeRadiusKm || 25);
+  if (distance === null) return { valid: false, reason: "Live location verification is invalid" };
+  return {
+    valid: distance <= radius,
+    reason: distance <= radius
+      ? "Live location matches pincode"
+      : "Live location does not match entered pincode"
+  };
+}
+
 function cartTotals() {
   const entries = cartEntries();
   const itemCount = entries.reduce((sum, item) => sum + item.quantity, 0);
@@ -1248,6 +1270,13 @@ function renderCheckoutPage() {
   const savedLocation = savedLocationDetails();
   const hasSavedLocation = hasLocationDetails(savedLocation);
   const showLocationForm = state.locationFormOpen || !hasSavedLocation;
+  const addressVerification = addressMatchesVerifiedLocation(billing);
+  const addressVerified = addressVerification.valid && billing.pincode.length === 6;
+  const addressVerificationMessage = addressVerified
+    ? addressVerification.reason
+    : billing.coordinates && billing.pincode.length === 6
+      ? addressVerification.reason
+      : "Enter address, city and pincode, then verify with live location.";
 
   nodes.checkoutPage.innerHTML = `
     <div class="payment-page-header">
@@ -1322,10 +1351,14 @@ function renderCheckoutPage() {
             </div>
           </div>
         ` : ""}
+        <div class="address-verify-card ${addressVerified ? "verified" : ""}">
+          <strong>${addressVerified ? "Address verified" : "Address verification required"}</strong>
+          <p>${escapeHtml(addressVerificationMessage)}</p>
+        </div>
         <div class="location-action-row">
           <button type="button" data-action="use-live-location">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" /></svg>
-            Use live location
+            Verify live location
           </button>
           <button type="button" data-action="edit-location">${hasSavedLocation ? "Add location" : "Manual location"}</button>
         </div>
@@ -1943,21 +1976,32 @@ function validateCheckout() {
     return null;
   }
 
-  if (!billing.address1 && !hasLiveCoordinates) {
-    showToast("Enter delivery address or use live location");
+  if (!billing.address1) {
+    showToast("Enter delivery address");
     address1Node.focus();
     return null;
   }
 
-  if (!hasLiveCoordinates && !billing.city) {
+  if (!billing.city) {
     showToast("Enter city");
     cityNode.focus();
     return null;
   }
 
-  if (!hasLiveCoordinates && billing.pincode.length !== 6) {
+  if (billing.pincode.length !== 6) {
     showToast("Enter valid 6 digit pincode");
     pincodeNode.focus();
+    return null;
+  }
+
+  if (!hasLiveCoordinates) {
+    showToast("Verify address with live location");
+    return null;
+  }
+
+  const addressVerification = addressMatchesVerifiedLocation(billing);
+  if (!addressVerification.valid) {
+    showToast(addressVerification.reason);
     return null;
   }
 

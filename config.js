@@ -19,6 +19,7 @@ window.EVSPEARE_CONFIG = {
   apiBaseUrl: window.location.protocol === "file:" ? "" : window.location.origin,
   storePincode: "",
   fastDeliveryRadiusKm: 20,
+  addressPincodeRadiusKm: 25,
   fastDeliveryPincodes: [],
   pincodeCoordinates: {},
 
