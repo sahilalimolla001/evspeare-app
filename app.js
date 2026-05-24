@@ -870,21 +870,59 @@ function renderGatewayNote() {
   });
 }
 
-function openPage(name) {
+const appHistoryKey = "evspeare";
+
+function activePageName() {
+  return Array.from(document.querySelectorAll("[data-page-panel]")).find((panel) => panel.classList.contains("open"))?.dataset.pagePanel || "";
+}
+
+function pageHistoryState(name) {
+  return { [appHistoryKey]: true, page: name || "home" };
+}
+
+function syncPageHistory(name) {
+  if (!window.history?.pushState) return;
+  const nextPage = name || "home";
+  if (history.state?.[appHistoryKey] && history.state.page === nextPage) return;
+  history.pushState(pageHistoryState(nextPage), "", window.location.href);
+}
+
+function openPage(name, options = {}) {
+  const { updateHistory = true } = options;
   document.querySelectorAll("[data-page-panel]").forEach((panel) => {
     const active = panel.dataset.pagePanel === name;
     panel.classList.toggle("open", active);
     panel.setAttribute("aria-hidden", active ? "false" : "true");
   });
+  if (updateHistory) syncPageHistory(name);
   syncOrdersAutoRefresh();
 }
 
-function closePages() {
+function closePages(options = {}) {
+  const { updateHistory = true } = options;
   document.querySelectorAll("[data-page-panel]").forEach((panel) => {
     panel.classList.remove("open");
     panel.setAttribute("aria-hidden", "true");
   });
+  if (updateHistory) syncPageHistory("");
   syncOrdersAutoRefresh();
+}
+
+function closeCurrentPage() {
+  if (history.state?.[appHistoryKey] && history.state.page && history.state.page !== "home") {
+    history.back();
+    return;
+  }
+  closePages();
+}
+
+function handlePageHistoryChange(event) {
+  const page = event.state?.[appHistoryKey] ? event.state.page : "home";
+  if (page && page !== "home") {
+    openPage(page, { updateHistory: false });
+  } else {
+    closePages({ updateHistory: false });
+  }
 }
 
 function renderPromo() {
@@ -2847,7 +2885,7 @@ document.addEventListener("click", async (event) => {
       await loadOrders();
       break;
     case "close-page":
-      closePages();
+      closeCurrentPage();
       break;
     case "close-cart":
       closeCartSheet();
@@ -3006,9 +3044,15 @@ document.addEventListener("keydown", (event) => {
     closeCartSheet();
     closeDrawer();
     closeAccount();
-    closePages();
+    closeCurrentPage();
   }
 });
+
+window.addEventListener("popstate", handlePageHistoryChange);
+
+if (!history.state?.[appHistoryKey]) {
+  history.replaceState(pageHistoryState(activePageName()), "", window.location.href);
+}
 
 if (state.session?.user?.phone) {
   nodes.checkoutPhone.value = state.session.user.phone;
