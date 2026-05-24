@@ -299,12 +299,12 @@
     });
   }
 
-  async function verifyOtp(phone, otp) {
+  async function verifyOtp(phone, otp, name = "") {
     if (!hasEndpoint(config.otpVerifyEndpoint)) {
       if (config.demo?.enabled && otp === config.demo.otp) {
         return {
           token: `demo-token-${Date.now()}`,
-          user: { id: phone, phone, name: "Customer" }
+          user: { id: phone, phone, name: name || "Customer" }
         };
       }
       throw new Error("Invalid OTP. Demo OTP is 123456.");
@@ -312,7 +312,7 @@
 
     return request(config.otpVerifyEndpoint, {
       method: "POST",
-      body: { phone, otp }
+      body: { phone, otp, name }
     });
   }
 

@@ -1228,7 +1228,8 @@ async function handleVerifyOtp(req, res) {
   }
 
   const phone = phoneDigits(body.phone);
-  const user = { id: phone, phone, name: body.name || "Customer" };
+  const name = String(body.name || "").trim() || "Customer";
+  const user = { id: phone, phone, name };
   send(res, 200, {
     token: signToken(user),
     user

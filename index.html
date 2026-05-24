@@ -304,6 +304,10 @@
 
         <div class="auth-panel" data-auth-login>
           <label>
+            Customer name
+            <input type="text" data-login-name placeholder="Enter your name" autocomplete="name" />
+          </label>
+          <label>
             Mobile number
             <input type="tel" inputmode="numeric" maxlength="10" data-login-phone placeholder="Enter 10 digit mobile" autocomplete="tel" />
           </label>
@@ -319,7 +323,7 @@
 
         <div class="profile-panel" data-auth-profile hidden>
           <div class="profile-hero">
-            <span class="profile-avatar" aria-hidden="true">E</span>
+            <span class="profile-avatar" aria-hidden="true" data-profile-avatar>E</span>
             <div>
               <small>Welcome back</small>
               <strong data-profile-name>Ev Speare Customer</strong>
@@ -334,6 +338,14 @@
             <span>Saved</span>
             <strong data-profile-saved-count>0</strong>
           </div>
+
+          <form class="profile-edit-form" data-profile-edit-form>
+            <label>
+              Edit name
+              <input type="text" data-profile-edit-name placeholder="Customer name" autocomplete="name" />
+            </label>
+            <button class="primary-button" type="submit">Save</button>
+          </form>
 
           <div class="profile-shortcuts" aria-label="Account shortcuts">
             <button type="button" data-action="open-orders">
@@ -371,19 +383,6 @@
           <button class="secondary-button" type="button" data-action="logout">Logout</button>
         </div>
       </section>
-    </aside>
-
-    <aside class="update-prompt" data-update-prompt aria-hidden="true">
-      <div class="update-prompt-card" role="dialog" aria-modal="true" aria-labelledby="update-prompt-title">
-        <div>
-          <strong id="update-prompt-title">Update available</strong>
-          <span>New app version is ready.</span>
-        </div>
-        <div class="update-prompt-actions">
-          <button type="button" data-action="dismiss-update">Later</button>
-          <button type="button" data-action="apply-update">Update</button>
-        </div>
-      </div>
     </aside>
 
     <div class="toast" role="status" aria-live="polite" data-toast></div>

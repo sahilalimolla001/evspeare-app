@@ -286,11 +286,15 @@ const nodes = {
   authProfile: document.querySelector("[data-auth-profile]"),
   authTitle: document.querySelector("[data-auth-title]"),
   authSubtitle: document.querySelector("[data-auth-subtitle]"),
+  loginName: document.querySelector("[data-login-name]"),
   loginPhone: document.querySelector("[data-login-phone]"),
   loginOtp: document.querySelector("[data-login-otp]"),
   otpPanel: document.querySelector("[data-otp-panel]"),
+  profileAvatar: document.querySelector("[data-profile-avatar]"),
   profileName: document.querySelector("[data-profile-name]"),
   profilePhone: document.querySelector("[data-profile-phone]"),
+  profileEditForm: document.querySelector("[data-profile-edit-form]"),
+  profileEditName: document.querySelector("[data-profile-edit-name]"),
   profileSavedCount: document.querySelector("[data-profile-saved-count]"),
   checkoutForm: document.querySelector("[data-checkout-form]"),
   checkoutName: document.querySelector("[data-checkout-name]"),
@@ -367,6 +371,11 @@ function formatPrice(value) {
 
 function formatRupeeAmount(value) {
   return `Rs. ${currency.format(Math.round(Number(value) || 0))}`;
+}
+
+function customerNameFallback(value) {
+  const name = String(value || "").trim();
+  return name || "Ev Speare Customer";
 }
 
 function addDays(date, days) {
@@ -827,7 +836,7 @@ function renderBadges() {
 function renderSession() {
   const loggedIn = isLoggedIn();
   const phone = state.session?.user?.phone || "";
-  const name = state.session?.user?.name || "Ev Speare Customer";
+  const name = customerNameFallback(state.session?.user?.name);
 
   nodes.accountPill.hidden = loggedIn;
   nodes.accountPill.textContent = "Login";
@@ -839,10 +848,15 @@ function renderSession() {
     : "Login stays active until you logout";
   nodes.profileName.textContent = loggedIn ? name : "Ev Speare Customer";
   nodes.profilePhone.textContent = loggedIn ? `+91 ${phone}` : "Customer";
+  if (nodes.profileAvatar) nodes.profileAvatar.textContent = (loggedIn ? name : "Ev Speare").trim().charAt(0).toUpperCase() || "E";
+  if (nodes.profileEditName) nodes.profileEditName.value = loggedIn ? name : "";
   nodes.profileSavedCount.textContent = state.wishlist.size;
 
   if (loggedIn && !nodes.checkoutPhone.value) {
     nodes.checkoutPhone.value = phone;
+  }
+  if (loggedIn && !nodes.checkoutName.value) {
+    nodes.checkoutName.value = name;
   }
 }
 
@@ -2033,8 +2047,7 @@ function showToast(message) {
 }
 
 function showUpdatePrompt() {
-  nodes.updatePrompt?.classList.add("open");
-  nodes.updatePrompt?.setAttribute("aria-hidden", "false");
+  applyAppUpdate();
 }
 
 function hideUpdatePrompt() {
@@ -2058,7 +2071,7 @@ async function checkAppVersion() {
     }
 
     if (storedVersion !== latestVersion) {
-      showUpdatePrompt();
+      await applyAppUpdate();
     }
   } catch (error) {
     console.warn("Unable to check app version", error);
@@ -2066,6 +2079,8 @@ async function checkAppVersion() {
 }
 
 async function applyAppUpdate() {
+  if (applyAppUpdate.running) return;
+  applyAppUpdate.running = true;
   try {
     if ("serviceWorker" in navigator) {
       const registration = await navigator.serviceWorker.getRegistration();
@@ -2094,7 +2109,7 @@ async function registerAppUpdateWorker() {
       if (!installingWorker) return;
       installingWorker.addEventListener("statechange", () => {
         if (installingWorker.state === "installed" && navigator.serviceWorker.controller) {
-          showUpdatePrompt();
+          applyAppUpdate();
         }
       });
     });
@@ -2205,18 +2220,19 @@ async function requestOtp() {
 async function verifyOtp() {
   const phone = state.pendingPhone || phoneDigits(nodes.loginPhone.value);
   const otp = String(nodes.loginOtp.value || "").trim();
+  const name = customerNameFallback(nodes.loginName?.value);
   if (phone.length !== 10 || otp.length < 4) {
     showToast("Enter mobile number and OTP");
     return;
   }
 
   try {
-    const response = await api.verifyOtp(phone, otp);
+    const response = await api.verifyOtp(phone, otp, name);
     state.session = {
       token: response.token || response.access_token || `session-${Date.now()}`,
       user: {
         id: response.user?.id || phone,
-        name: response.user?.name || "Customer",
+        name: customerNameFallback(response.user?.name || name),
         phone: response.user?.phone || phone
       },
       loggedInAt: new Date().toISOString()
@@ -2228,6 +2244,33 @@ async function verifyOtp() {
   } catch (error) {
     showToast(error.message || "OTP verification failed");
   }
+}
+
+function saveProfileName(event) {
+  event.preventDefault();
+  if (!isLoggedIn()) {
+    showToast("Login required");
+    return;
+  }
+
+  const name = String(nodes.profileEditName?.value || "").trim();
+  if (!name) {
+    showToast("Enter customer name");
+    nodes.profileEditName?.focus();
+    return;
+  }
+
+  state.session = {
+    ...state.session,
+    user: {
+      ...(state.session.user || {}),
+      name
+    }
+  };
+  saveJson(storageKeys.session, state.session);
+  nodes.checkoutName.value = name;
+  renderAll();
+  showToast("Profile updated");
 }
 
 async function submitSupportQuery(event) {
@@ -2273,6 +2316,7 @@ async function submitSupportQuery(event) {
 function logout() {
   state.session = null;
   localStorage.removeItem(storageKeys.session);
+  if (nodes.loginName) nodes.loginName.value = "";
   nodes.loginOtp.value = "";
   nodes.otpPanel.hidden = true;
   nodes.loginPhone.disabled = false;
@@ -3036,6 +3080,8 @@ nodes.searchInput.addEventListener("input", (event) => {
 nodes.checkoutForm.addEventListener("submit", (event) => {
   event.preventDefault();
 });
+
+nodes.profileEditForm?.addEventListener("submit", saveProfileName);
 
 nodes.supportForm?.addEventListener("submit", submitSupportQuery);
 
