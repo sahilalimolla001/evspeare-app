@@ -39,6 +39,7 @@ const deliveryEstimateDays = 7;
 const pendingPayuOrders = new Map();
 let googleAccessTokenCache = null;
 let websiteLoginCache = null;
+let appVersionCache = null;
 
 function envFlag(name) {
   return ["1", "true", "yes", "on"].includes(String(process.env[name] || "").toLowerCase());
@@ -77,6 +78,33 @@ function sendHtml(res, html, status = 200) {
     "Cache-Control": "no-store"
   });
   res.end(html);
+}
+
+function currentAppVersion() {
+  const envVersion =
+    process.env.RAILWAY_GIT_COMMIT_SHA ||
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.RENDER_GIT_COMMIT ||
+    process.env.SOURCE_VERSION ||
+    process.env.COMMIT_SHA;
+
+  if (envVersion) return String(envVersion).slice(0, 12);
+  if (appVersionCache) return appVersionCache;
+
+  const versionFiles = ["index.html", "app.js", "styles.css", "api.js", "manifest.webmanifest", "sw.js"];
+  const signature = versionFiles
+    .map((file) => {
+      try {
+        const stats = fs.statSync(path.join(rootDir, file));
+        return `${file}:${stats.mtimeMs}:${stats.size}`;
+      } catch (error) {
+        return `${file}:missing`;
+      }
+    })
+    .join("|");
+
+  appVersionCache = crypto.createHash("sha256").update(signature).digest("hex").slice(0, 12);
+  return appVersionCache;
 }
 
 function readBody(req) {
@@ -2919,9 +2947,11 @@ function serveStatic(req, res) {
     }
 
     const ext = path.extname(filePath).toLowerCase();
+    const isServiceWorker = path.basename(filePath).toLowerCase() === "sw.js";
     res.writeHead(200, {
       "Content-Type": mimeTypes[ext] || "application/octet-stream",
-      "Cache-Control": ext === ".html" ? "no-store" : "public, max-age=300"
+      "Cache-Control": ext === ".html" || isServiceWorker ? "no-store" : "public, max-age=300",
+      ...(isServiceWorker ? { "Service-Worker-Allowed": "/" } : {})
     });
     res.end(data);
   });
@@ -2936,6 +2966,13 @@ async function router(req, res) {
         ok: true,
         service: "ev-speare",
         time: new Date().toISOString()
+      });
+    }
+
+    if (req.method === "GET" && url.pathname === "/app-version") {
+      return send(res, 200, {
+        version: currentAppVersion(),
+        checkedAt: new Date().toISOString()
       });
     }
 

@@ -3,7 +3,8 @@ const storageKeys = {
   cart: "bazaarGo.cart",
   wishlist: "bazaarGo.wishlist",
   orders: "bazaarGo.orders",
-  location: "bazaarGo.location"
+  location: "bazaarGo.location",
+  appVersion: "evspeare.appVersion"
 };
 
 const fallbackCategoryImages = {
@@ -276,6 +277,7 @@ const nodes = {
   priceBox: document.querySelector("[data-price-box]"),
   drawer: document.querySelector("[data-drawer]"),
   toast: document.querySelector("[data-toast]"),
+  updatePrompt: document.querySelector("[data-update-prompt]"),
   syncStatus: document.querySelector("[data-sync-status]"),
   locationStrip: document.querySelector("[data-action='select-address']"),
   accountPill: document.querySelector("[data-account-pill]"),
@@ -1992,6 +1994,86 @@ function showToast(message) {
   showToast.timer = setTimeout(() => nodes.toast.classList.remove("show"), 2200);
 }
 
+function showUpdatePrompt() {
+  nodes.updatePrompt?.classList.add("open");
+  nodes.updatePrompt?.setAttribute("aria-hidden", "false");
+}
+
+function hideUpdatePrompt() {
+  nodes.updatePrompt?.classList.remove("open");
+  nodes.updatePrompt?.setAttribute("aria-hidden", "true");
+}
+
+async function checkAppVersion() {
+  try {
+    const response = await fetch(`/app-version?t=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const data = await response.json();
+    const latestVersion = data.version;
+    if (!latestVersion) return;
+    checkAppVersion.latestVersion = latestVersion;
+
+    const storedVersion = localStorage.getItem(storageKeys.appVersion);
+    if (!storedVersion) {
+      localStorage.setItem(storageKeys.appVersion, latestVersion);
+      return;
+    }
+
+    if (storedVersion !== latestVersion) {
+      showUpdatePrompt();
+    }
+  } catch (error) {
+    console.warn("Unable to check app version", error);
+  }
+}
+
+async function applyAppUpdate() {
+  try {
+    if ("serviceWorker" in navigator) {
+      const registration = await navigator.serviceWorker.getRegistration();
+      await registration?.update();
+      registration?.waiting?.postMessage({ type: "SKIP_WAITING" });
+    }
+  } catch (error) {
+    console.warn("Unable to update service worker", error);
+  }
+  if (checkAppVersion.latestVersion) {
+    localStorage.setItem(storageKeys.appVersion, checkAppVersion.latestVersion);
+  }
+  window.location.reload();
+}
+
+async function registerAppUpdateWorker() {
+  if (!("serviceWorker" in navigator)) {
+    checkAppVersion();
+    return;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    registration.addEventListener("updatefound", () => {
+      const installingWorker = registration.installing;
+      if (!installingWorker) return;
+      installingWorker.addEventListener("statechange", () => {
+        if (installingWorker.state === "installed" && navigator.serviceWorker.controller) {
+          showUpdatePrompt();
+        }
+      });
+    });
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (registerAppUpdateWorker.reloading) return;
+      registerAppUpdateWorker.reloading = true;
+      window.location.reload();
+    });
+
+    await checkAppVersion();
+  } catch (error) {
+    console.warn("Unable to register service worker", error);
+    await checkAppVersion();
+  }
+}
+
 function setSyncStatus(message) {
   nodes.syncStatus.textContent = message;
 }
@@ -2837,6 +2919,12 @@ document.addEventListener("click", async (event) => {
     case "checkout":
       await placeOrder();
       break;
+    case "dismiss-update":
+      hideUpdatePrompt();
+      break;
+    case "apply-update":
+      await applyAppUpdate();
+      break;
     default:
       break;
   }
@@ -2928,12 +3016,17 @@ if (state.session?.user?.phone) {
 }
 
 renderAll();
+registerAppUpdateWorker();
 syncProducts({ silent: true });
 handlePaymentReturn();
 setInterval(() => {
   state.promoIndex = (state.promoIndex + 1) % promoSlides.length;
   renderPromo();
 }, 4500);
+setInterval(checkAppVersion, 5 * 60 * 1000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) checkAppVersion();
+});
 if (isLoggedIn()) {
   loadOrders({ silent: true });
 }
