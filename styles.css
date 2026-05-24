@@ -2720,6 +2720,24 @@ svg {
   white-space: nowrap;
 }
 
+.profile-status {
+  justify-items: end;
+}
+
+.profile-status button {
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: white;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.profile-status button:active {
+  background: rgba(255, 255, 255, 0.24);
+}
+
 .profile-wallet-strip {
   border: 1px solid #e2e5ea;
   border-radius: 8px;
@@ -2747,6 +2765,10 @@ svg {
   align-items: end;
   gap: 10px;
   background: white;
+}
+
+.profile-edit-form[hidden] {
+  display: none;
 }
 
 .profile-edit-form label {

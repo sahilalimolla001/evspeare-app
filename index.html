@@ -329,7 +329,10 @@
               <strong data-profile-name>Ev Speare Customer</strong>
               <span data-profile-phone>Customer</span>
             </div>
-            <b>Verified</b>
+            <div class="profile-status">
+              <b>Verified</b>
+              <button type="button" data-action="edit-profile" data-profile-edit-toggle>Edit</button>
+            </div>
           </div>
 
           <div class="profile-wallet-strip">
@@ -339,7 +342,7 @@
             <strong data-profile-saved-count>0</strong>
           </div>
 
-          <form class="profile-edit-form" data-profile-edit-form>
+          <form class="profile-edit-form" data-profile-edit-form hidden>
             <label>
               Edit name
               <input type="text" data-profile-edit-name placeholder="Customer name" autocomplete="name" />

@@ -256,6 +256,7 @@ const state = {
   cancellingOrderId: "",
   returningOrderId: "",
   expandedOrderId: "",
+  profileEditOpen: false,
   promoIndex: 0
 };
 
@@ -295,6 +296,7 @@ const nodes = {
   profilePhone: document.querySelector("[data-profile-phone]"),
   profileEditForm: document.querySelector("[data-profile-edit-form]"),
   profileEditName: document.querySelector("[data-profile-edit-name]"),
+  profileEditToggle: document.querySelector("[data-profile-edit-toggle]"),
   profileSavedCount: document.querySelector("[data-profile-saved-count]"),
   checkoutForm: document.querySelector("[data-checkout-form]"),
   checkoutName: document.querySelector("[data-checkout-name]"),
@@ -850,6 +852,8 @@ function renderSession() {
   nodes.profilePhone.textContent = loggedIn ? `+91 ${phone}` : "Customer";
   if (nodes.profileAvatar) nodes.profileAvatar.textContent = (loggedIn ? name : "Ev Speare").trim().charAt(0).toUpperCase() || "E";
   if (nodes.profileEditName) nodes.profileEditName.value = loggedIn ? name : "";
+  if (nodes.profileEditForm) nodes.profileEditForm.hidden = !loggedIn || !state.profileEditOpen;
+  if (nodes.profileEditToggle) nodes.profileEditToggle.setAttribute("aria-expanded", state.profileEditOpen ? "true" : "false");
   nodes.profileSavedCount.textContent = state.wishlist.size;
 
   if (loggedIn && !nodes.checkoutPhone.value) {
@@ -2035,6 +2039,7 @@ function openAccount() {
 }
 
 function closeAccount() {
+  state.profileEditOpen = false;
   nodes.authModal.classList.remove("open");
   nodes.authModal.setAttribute("aria-hidden", "true");
 }
@@ -2269,6 +2274,7 @@ function saveProfileName(event) {
   };
   saveJson(storageKeys.session, state.session);
   nodes.checkoutName.value = name;
+  state.profileEditOpen = false;
   renderAll();
   showToast("Profile updated");
 }
@@ -2315,6 +2321,7 @@ async function submitSupportQuery(event) {
 
 function logout() {
   state.session = null;
+  state.profileEditOpen = false;
   localStorage.removeItem(storageKeys.session);
   if (nodes.loginName) nodes.loginName.value = "";
   nodes.loginOtp.value = "";
@@ -2952,6 +2959,11 @@ document.addEventListener("click", async (event) => {
       break;
     case "verify-otp":
       await verifyOtp();
+      break;
+    case "edit-profile":
+      state.profileEditOpen = true;
+      renderSession();
+      requestAnimationFrame(() => nodes.profileEditName?.focus());
       break;
     case "logout":
       logout();
