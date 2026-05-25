@@ -1152,6 +1152,40 @@ function publicDiagnostics(req) {
   };
 }
 
+function quickCommerceConfig(req) {
+  const localConfig = localFrontendConfig(req);
+  const numberValue = (value, fallback) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  };
+  return {
+    ok: true,
+    features: {
+      expressDelivery: process.env.EXPRESS_DELIVERY_ENABLED !== "false",
+      buyAgain: process.env.BUY_AGAIN_ENABLED !== "false",
+      stockBadges: process.env.STOCK_BADGES_ENABLED !== "false",
+      cod: process.env.COD_ENABLED !== "false",
+      warehouseOrderPush: Boolean(process.env.WAREHOUSE_ORDERS_URL),
+      websiteOrderPush: Boolean(configuredWebsiteOrdersUrl(req)),
+    },
+    delivery: {
+      promiseText: process.env.EXPRESS_PROMISE_TEXT || "Fast fulfilment from live warehouse",
+      expressRadiusKm: numberValue(process.env.EXPRESS_RADIUS_KM || localConfig.addressPincodeRadiusKm, 25),
+      storePincode: process.env.STORE_PINCODE || localConfig.storePincode || "",
+      standardDays: numberValue(process.env.STANDARD_DELIVERY_DAYS, deliveryEstimateDays),
+    },
+    payments: {
+      codMaxAmount: numberValue(process.env.COD_MAX_AMOUNT, codMaxOrderAmount),
+      onlineEnabled: Boolean(process.env.PAYU_KEY && process.env.PAYU_SALT),
+    },
+    sync: {
+      products: safeUrlSummary(configuredWebsiteProductsUrl(req) || process.env.WAREHOUSE_PRODUCTS_URL),
+      orders: safeUrlSummary(configuredWebsiteOrdersUrl(req) || process.env.WAREHOUSE_ORDERS_URL),
+      tracking: safeUrlSummary(process.env.WAREHOUSE_TRACKING_URL || process.env.WEBSITE_TRACKING_URL || process.env.WEBSITE_ORDER_TRACKING_URL),
+    },
+  };
+}
+
 async function twilioRequest(pathname, body) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -2979,6 +3013,10 @@ async function router(req, res) {
 
     if (req.method === "GET" && url.pathname === "/api/mobile/diagnostics") {
       return send(res, 200, publicDiagnostics(req));
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/mobile/quick-commerce-config") {
+      return send(res, 200, quickCommerceConfig(req));
     }
 
     if (req.method === "GET" && url.pathname === "/api/mobile/inventory-diagnostics") {
