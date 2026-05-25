@@ -214,6 +214,38 @@ svg {
   text-align: left;
 }
 
+.instant-promise {
+  min-height: 48px;
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.instant-promise div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.instant-promise span {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.74rem;
+}
+
+.instant-promise button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--yellow);
+  font-weight: 900;
+}
+
 .location-strip span {
   min-width: 0;
   flex: 1;
@@ -435,6 +467,38 @@ svg {
   gap: 8px;
 }
 
+.ops-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.ops-strip article {
+  min-height: 74px;
+  display: grid;
+  align-content: space-between;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 18px rgba(20, 32, 55, 0.08);
+}
+
+.ops-strip span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.ops-strip strong {
+  font-size: 1.1rem;
+}
+
+.compact-products {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .quick-actions button {
   min-height: 68px;
   border-radius: 8px;
@@ -639,6 +703,18 @@ svg {
   color: white;
   background: rgba(23, 32, 51, 0.82);
   font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.express-badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--yellow);
+  font-size: 0.68rem;
   font-weight: 900;
 }
 

@@ -315,7 +315,13 @@ const nodes = {
   promoCopy: document.querySelector("[data-promo-copy]"),
   promoTerms: document.querySelector("[data-promo-terms]"),
   promoImage: document.querySelector("[data-promo-image]"),
-  promoDots: document.querySelector("[data-promo-dots]")
+  promoDots: document.querySelector("[data-promo-dots]"),
+  promiseCopy: document.querySelector("[data-promise-copy]"),
+  liveStockCount: document.querySelector("[data-live-stock-count]"),
+  expressCount: document.querySelector("[data-express-count]"),
+  buyAgainCount: document.querySelector("[data-buy-again-count]"),
+  buyAgainSection: document.querySelector("[data-buy-again-section]"),
+  buyAgainGrid: document.querySelector("[data-buy-again-grid]")
 };
 
 function loadJson(key, fallback) {
@@ -536,6 +542,13 @@ function stockLabel(product) {
   return isProductAvailable(product) ? "In stock" : "Out of stock";
 }
 
+function isExpressProduct(product) {
+  const delivery = String(product.delivery || "").toLowerCase();
+  const tags = (product.tags || []).join(" ").toLowerCase();
+  const stock = stockQuantity(product);
+  return isProductAvailable(product) && (delivery.includes("fast") || delivery.includes("same") || delivery.includes("express") || tags.includes("deals") || stock === null || stock > 2);
+}
+
 function filteredProducts() {
   const text = state.query.trim().toLowerCase();
   const selected = state.activeFilter;
@@ -594,6 +607,7 @@ function productCard(product) {
       <div class="product-media">
         <img ${imageAttrs(product)} alt="${escapeHtml(product.title)}" loading="lazy" />
         <span class="stock-badge ${available ? "in" : "out"}">${escapeHtml(stockLabel(product))}</span>
+        ${isExpressProduct(product) ? `<span class="express-badge">Express</span>` : ""}
         <button class="wishlist-button ${wished ? "active" : ""}" type="button" aria-label="Add ${escapeHtml(product.title)} to wishlist" data-wishlist="${escapeHtml(product.id)}">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" />
@@ -629,6 +643,36 @@ function renderProducts() {
   const result = filteredProducts();
   nodes.productGrid.innerHTML = result.map(productCard).join("");
   nodes.emptyState.hidden = result.length > 0;
+}
+
+function renderQuickCommerce() {
+  const available = products.filter(isProductAvailable);
+  const express = products.filter(isExpressProduct);
+  const pincode = savedLocationDetails().pincode || "";
+  if (nodes.liveStockCount) nodes.liveStockCount.textContent = available.length;
+  if (nodes.expressCount) nodes.expressCount.textContent = express.length;
+  if (nodes.buyAgainCount) nodes.buyAgainCount.textContent = state.orders.length;
+  if (nodes.promiseCopy) {
+    const eligibility = fastDeliveryEligibility(pincode);
+    nodes.promiseCopy.textContent = pincode
+      ? eligibility.eligible ? `Express delivery available for ${pincode}` : `Standard delivery for ${pincode}`
+      : "Check pincode for express delivery";
+  }
+  renderBuyAgain();
+}
+
+function renderBuyAgain() {
+  if (!nodes.buyAgainSection || !nodes.buyAgainGrid) return;
+  const ids = new Set();
+  state.orders.forEach((order) => {
+    (order.items || []).forEach((item) => {
+      const id = String(item.productId || item.appProductId || item.id || "");
+      if (id) ids.add(id);
+    });
+  });
+  const rows = products.filter((product) => ids.has(String(product.id))).slice(0, 4);
+  nodes.buyAgainSection.hidden = rows.length === 0;
+  nodes.buyAgainGrid.innerHTML = rows.map(productCard).join("");
 }
 
 function cartEntries() {
@@ -1977,6 +2021,7 @@ function renderAll() {
   renderCheckoutPage();
   renderOrdersPage();
   renderInfoPage("about");
+  renderQuickCommerce();
 }
 
 function setFilter(filter) {
@@ -2976,6 +3021,22 @@ document.addEventListener("click", async (event) => {
       state.sortAscending = !state.sortAscending;
       showToast(state.sortAscending ? "Sorted by low price" : "Sorted by high price");
       renderProducts();
+      break;
+    case "show-express":
+      state.query = "";
+      nodes.searchInput.value = "";
+      state.activeFilter = "All";
+      renderProducts();
+      scrollToSelector("#product-title");
+      showToast("Express eligible items highlighted.");
+      break;
+    case "buy-again":
+      if (!state.orders.length) {
+        showToast("No previous order found.");
+      } else {
+        renderBuyAgain();
+        scrollToSelector("#buy-again-title");
+      }
       break;
     case "select-address":
       state.locationFormOpen = !hasLocationDetails(savedLocationDetails());
