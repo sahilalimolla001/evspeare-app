@@ -533,10 +533,7 @@ function isProductAvailable(product) {
 }
 
 function stockLabel(product) {
-  const quantity = stockQuantity(product);
-  if (!isProductAvailable(product)) return "Out of stock";
-  if (quantity !== null) return `${quantity} in warehouse`;
-  return "In stock";
+  return isProductAvailable(product) ? "In stock" : "Out of stock";
 }
 
 function filteredProducts() {

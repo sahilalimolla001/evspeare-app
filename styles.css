@@ -243,6 +243,11 @@ svg {
   display: none !important;
 }
 
+.promo-band[hidden],
+.deal-strip[hidden] {
+  display: none !important;
+}
+
 .service-strip span {
   min-width: 0;
   overflow: hidden;
