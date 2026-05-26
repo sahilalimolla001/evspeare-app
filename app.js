@@ -1540,6 +1540,41 @@ function useLiveLocation() {
   );
 }
 
+function selectAddressOnMap() {
+  if (!navigator.geolocation) {
+    showToast("Map location is not available");
+    return;
+  }
+
+  showToast("Opening map location...");
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const coordinates = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy
+      };
+      const label = `Map location: ${coordinatesText(coordinates)}`;
+      pendingGoogleLogin = {
+        ...(pendingGoogleLogin || {}),
+        coordinates
+      };
+      if (nodes.loginAddress1 && !nodes.loginAddress1.value.trim()) nodes.loginAddress1.value = label;
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${coordinates.latitude},${coordinates.longitude}`;
+      window.open(mapsUrl, "_blank", "noopener,noreferrer");
+      showToast("Map location selected");
+    },
+    () => {
+      showToast("Unable to select map location");
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 60000
+    }
+  );
+}
+
 function setCheckoutActionState(processing = false) {
   const disabled = processing || cartTotals().itemCount === 0;
   const label = processing
@@ -2501,7 +2536,8 @@ async function completeNewCustomerLogin(event) {
     area: String(nodes.loginArea.value || "").trim(),
     city: String(nodes.loginCity.value || "").trim(),
     state: String(nodes.loginState.value || "").trim(),
-    pincode: String(nodes.loginPincode.value || "").replace(/\D/g, "").slice(0, 6)
+    pincode: String(nodes.loginPincode.value || "").replace(/\D/g, "").slice(0, 6),
+    coordinates: pendingGoogleLogin.coordinates || null
   };
   try {
     const { idToken } = pendingGoogleLogin;
@@ -3402,6 +3438,9 @@ document.addEventListener("click", async (event) => {
     case "use-live-location":
       useLiveLocation();
       break;
+    case "select-address-map":
+      selectAddressOnMap();
+      break;
     case "show-wishlist":
       if (state.wishlist.size === 0) {
         showToast("Wishlist is empty");
@@ -3544,7 +3583,9 @@ function applySavedProfile(profile) {
     area: profile.area || "",
     region: profile.region || "",
     address1: profile.address1 || "",
-    address2: profile.address2 || ""
+    address2: profile.address2 || "",
+    coordinates: profile.coordinates || savedLocationDetails()?.coordinates || null,
+    source: profile.coordinates ? "live" : savedLocationDetails()?.source || "manual"
   };
   if (profile.address1 || profile.pincode || profile.city) {
     state.savedLocation = location;

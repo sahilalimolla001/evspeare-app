@@ -1484,6 +1484,11 @@ async function handleFirebaseLogin(req, res) {
         state: String(address.state || "").trim(),
         region: String(address.region || "").trim(),
         pincode,
+        coordinates: address.coordinates && typeof address.coordinates === "object" ? {
+          latitude: Number(address.coordinates.latitude),
+          longitude: Number(address.coordinates.longitude),
+          accuracy: Number(address.coordinates.accuracy) || null
+        } : null,
         updatedAt: new Date().toISOString()
       };
       profiles[profileKey] = profile;
@@ -1520,6 +1525,11 @@ async function handleCustomerProfile(req, res) {
     region: String(body.region || "").trim(),
     address1: String(body.address1 || body.address || "").trim(),
     address2: String(body.address2 || "").trim(),
+    coordinates: body.coordinates && typeof body.coordinates === "object" ? {
+      latitude: Number(body.coordinates.latitude),
+      longitude: Number(body.coordinates.longitude),
+      accuracy: Number(body.coordinates.accuracy) || null
+    } : null,
     updatedAt: new Date().toISOString()
   };
   profiles[profileKey] = profile;
