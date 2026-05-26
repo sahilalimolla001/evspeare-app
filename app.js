@@ -2198,11 +2198,11 @@ function closeAccount() {
   nodes.authModal.setAttribute("aria-hidden", "true");
 }
 
-function showToast(message) {
+function showToast(message, duration = 2200) {
   nodes.toast.textContent = message;
   nodes.toast.classList.add("show");
   clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => nodes.toast.classList.remove("show"), 2200);
+  showToast.timer = setTimeout(() => nodes.toast.classList.remove("show"), duration);
 }
 
 function showUpdatePrompt() {
@@ -2373,7 +2373,7 @@ async function requestOtp() {
     nodes.loginOtp.focus();
     showToast(appConfig.demo?.enabled ? "Demo OTP: 123456" : "OTP sent");
   } catch (error) {
-    showToast(error.message || "Unable to send OTP");
+    showToast(firebaseAuthErrorMessage(error, "Unable to send OTP"), 7000);
   }
 }
 
@@ -2405,7 +2405,7 @@ async function verifyOtp() {
     closeAccount();
     showToast("Login successful");
   } catch (error) {
-    showToast(error.message || "OTP verification failed");
+    showToast(firebaseAuthErrorMessage(error, "OTP verification failed"), 7000);
   }
 }
 
@@ -2422,8 +2422,23 @@ async function resendOtp() {
     nodes.loginOtp.focus();
     showToast("New OTP sent");
   } catch (error) {
-    showToast(error.message || "Unable to resend OTP");
+    showToast(firebaseAuthErrorMessage(error, "Unable to resend OTP"), 7000);
   }
+}
+
+function firebaseAuthErrorMessage(error, fallback) {
+  const code = String(error?.code || "");
+  const messages = {
+    "auth/billing-not-enabled": "Firebase SMS requires Blaze billing to be enabled.",
+    "auth/quota-exceeded": "Firebase SMS quota is exceeded. Check billing and quota.",
+    "auth/too-many-requests": "Too many OTP attempts. Please try again later.",
+    "auth/operation-not-allowed": "Firebase phone login or SMS region is not allowed.",
+    "auth/unauthorized-domain": "This website domain is not authorized in Firebase.",
+    "auth/captcha-check-failed": "Firebase security verification failed. Reload and retry.",
+    "auth/invalid-app-credential": "Firebase security verification failed. Reload and retry.",
+    "auth/invalid-phone-number": "Enter a valid mobile number."
+  };
+  return messages[code] || error?.message || fallback;
 }
 
 function firebasePhoneAuthEnabled() {
