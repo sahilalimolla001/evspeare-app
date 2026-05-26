@@ -2879,12 +2879,6 @@ svg {
   gap: 10px;
 }
 
-.firebase-verifier-anchor {
-  height: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .primary-button,
 .secondary-button {
   min-height: 42px;

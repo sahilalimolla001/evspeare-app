@@ -23,10 +23,6 @@ const currency = new Intl.NumberFormat("en-IN");
 const deliveryEstimateDays = 7;
 const returnWindowDays = 7;
 const codMaxOrderAmount = 1000;
-let firebaseAuthInstance = null;
-let firebaseConfirmationResult = null;
-let firebaseRecaptchaVerifier = null;
-
 const customerTrackingStages = [
   { key: "placed", label: "Order Placed", offsetDays: 0, icon: "bag" },
   { key: "shipped", label: "Shipped", offsetDays: 2, icon: "box" },
@@ -1459,7 +1455,9 @@ function setCheckoutActionState(processing = false) {
   const label = processing
     ? "Processing..."
     : !isLoggedIn()
-      ? "Login to place order"
+      ? state.paymentMethod === "cod"
+        ? "Mobile login required for COD"
+        : "Login to place order"
       : state.paymentMethod === "online"
         ? "Continue to Razorpay"
         : "Place order";
@@ -1540,7 +1538,11 @@ function renderCheckoutPage() {
     state.paymentMethod = "online";
     state.paymentMode = "online";
   }
-  const checkoutLabel = isLoggedIn() ? "Place order" : "Login to place order";
+  const checkoutLabel = isLoggedIn()
+    ? "Place order"
+    : state.paymentMethod === "cod"
+      ? "Mobile login required for COD"
+      : "Login to place order";
   const savedLocation = savedLocationDetails();
   const hasSavedLocation = hasLocationDetails(savedLocation);
   const showLocationForm = state.locationFormOpen || !hasSavedLocation;
@@ -2364,8 +2366,7 @@ async function requestOtp() {
 
   state.pendingPhone = phone;
   try {
-    if (!firebasePhoneAuthEnabled()) throw new Error("Firebase login is not ready");
-    await requestFirebaseOtp(phone);
+    await api.requestOtp(phone);
     nodes.otpPanel.hidden = false;
     nodes.loginPhone.disabled = true;
     nodes.requestOtpButton.hidden = true;
@@ -2373,7 +2374,7 @@ async function requestOtp() {
     nodes.loginOtp.focus();
     showToast(appConfig.demo?.enabled ? "Demo OTP: 123456" : "OTP sent");
   } catch (error) {
-    showToast(firebaseAuthErrorMessage(error, "Unable to send OTP"), 7000);
+    showToast(error.message || "Unable to send OTP", 7000);
   }
 }
 
@@ -2387,7 +2388,7 @@ async function verifyOtp() {
   }
 
   try {
-    const response = await verifyFirebaseOtp(otp, name);
+    const response = await api.verifyOtp(phone, otp, name);
     state.session = {
       token: response.token || response.access_token || `session-${Date.now()}`,
       user: {
@@ -2405,7 +2406,7 @@ async function verifyOtp() {
     closeAccount();
     showToast("Login successful");
   } catch (error) {
-    showToast(firebaseAuthErrorMessage(error, "OTP verification failed"), 7000);
+    showToast(error.message || "OTP verification failed", 7000);
   }
 }
 
@@ -2416,91 +2417,13 @@ async function resendOtp() {
   }
 
   try {
-    if (!firebasePhoneAuthEnabled()) throw new Error("Firebase login is not ready");
-    await requestFirebaseOtp(state.pendingPhone);
+    await api.requestOtp(state.pendingPhone);
     nodes.loginOtp.value = "";
     nodes.loginOtp.focus();
     showToast("New OTP sent");
   } catch (error) {
-    showToast(firebaseAuthErrorMessage(error, "Unable to resend OTP"), 7000);
+    showToast(error.message || "Unable to resend OTP", 7000);
   }
-}
-
-function firebaseAuthErrorMessage(error, fallback) {
-  const code = String(error?.code || "");
-  const messages = {
-    "auth/billing-not-enabled": "Firebase SMS requires Blaze billing to be enabled.",
-    "auth/quota-exceeded": "Firebase SMS quota is exceeded. Check billing and quota.",
-    "auth/too-many-requests": "Too many OTP attempts. Please try again later.",
-    "auth/operation-not-allowed": "Firebase phone login or SMS region is not allowed.",
-    "auth/unauthorized-domain": "This website domain is not authorized in Firebase.",
-    "auth/captcha-check-failed": "Firebase security verification failed. Reload and retry.",
-    "auth/invalid-app-credential": "Firebase security verification failed. Reload and retry.",
-    "auth/invalid-phone-number": "Enter a valid mobile number."
-  };
-  return messages[code] || error?.message || fallback;
-}
-
-function firebasePhoneAuthEnabled() {
-  const settings = appConfig.firebaseAuth || {};
-  return settings.enabled === true && settings.provider === "firebase" && Boolean(settings.apiKey && settings.projectId && settings.appId);
-}
-
-async function firebaseAuthClient() {
-  if (firebaseAuthInstance) return firebaseAuthInstance;
-  const settings = appConfig.firebaseAuth || {};
-  await loadScript(settings.sdkAppScript || "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
-  await loadScript(settings.sdkAuthScript || "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js");
-  if (!window.firebase?.auth) throw new Error("Firebase Authentication is unavailable");
-  const firebaseApp = window.firebase.apps.length
-    ? window.firebase.app()
-    : window.firebase.initializeApp({
-        apiKey: settings.apiKey,
-        authDomain: settings.authDomain,
-        projectId: settings.projectId,
-        storageBucket: settings.storageBucket,
-        appId: settings.appId,
-        messagingSenderId: settings.messagingSenderId,
-        measurementId: settings.measurementId
-      });
-  firebaseAuthInstance = firebaseApp.auth();
-  return firebaseAuthInstance;
-}
-
-function clearFirebaseVerifier() {
-  if (firebaseRecaptchaVerifier) {
-    try {
-      firebaseRecaptchaVerifier.clear();
-    } catch (error) {
-      console.warn("Unable to clear Firebase verifier", error);
-    }
-  }
-  firebaseRecaptchaVerifier = null;
-  const verifierContainer = document.getElementById("firebase-recaptcha-container");
-  if (verifierContainer) verifierContainer.replaceChildren();
-}
-
-async function requestFirebaseOtp(phone) {
-  const auth = await firebaseAuthClient();
-  firebaseConfirmationResult = null;
-  clearFirebaseVerifier();
-  firebaseRecaptchaVerifier = new window.firebase.auth.RecaptchaVerifier("firebase-recaptcha-container", {
-    size: "invisible"
-  });
-  try {
-    firebaseConfirmationResult = await auth.signInWithPhoneNumber(`+91${phone}`, firebaseRecaptchaVerifier);
-    clearFirebaseVerifier();
-  } catch (error) {
-    clearFirebaseVerifier();
-    throw error;
-  }
-}
-
-async function verifyFirebaseOtp(otp, name) {
-  if (!firebaseConfirmationResult) throw new Error("Send OTP again before verification");
-  const credential = await firebaseConfirmationResult.confirm(otp);
-  const idToken = await credential.user.getIdToken(true);
-  return api.verifyFirebaseLogin(idToken, name);
 }
 
 async function saveProfileName(event) {
@@ -2592,9 +2515,6 @@ function logout() {
   state.session = null;
   state.profileEditOpen = false;
   state.pendingPhone = "";
-  firebaseConfirmationResult = null;
-  clearFirebaseVerifier();
-  if (firebaseAuthInstance) firebaseAuthInstance.signOut().catch(() => undefined);
   localStorage.removeItem(storageKeys.session);
   if (nodes.loginName) nodes.loginName.value = "";
   nodes.loginOtp.value = "";
@@ -2623,7 +2543,7 @@ function validateCheckout() {
 
   if (!isLoggedIn()) {
     openAccount();
-    showToast("Login required before placing order");
+    showToast(state.paymentMethod === "cod" ? "Mobile OTP login required for COD order" : "Login required before placing order");
     return null;
   }
 

@@ -34,6 +34,8 @@ window.EVSPEARE_CONFIG = {
    * POST ordersEndpoint         -> push customer order
    * POST orderCancelEndpoint    -> create cancellation request
    * POST orderReturnEndpoint    -> create return request
+   * POST otpRequestEndpoint     -> send OTP
+   * POST otpVerifyEndpoint      -> verify OTP and return token/user
    * POST firebaseVerifyEndpoint -> exchange verified Firebase login for app session
    * POST paymentCreateEndpoint  -> create gateway order on server
    * POST paymentVerifyEndpoint  -> verify gateway payment signature on server
@@ -43,6 +45,8 @@ window.EVSPEARE_CONFIG = {
   orderCancelEndpoint: "/api/mobile/orders/cancel",
   orderReturnEndpoint: "/api/mobile/orders/return",
   supportEndpoint: "/api/mobile/support",
+  otpRequestEndpoint: "/api/mobile/auth/request-otp",
+  otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
   firebaseVerifyEndpoint: "/api/mobile/auth/firebase",
   profileEndpoint: "/api/mobile/profile",
   paymentCreateEndpoint: "/api/mobile/payments/create",
@@ -50,7 +54,7 @@ window.EVSPEARE_CONFIG = {
 
   /*
    * Add an API token only if your website exposes a secure server-side token.
-   * Do not put Razorpay key secret, database passwords, or admin passwords here.
+   * Do not put Razorpay key secret, Twilio auth token, database passwords, or admin passwords here.
    */
   authHeader: "",
 
