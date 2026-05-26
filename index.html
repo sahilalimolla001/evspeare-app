@@ -114,7 +114,7 @@
             </svg>
             Cart
           </button>
-          <button type="button" data-action="buy-again">
+          <button type="button" data-action="buy-again" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M3 12a9 9 0 1 0 3-6.7" />
               <path d="M3 4v6h6" />
@@ -450,6 +450,29 @@
           </label>
           <button class="primary-button" type="button" data-action="verify-cod-otp">Verify and place order</button>
           <button class="secondary-button" type="button" data-action="resend-cod-otp">Resend OTP</button>
+        </div>
+      </section>
+    </aside>
+
+    <aside class="map-picker-modal" data-map-picker-modal aria-hidden="true">
+      <div class="modal-backdrop" data-action="close-map-picker"></div>
+      <section class="map-picker-card" aria-label="Select delivery location on map">
+        <div class="sheet-header">
+          <div>
+            <h2>Select on map</h2>
+            <span>Tap exact delivery point, then save location</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Close map picker" data-action="close-map-picker">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="map-picker-body">
+          <div class="map-picker-canvas" data-map-picker-canvas></div>
+          <p data-map-picker-summary>Tap on the map to select location.</p>
+          <button class="map-current-button" type="button" data-action="map-current-location">Use current location</button>
+          <button class="primary-button" type="button" data-action="confirm-map-picker" disabled>Use this location</button>
         </div>
       </section>
     </aside>

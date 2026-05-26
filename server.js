@@ -1489,6 +1489,7 @@ async function handleFirebaseLogin(req, res) {
           longitude: Number(address.coordinates.longitude),
           accuracy: Number(address.coordinates.accuracy) || null
         } : null,
+        mapLocation: String(address.mapLocation || address.map_location || "").trim(),
         updatedAt: new Date().toISOString()
       };
       profiles[profileKey] = profile;
@@ -1530,6 +1531,7 @@ async function handleCustomerProfile(req, res) {
       longitude: Number(body.coordinates.longitude),
       accuracy: Number(body.coordinates.accuracy) || null
     } : null,
+    mapLocation: String(body.mapLocation || body.map_location || "").trim(),
     updatedAt: new Date().toISOString()
   };
   profiles[profileKey] = profile;
@@ -2041,6 +2043,8 @@ function isWebsiteOrderFormUrl(value) {
 async function pushOrderToWebsiteForm(order, req, endpointUrl) {
   const submissions = [];
   const customer = order.customer || {};
+  const customerLocation = customer.location && typeof customer.location === "object" ? customer.location : {};
+  const mapLocation = customerLocation.mapLocation || customerLocation.map_location || "";
   const items = order.items && order.items.length ? order.items : [];
   if (!items.length) throw new Error("Order has no items to push");
 
@@ -2075,7 +2079,8 @@ async function pushOrderToWebsiteForm(order, req, endpointUrl) {
         `Mobile order: ${order.orderId}`,
         `Item: ${item.title || item.productId || ""}`,
         `Payment: ${order.payment?.method || "cod"} / ${order.payment?.status || "pending"}`,
-        `Amount: ${order.amounts?.currency || "INR"} ${order.amounts?.total || ""}`
+        `Amount: ${order.amounts?.currency || "INR"} ${order.amounts?.total || ""}`,
+        mapLocation ? `Map location: ${mapLocation}` : ""
       ].filter(Boolean).join("\n")
     });
 

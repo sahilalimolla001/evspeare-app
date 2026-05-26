@@ -25,6 +25,12 @@ const returnWindowDays = 7;
 const codMaxOrderAmount = 1000;
 let firebaseAuthInstance = null;
 let pendingGoogleLogin = null;
+let mapPicker = {
+  map: null,
+  marker: null,
+  selected: null,
+  target: "login"
+};
 const customerTrackingStages = [
   { key: "placed", label: "Order Placed", offsetDays: 0, icon: "bag" },
   { key: "shipped", label: "Shipped", offsetDays: 2, icon: "box" },
@@ -300,6 +306,10 @@ const nodes = {
   loginPincode: document.querySelector("[data-login-pincode]"),
   codOtpModal: document.querySelector("[data-cod-otp-modal]"),
   codOtp: document.querySelector("[data-cod-otp]"),
+  mapPickerModal: document.querySelector("[data-map-picker-modal]"),
+  mapPickerCanvas: document.querySelector("[data-map-picker-canvas]"),
+  mapPickerSummary: document.querySelector("[data-map-picker-summary]"),
+  mapPickerConfirm: document.querySelector("[data-action='confirm-map-picker']"),
   profileAvatar: document.querySelector("[data-profile-avatar]"),
   profileName: document.querySelector("[data-profile-name]"),
   profilePhone: document.querySelector("[data-profile-phone]"),
@@ -808,16 +818,8 @@ function renderQuickCommerce() {
 
 function renderBuyAgain() {
   if (!nodes.buyAgainSection || !nodes.buyAgainGrid) return;
-  const ids = new Set();
-  state.orders.forEach((order) => {
-    (order.items || []).forEach((item) => {
-      const id = String(item.productId || item.appProductId || item.id || "");
-      if (id) ids.add(id);
-    });
-  });
-  const rows = products.filter((product) => ids.has(String(product.id))).slice(0, 4);
-  nodes.buyAgainSection.hidden = rows.length === 0;
-  nodes.buyAgainGrid.innerHTML = rows.map(productCard).join("");
+  nodes.buyAgainSection.hidden = true;
+  nodes.buyAgainGrid.innerHTML = "";
 }
 
 function cartEntries() {
@@ -1302,6 +1304,7 @@ function emptyBillingDetails() {
     pincode: "",
     shippingSame: true,
     coordinates: null,
+    mapLocation: "",
     source: "manual"
   };
 }
@@ -1339,6 +1342,7 @@ function normalizeBillingDetails(details = {}, source = details.source || "manua
     pincode: String(base.pincode || "").replace(/\D/g, "").slice(0, 6),
     shippingSame: base.shippingSame !== false,
     coordinates: base.coordinates || null,
+    mapLocation: String(base.mapLocation || base.map_location || "").trim(),
     source,
     updatedAt: base.updatedAt || new Date().toISOString()
   };
@@ -1405,6 +1409,7 @@ function checkoutBillingDetails() {
       state: String(values.state).trim(),
       pincode: String(values.pincode).replace(/\D/g, "").slice(0, 6),
       coordinates: saved?.coordinates || null,
+      mapLocation: saved?.mapLocation || "",
       shippingSame: Boolean(values.shippingSame)
     }, saved?.source || "manual");
   }
@@ -1490,7 +1495,7 @@ function saveCustomerLocation(details, source = "manual", { silent = false, rere
   if (rerender && document.querySelector('[data-page-panel="checkout"]')?.classList.contains("open")) {
     renderCheckoutPage();
   }
-  if (!silent) showToast(source === "live" ? "Live location saved" : "Location saved");
+  if (!silent) showToast(source === "live" ? "Live location saved" : source === "map" ? "Map location saved" : "Location saved");
   return state.savedLocation;
 }
 
@@ -1540,39 +1545,180 @@ function useLiveLocation() {
   );
 }
 
-function selectAddressOnMap() {
+function mapLocationUrl(coordinates) {
+  return coordinates ? `https://www.google.com/maps/search/?api=1&query=${coordinates.latitude},${coordinates.longitude}` : "";
+}
+
+function leafletCenterFromLocation(location) {
+  const coordinates = location?.coordinates;
+  if (coordinates?.latitude && coordinates?.longitude) {
+    return [Number(coordinates.latitude), Number(coordinates.longitude)];
+  }
+  const store = storeCoordinates();
+  if (store) return [store.latitude, store.longitude];
+  return [28.6139, 77.2090];
+}
+
+async function ensureMapPickerAssets() {
+  await loadStylesheet("https://unpkg.com/leaflet@1.9.4/dist/leaflet.css");
+  await loadScript("https://unpkg.com/leaflet@1.9.4/dist/leaflet.js");
+  if (!window.L) throw new Error("Map failed to load");
+}
+
+async function reverseGeocode(coordinates) {
+  const url = new URL("https://nominatim.openstreetmap.org/reverse");
+  url.searchParams.set("format", "jsonv2");
+  url.searchParams.set("lat", coordinates.latitude);
+  url.searchParams.set("lon", coordinates.longitude);
+  url.searchParams.set("zoom", "18");
+  url.searchParams.set("addressdetails", "1");
+  url.searchParams.set("accept-language", "en");
+  const response = await fetch(url.toString(), { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error("Unable to read map address");
+  const data = await response.json();
+  const address = data.address || {};
+  const area = address.neighbourhood || address.suburb || address.city_district || address.county || "";
+  const city = address.city || address.town || address.village || address.municipality || address.county || "";
+  const road = [address.house_number, address.road || address.pedestrian || address.residential, area]
+    .filter(Boolean)
+    .join(", ");
+  return {
+    address1: road || data.display_name || `Map location: ${coordinatesText(coordinates)}`,
+    area,
+    city,
+    state: address.state || address.region || "",
+    pincode: String(address.postcode || "").replace(/\D/g, "").slice(0, 6),
+    country: address.country || "India",
+    mapLocation: mapLocationUrl(coordinates),
+    coordinates
+  };
+}
+
+function setMapPickerSelection(details) {
+  mapPicker.selected = details;
+  const coordinates = details.coordinates;
+  const label = details.address1 || `Map location: ${coordinatesText(coordinates)}`;
+  if (mapPicker.marker) {
+    mapPicker.marker.setLatLng([coordinates.latitude, coordinates.longitude]);
+  } else if (mapPicker.map) {
+    mapPicker.marker = window.L.marker([coordinates.latitude, coordinates.longitude]).addTo(mapPicker.map);
+  }
+  nodes.mapPickerSummary.textContent = `${label}${details.pincode ? ` - ${details.pincode}` : ""}`;
+  nodes.mapPickerConfirm.disabled = false;
+}
+
+async function selectMapPoint(latitude, longitude, accuracy = null) {
+  const coordinates = { latitude, longitude, accuracy };
+  nodes.mapPickerSummary.textContent = "Reading address from map...";
+  nodes.mapPickerConfirm.disabled = true;
+  try {
+    setMapPickerSelection(await reverseGeocode(coordinates));
+  } catch (error) {
+    setMapPickerSelection({
+      address1: `Map location: ${coordinatesText(coordinates)}`,
+      area: "",
+      city: "",
+      state: "",
+      pincode: "",
+      country: "India",
+      mapLocation: mapLocationUrl(coordinates),
+      coordinates
+    });
+    showToast(error.message || "Address auto-fill failed");
+  }
+}
+
+async function selectAddressOnMap() {
+  mapPicker.target = pendingGoogleLogin || nodes.authModal?.classList.contains("open") ? "login" : "checkout";
+  mapPicker.selected = null;
+  nodes.mapPickerSummary.textContent = "Tap on the map to select location.";
+  nodes.mapPickerConfirm.disabled = true;
+  nodes.mapPickerModal.classList.add("open");
+  nodes.mapPickerModal.setAttribute("aria-hidden", "false");
+
+  try {
+    await ensureMapPickerAssets();
+    const center = leafletCenterFromLocation(savedLocationDetails());
+    if (!mapPicker.map) {
+      mapPicker.map = window.L.map(nodes.mapPickerCanvas).setView(center, 13);
+      window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap"
+      }).addTo(mapPicker.map);
+      mapPicker.map.on("click", (event) => {
+        selectMapPoint(event.latlng.lat, event.latlng.lng);
+      });
+    } else {
+      mapPicker.map.setView(center, 13);
+      if (mapPicker.marker) {
+        mapPicker.map.removeLayer(mapPicker.marker);
+        mapPicker.marker = null;
+      }
+    }
+    setTimeout(() => mapPicker.map.invalidateSize(), 80);
+  } catch (error) {
+    closeMapPicker();
+    showToast(error.message || "Map failed to open", 7000);
+  }
+}
+
+function selectCurrentLocationOnMap() {
   if (!navigator.geolocation) {
-    showToast("Map location is not available");
+    showToast("Current location is not available");
+    return;
+  }
+  showToast("Fetching current location...");
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude, accuracy } = position.coords;
+      mapPicker.map?.setView([latitude, longitude], 17);
+      selectMapPoint(latitude, longitude, accuracy);
+    },
+    () => showToast("Unable to fetch current location"),
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+  );
+}
+
+function closeMapPicker() {
+  nodes.mapPickerModal?.classList.remove("open");
+  nodes.mapPickerModal?.setAttribute("aria-hidden", "true");
+}
+
+function applyMapPickerSelection() {
+  const details = mapPicker.selected;
+  if (!details) {
+    showToast("Select location on map");
+    return;
+  }
+  if (mapPicker.target === "login") {
+    pendingGoogleLogin = {
+      ...(pendingGoogleLogin || {}),
+      coordinates: details.coordinates,
+      mapLocation: details.mapLocation
+    };
+    if (nodes.loginAddress1) nodes.loginAddress1.value = details.address1 || "";
+    if (nodes.loginArea) nodes.loginArea.value = details.area || "";
+    if (nodes.loginCity) nodes.loginCity.value = details.city || "";
+    if (nodes.loginState) nodes.loginState.value = details.state || "";
+    if (nodes.loginPincode) nodes.loginPincode.value = details.pincode || "";
+    closeMapPicker();
+    showToast("Map location added");
     return;
   }
 
-  showToast("Opening map location...");
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      const coordinates = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy
-      };
-      const label = `Map location: ${coordinatesText(coordinates)}`;
-      pendingGoogleLogin = {
-        ...(pendingGoogleLogin || {}),
-        coordinates
-      };
-      if (nodes.loginAddress1 && !nodes.loginAddress1.value.trim()) nodes.loginAddress1.value = label;
-      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${coordinates.latitude},${coordinates.longitude}`;
-      window.open(mapsUrl, "_blank", "noopener,noreferrer");
-      showToast("Map location selected");
-    },
-    () => {
-      showToast("Unable to select map location");
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 12000,
-      maximumAge: 60000
-    }
-  );
+  const current = checkoutBillingDetails();
+  saveCustomerLocation({
+    ...current,
+    address1: details.address1 || current.address1,
+    area: details.area || current.area,
+    city: details.city || current.city,
+    state: details.state || current.state,
+    pincode: details.pincode || current.pincode,
+    country: details.country || current.country || "India",
+    coordinates: details.coordinates,
+    mapLocation: details.mapLocation
+  }, "map");
+  closeMapPicker();
 }
 
 function setCheckoutActionState(processing = false) {
@@ -1741,7 +1887,7 @@ function renderCheckoutPage() {
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-5.1 7-12A7 7 0 1 0 5 9c0 6.9 7 12 7 12Z" /><path d="M12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /></svg>
             </span>
             <div>
-              <strong>${savedLocation.source === "live" ? "Saved live location" : "Saved delivery location"}</strong>
+              <strong>${savedLocation.source === "live" ? "Saved live location" : savedLocation.source === "map" ? "Saved map location" : "Saved delivery location"}</strong>
               <p>${escapeHtml(locationSummary(savedLocation))}</p>
             </div>
           </div>
@@ -1755,6 +1901,7 @@ function renderCheckoutPage() {
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" /></svg>
             Verify live location
           </button>
+          <button type="button" data-action="select-address-map">Select on map</button>
           <button type="button" data-action="edit-location">${hasSavedLocation ? "Add location" : "Manual location"}</button>
         </div>
         <div class="manual-location-panel ${showLocationForm ? "" : "collapsed"}">
@@ -2537,7 +2684,8 @@ async function completeNewCustomerLogin(event) {
     city: String(nodes.loginCity.value || "").trim(),
     state: String(nodes.loginState.value || "").trim(),
     pincode: String(nodes.loginPincode.value || "").replace(/\D/g, "").slice(0, 6),
-    coordinates: pendingGoogleLogin.coordinates || null
+    coordinates: pendingGoogleLogin.coordinates || null,
+    mapLocation: pendingGoogleLogin.mapLocation || mapLocationUrl(pendingGoogleLogin.coordinates)
   };
   try {
     const { idToken } = pendingGoogleLogin;
@@ -2835,7 +2983,7 @@ function validateCheckout() {
     return null;
   }
 
-  saveCustomerLocation(billing, billing.coordinates ? "live" : "manual", { silent: true, rerender: false });
+  saveCustomerLocation(billing, billing.coordinates ? billing.source || "map" : "manual", { silent: true, rerender: false });
   nameNode.value = name;
   phoneNode.value = phone;
   addressNode.value = address;
@@ -2923,8 +3071,24 @@ function loadScript(src) {
     script.src = src;
     script.async = true;
     script.onload = resolve;
-    script.onerror = () => reject(new Error("Payment gateway script failed to load"));
+    script.onerror = () => reject(new Error("Script failed to load"));
     document.head.appendChild(script);
+  });
+}
+
+function loadStylesheet(href) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`link[href="${href}"]`)) {
+      resolve();
+      return;
+    }
+
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    link.onload = resolve;
+    link.onerror = () => reject(new Error("Map stylesheet failed to load"));
+    document.head.appendChild(link);
   });
 }
 
@@ -3385,6 +3549,15 @@ document.addEventListener("click", async (event) => {
     case "close-cod-otp":
       closeCodOtpModal();
       break;
+    case "close-map-picker":
+      closeMapPicker();
+      break;
+    case "map-current-location":
+      selectCurrentLocationOnMap();
+      break;
+    case "confirm-map-picker":
+      applyMapPickerSelection();
+      break;
     case "edit-profile":
       state.profileEditOpen = true;
       renderSession();
@@ -3548,6 +3721,7 @@ document.addEventListener("keydown", (event) => {
     closeDrawer();
     closeAccount();
     closeCurrentPage();
+    closeMapPicker();
   }
 });
 
@@ -3585,6 +3759,7 @@ function applySavedProfile(profile) {
     address1: profile.address1 || "",
     address2: profile.address2 || "",
     coordinates: profile.coordinates || savedLocationDetails()?.coordinates || null,
+    mapLocation: profile.mapLocation || profile.map_location || savedLocationDetails()?.mapLocation || "",
     source: profile.coordinates ? "live" : savedLocationDetails()?.source || "manual"
   };
   if (profile.address1 || profile.pincode || profile.city) {
