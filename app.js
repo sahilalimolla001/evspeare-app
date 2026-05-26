@@ -245,6 +245,7 @@ const state = {
   wishlist: new Set(loadJson(storageKeys.wishlist, [])),
   session: loadJson(storageKeys.session, null),
   pendingPhone: "",
+  pendingOtpProvider: "",
   paymentMethod: "cod",
   paymentMode: "cod",
   deliveryMode: "free",
@@ -2363,11 +2364,20 @@ async function requestOtp() {
   }
 
   state.pendingPhone = phone;
+  state.pendingOtpProvider = "";
   try {
     if (firebasePhoneAuthEnabled()) {
-      await requestFirebaseOtp(phone);
+      try {
+        await requestFirebaseOtp(phone);
+        state.pendingOtpProvider = "firebase";
+      } catch (firebaseError) {
+        console.warn("Firebase OTP request failed; using server OTP fallback", firebaseError);
+        await api.requestOtp(phone);
+        state.pendingOtpProvider = "server";
+      }
     } else {
       await api.requestOtp(phone);
+      state.pendingOtpProvider = "server";
     }
     nodes.otpPanel.hidden = false;
     nodes.loginPhone.disabled = true;
@@ -2390,7 +2400,7 @@ async function verifyOtp() {
   }
 
   try {
-    const response = firebasePhoneAuthEnabled()
+    const response = state.pendingOtpProvider === "firebase"
       ? await verifyFirebaseOtp(otp, name)
       : await api.verifyOtp(phone, otp, name);
     state.session = {
@@ -2411,6 +2421,25 @@ async function verifyOtp() {
     showToast("Login successful");
   } catch (error) {
     showToast(error.message || "OTP verification failed");
+  }
+}
+
+async function resendOtp() {
+  if (state.pendingPhone.length !== 10) {
+    showToast("Enter mobile number again");
+    return;
+  }
+
+  try {
+    await api.requestOtp(state.pendingPhone);
+    state.pendingOtpProvider = "server";
+    firebaseConfirmationResult = null;
+    clearFirebaseVerifier();
+    nodes.loginOtp.value = "";
+    nodes.loginOtp.focus();
+    showToast("New OTP sent");
+  } catch (error) {
+    showToast(error.message || "Unable to resend OTP");
   }
 }
 
@@ -2447,6 +2476,7 @@ function clearFirebaseVerifier() {
 
 async function requestFirebaseOtp(phone) {
   const auth = await firebaseAuthClient();
+  firebaseConfirmationResult = null;
   clearFirebaseVerifier();
   firebaseRecaptchaVerifier = new window.firebase.auth.RecaptchaVerifier("firebase-send-otp-button", {
     size: "invisible"
@@ -2556,6 +2586,7 @@ function logout() {
   state.session = null;
   state.profileEditOpen = false;
   state.pendingPhone = "";
+  state.pendingOtpProvider = "";
   firebaseConfirmationResult = null;
   clearFirebaseVerifier();
   if (firebaseAuthInstance) firebaseAuthInstance.signOut().catch(() => undefined);
@@ -3191,6 +3222,9 @@ document.addEventListener("click", async (event) => {
       break;
     case "verify-otp":
       await verifyOtp();
+      break;
+    case "resend-otp":
+      await resendOtp();
       break;
     case "edit-profile":
       state.profileEditOpen = true;
