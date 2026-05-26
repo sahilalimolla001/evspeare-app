@@ -308,13 +308,13 @@
     });
   }
 
-  async function verifyFirebaseLogin(idToken, name = "", phone = "") {
+  async function verifyFirebaseLogin(idToken, name = "", phone = "", profile = null) {
     if (!hasEndpoint(config.firebaseVerifyEndpoint)) {
       throw new Error("Firebase authentication endpoint is not configured");
     }
     return request(config.firebaseVerifyEndpoint, {
       method: "POST",
-      body: { idToken, name, phone }
+      body: { idToken, name, phone, profile }
     });
   }
 

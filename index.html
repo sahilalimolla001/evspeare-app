@@ -350,6 +350,14 @@
             <span aria-hidden="true">G</span>
             Continue with Google
           </button>
+          <form class="profile-edit-form" data-new-customer-form hidden>
+            <label>Address<input type="text" data-login-address1 placeholder="House no, street" autocomplete="address-line1" /></label>
+            <label>Area<input type="text" data-login-area placeholder="Area" /></label>
+            <label>City<input type="text" data-login-city placeholder="City" autocomplete="address-level2" /></label>
+            <label>State<input type="text" data-login-state placeholder="State" autocomplete="address-level1" /></label>
+            <label>Pincode<input type="tel" inputmode="numeric" maxlength="6" data-login-pincode placeholder="6 digit pincode" autocomplete="postal-code" /></label>
+            <button class="primary-button" type="submit">Save address and continue</button>
+          </form>
         </div>
 
         <div class="profile-panel" data-auth-profile hidden>

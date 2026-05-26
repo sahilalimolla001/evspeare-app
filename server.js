@@ -544,6 +544,11 @@ function writeCustomerProfiles(profiles) {
   fs.writeFileSync(customerProfilesPath(), JSON.stringify(profiles, null, 2));
 }
 
+function customerProfileKey(user) {
+  const identity = String(user?.id || user?.sub || "").trim();
+  return identity && identity !== String(user?.phone || "") ? `auth:${identity}` : String(user?.phone || "");
+}
+
 function pendingRazorpayDir() {
   const dir = path.join(rootDir, "data", "pending-razorpay");
   fs.mkdirSync(dir, { recursive: true });
@@ -1424,7 +1429,35 @@ async function handleFirebaseLogin(req, res) {
     if (phone.length !== 10) return send(res, 400, { message: "Mobile number is required for Google login" });
     const name = String(body.name || decodedToken.name || "").trim() || "Customer";
     const profiles = readCustomerProfiles();
-    const profile = profiles[phone] || {};
+    const profileKey = `auth:${decodedToken.uid}`;
+    let profile = profiles[profileKey] || null;
+    if (!profile) {
+      const address = body.profile || {};
+      const address1 = String(address.address1 || address.address || "").trim();
+      const city = String(address.city || "").trim();
+      const pincode = String(address.pincode || "").replace(/\D/g, "").slice(0, 6);
+      if (!address1 || !city || pincode.length !== 6) {
+        return send(res, 200, {
+          requiresAddress: true,
+          user: { id: decodedToken.uid || phone, phone, name }
+        });
+      }
+      profile = {
+        phone,
+        mobile: phone,
+        name,
+        address1,
+        address2: String(address.address2 || "").trim(),
+        area: String(address.area || "").trim(),
+        city,
+        state: String(address.state || "").trim(),
+        region: String(address.region || "").trim(),
+        pincode,
+        updatedAt: new Date().toISOString()
+      };
+      profiles[profileKey] = profile;
+      writeCustomerProfiles(profiles);
+    }
     const user = { id: decodedToken.uid || phone, phone, name: profile.name || name };
     return send(res, 200, {
       token: signToken(user),
@@ -1441,7 +1474,8 @@ async function handleCustomerProfile(req, res) {
   const user = verifyToken(req);
   if (!user) return send(res, 401, { message: "Login required" });
   const profiles = readCustomerProfiles();
-  if (req.method === "GET") return send(res, 200, { profile: profiles[user.phone] || { phone: user.phone, name: user.name || "" } });
+  const profileKey = customerProfileKey(user);
+  if (req.method === "GET") return send(res, 200, { profile: profiles[profileKey] || { phone: user.phone, name: user.name || "" } });
 
   const body = await readBody(req);
   const profile = {
@@ -1457,7 +1491,7 @@ async function handleCustomerProfile(req, res) {
     address2: String(body.address2 || "").trim(),
     updatedAt: new Date().toISOString()
   };
-  profiles[user.phone] = profile;
+  profiles[profileKey] = profile;
   writeCustomerProfiles(profiles);
   return send(res, 200, { profile });
 }

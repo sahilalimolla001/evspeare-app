@@ -24,6 +24,7 @@ const deliveryEstimateDays = 7;
 const returnWindowDays = 7;
 const codMaxOrderAmount = 1000;
 let firebaseAuthInstance = null;
+let pendingGoogleLogin = null;
 const customerTrackingStages = [
   { key: "placed", label: "Order Placed", offsetDays: 0, icon: "bag" },
   { key: "shipped", label: "Shipped", offsetDays: 2, icon: "box" },
@@ -290,6 +291,12 @@ const nodes = {
   authSubtitle: document.querySelector("[data-auth-subtitle]"),
   loginName: document.querySelector("[data-login-name]"),
   loginPhone: document.querySelector("[data-login-phone]"),
+  newCustomerForm: document.querySelector("[data-new-customer-form]"),
+  loginAddress1: document.querySelector("[data-login-address1]"),
+  loginArea: document.querySelector("[data-login-area]"),
+  loginCity: document.querySelector("[data-login-city]"),
+  loginState: document.querySelector("[data-login-state]"),
+  loginPincode: document.querySelector("[data-login-pincode]"),
   codOtpModal: document.querySelector("[data-cod-otp-modal]"),
   codOtp: document.querySelector("[data-cod-otp]"),
   profileAvatar: document.querySelector("[data-profile-avatar]"),
@@ -2366,24 +2373,64 @@ async function googleLogin() {
     const result = await auth.signInWithPopup(provider);
     const idToken = await result.user.getIdToken(true);
     const response = await api.verifyFirebaseLogin(idToken, name, phone);
-    state.session = {
-      token: response.token || response.access_token || `session-${Date.now()}`,
-      user: {
-        id: response.user?.id || phone,
-        name: customerNameFallback(response.user?.name || name),
-        phone: response.user?.phone || phone
-      },
-      profile: response.profile || null,
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-      loggedInAt: new Date().toISOString()
-    };
-    applySavedProfile(response.profile);
-    saveJson(storageKeys.session, state.session);
-    renderAll();
-    closeAccount();
-    showToast("Login successful");
+    if (response.requiresAddress) {
+      pendingGoogleLogin = { idToken, name, phone };
+      nodes.newCustomerForm.hidden = false;
+      nodes.loginAddress1.focus();
+      showToast("New customer: delivery address add karein", 5000);
+      return;
+    }
+    completeGoogleSession(response, phone, name);
   } catch (error) {
     showToast(googleLoginErrorMessage(error), 7000);
+  }
+}
+
+function completeGoogleSession(response, phone, name) {
+  state.session = {
+    token: response.token || response.access_token || `session-${Date.now()}`,
+    user: {
+      id: response.user?.id || phone,
+      name: customerNameFallback(response.user?.name || name),
+      phone: response.user?.phone || phone
+    },
+    profile: response.profile || null,
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    loggedInAt: new Date().toISOString()
+  };
+  pendingGoogleLogin = null;
+  nodes.newCustomerForm.hidden = true;
+  applySavedProfile(response.profile);
+  saveJson(storageKeys.session, state.session);
+  renderAll();
+  closeAccount();
+  showToast("Login successful");
+}
+
+async function completeNewCustomerLogin(event) {
+  event.preventDefault();
+  if (!pendingGoogleLogin) {
+    showToast("Continue with Google first");
+    return;
+  }
+  const profile = {
+    address1: String(nodes.loginAddress1.value || "").trim(),
+    area: String(nodes.loginArea.value || "").trim(),
+    city: String(nodes.loginCity.value || "").trim(),
+    state: String(nodes.loginState.value || "").trim(),
+    pincode: String(nodes.loginPincode.value || "").replace(/\D/g, "").slice(0, 6)
+  };
+  if (!profile.address1 || !profile.city || profile.pincode.length !== 6) {
+    showToast("Address, city aur valid pincode enter karein");
+    return;
+  }
+  try {
+    const { idToken, name, phone } = pendingGoogleLogin;
+    const response = await api.verifyFirebaseLogin(idToken, name, phone, profile);
+    if (response.requiresAddress) throw new Error("Complete delivery address is required");
+    completeGoogleSession(response, phone, name);
+  } catch (error) {
+    showToast(error.message || "Address save failed", 7000);
   }
 }
 
@@ -2566,10 +2613,12 @@ function logout() {
   state.pendingCodCustomer = null;
   state.codVerificationToken = "";
   closeCodOtpModal();
+  pendingGoogleLogin = null;
   if (firebaseAuthInstance) firebaseAuthInstance.signOut().catch(() => undefined);
   localStorage.removeItem(storageKeys.session);
   if (nodes.loginName) nodes.loginName.value = "";
   if (nodes.loginPhone) nodes.loginPhone.value = "";
+  if (nodes.newCustomerForm) nodes.newCustomerForm.hidden = true;
   renderAll();
   closeAccount();
   showToast("Logged out");
@@ -3367,6 +3416,7 @@ nodes.checkoutForm.addEventListener("submit", (event) => {
 });
 
 nodes.profileEditForm?.addEventListener("submit", saveProfileName);
+nodes.newCustomerForm?.addEventListener("submit", completeNewCustomerLogin);
 
 nodes.supportForm?.addEventListener("submit", submitSupportQuery);
 

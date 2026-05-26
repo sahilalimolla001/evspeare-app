@@ -91,6 +91,7 @@ Use Razorpay Test Mode keys during testing and replace them with Live Mode keys 
 - Product inventory is auto-detected from columns like `stock_quantity`, `inventory`, `available_stock`, `qty`, or `stock`. Quantity `0` is shown as out of stock and cannot be ordered.
 - Database mode is off by default. Set `ENABLE_DATABASE=true` only if you intentionally want DB fallback.
 - Customer login uses Firebase Google Sign-In and requires a 10-digit mobile number before the Google popup is opened.
+- A new Google customer must save a delivery address during first login; existing Google customers reuse their saved profile.
 - Twilio Verify sends a mobile OTP only when a logged-in customer places a COD order; the backend rejects COD without a recent OTP proof.
 - Keep `FIREBASE_SERVICE_ACCOUNT_JSON` and Twilio credentials server-side only.
 - `GET /api/mobile/diagnostics` checks whether Twilio, Firebase Auth, Razorpay, and website env vars are set without exposing secrets.
