@@ -388,9 +388,16 @@
 
           <form class="profile-edit-form" data-profile-edit-form hidden>
             <label>
-              Edit name
+              Name
               <input type="text" data-profile-edit-name placeholder="Customer name" autocomplete="name" />
             </label>
+            <label>Mobile number<input type="tel" data-profile-edit-phone disabled /></label>
+            <label>Pincode<input type="tel" data-profile-edit-pincode inputmode="numeric" maxlength="6" /></label>
+            <label>Area<input type="text" data-profile-edit-area /></label>
+            <label>City<input type="text" data-profile-edit-city /></label>
+            <label>State<input type="text" data-profile-edit-state /></label>
+            <label>Region<input type="text" data-profile-edit-region /></label>
+            <label>Address<input type="text" data-profile-edit-address1 /></label>
             <button class="primary-button" type="submit">Save</button>
           </form>
 

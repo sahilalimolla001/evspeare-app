@@ -438,6 +438,7 @@ function publicConfig(req) {
     supportEndpoint: "/api/mobile/support",
     otpRequestEndpoint: "/api/mobile/auth/request-otp",
     otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
+    profileEndpoint: "/api/mobile/profile",
     paymentCreateEndpoint: "/api/mobile/payments/create",
     paymentVerifyEndpoint: "/api/mobile/payments/verify",
     authHeader: "",
@@ -467,11 +468,13 @@ function sessionSecret() {
 }
 
 function signToken(user) {
+  const now = Math.floor(Date.now() / 1000);
   const payload = {
     sub: String(user.id || user.phone),
     phone: user.phone,
     name: user.name || "Customer",
-    iat: Math.floor(Date.now() / 1000)
+    iat: now,
+    exp: now + 24 * 60 * 60
   };
   const encoded = base64Url(JSON.stringify(payload));
   const signature = crypto.createHmac("sha256", sessionSecret()).update(encoded).digest("base64url");
@@ -489,10 +492,30 @@ function verifyToken(req) {
   if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
 
   try {
-    return JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    if (payload.exp && Number(payload.exp) < Math.floor(Date.now() / 1000)) return null;
+    return payload;
   } catch (error) {
     return null;
   }
+}
+
+function customerProfilesPath() {
+  const dataDir = path.join(rootDir, "data");
+  fs.mkdirSync(dataDir, { recursive: true });
+  return path.join(dataDir, "customer-profiles.json");
+}
+
+function readCustomerProfiles() {
+  try {
+    return JSON.parse(fs.readFileSync(customerProfilesPath(), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeCustomerProfiles(profiles) {
+  fs.writeFileSync(customerProfilesPath(), JSON.stringify(profiles, null, 2));
 }
 
 function pendingDir() {
@@ -1263,11 +1286,39 @@ async function handleVerifyOtp(req, res) {
 
   const phone = phoneDigits(body.phone);
   const name = String(body.name || "").trim() || "Customer";
-  const user = { id: phone, phone, name };
+  const profiles = readCustomerProfiles();
+  const profile = profiles[phone] || {};
+  const user = { id: phone, phone, name: profile.name || name };
   send(res, 200, {
     token: signToken(user),
-    user
+    user,
+    profile
   });
+}
+
+async function handleCustomerProfile(req, res) {
+  const user = verifyToken(req);
+  if (!user) return send(res, 401, { message: "Login required" });
+  const profiles = readCustomerProfiles();
+  if (req.method === "GET") return send(res, 200, { profile: profiles[user.phone] || { phone: user.phone, name: user.name || "" } });
+
+  const body = await readBody(req);
+  const profile = {
+    phone: user.phone,
+    name: String(body.name || user.name || "").trim(),
+    mobile: user.phone,
+    pincode: String(body.pincode || "").replace(/\D/g, "").slice(0, 6),
+    area: String(body.area || "").trim(),
+    city: String(body.city || "").trim(),
+    state: String(body.state || "").trim(),
+    region: String(body.region || "").trim(),
+    address1: String(body.address1 || body.address || "").trim(),
+    address2: String(body.address2 || "").trim(),
+    updatedAt: new Date().toISOString()
+  };
+  profiles[user.phone] = profile;
+  writeCustomerProfiles(profiles);
+  return send(res, 200, { profile });
 }
 
 async function handleSupportQuery(req, res) {
@@ -3091,6 +3142,7 @@ async function router(req, res) {
 
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/verify-otp") return handleVerifyOtp(req, res);
+    if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/mobile/profile") return handleCustomerProfile(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/support") return handleSupportQuery(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/products") return handleProducts(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/images") return handleProductImage(req, res);

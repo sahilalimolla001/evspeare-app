@@ -296,6 +296,13 @@ const nodes = {
   profilePhone: document.querySelector("[data-profile-phone]"),
   profileEditForm: document.querySelector("[data-profile-edit-form]"),
   profileEditName: document.querySelector("[data-profile-edit-name]"),
+  profileEditPhone: document.querySelector("[data-profile-edit-phone]"),
+  profileEditPincode: document.querySelector("[data-profile-edit-pincode]"),
+  profileEditArea: document.querySelector("[data-profile-edit-area]"),
+  profileEditCity: document.querySelector("[data-profile-edit-city]"),
+  profileEditState: document.querySelector("[data-profile-edit-state]"),
+  profileEditRegion: document.querySelector("[data-profile-edit-region]"),
+  profileEditAddress1: document.querySelector("[data-profile-edit-address1]"),
   profileEditToggle: document.querySelector("[data-profile-edit-toggle]"),
   profileSavedCount: document.querySelector("[data-profile-saved-count]"),
   checkoutForm: document.querySelector("[data-checkout-form]"),
@@ -512,7 +519,13 @@ function phoneDigits(value) {
 }
 
 function isLoggedIn() {
-  return Boolean(state.session?.token && state.session?.user?.phone);
+  if (!state.session?.token || !state.session?.user?.phone) return false;
+  if (state.session.expiresAt && Number(state.session.expiresAt) < Date.now()) {
+    state.session = null;
+    localStorage.removeItem(storageKeys.session);
+    return false;
+  }
+  return true;
 }
 
 function persistShoppingState() {
@@ -1002,6 +1015,14 @@ function renderSession() {
   nodes.profilePhone.textContent = loggedIn ? `+91 ${phone}` : "Customer";
   if (nodes.profileAvatar) nodes.profileAvatar.textContent = (loggedIn ? name : "Ev Speare").trim().charAt(0).toUpperCase() || "E";
   if (nodes.profileEditName) nodes.profileEditName.value = loggedIn ? name : "";
+  if (nodes.profileEditPhone) nodes.profileEditPhone.value = loggedIn ? phone : "";
+  const profile = state.session?.profile || {};
+  if (nodes.profileEditPincode) nodes.profileEditPincode.value = profile.pincode || savedLocationDetails().pincode || "";
+  if (nodes.profileEditArea) nodes.profileEditArea.value = profile.area || "";
+  if (nodes.profileEditCity) nodes.profileEditCity.value = profile.city || savedLocationDetails().city || "";
+  if (nodes.profileEditState) nodes.profileEditState.value = profile.state || savedLocationDetails().state || "";
+  if (nodes.profileEditRegion) nodes.profileEditRegion.value = profile.region || "";
+  if (nodes.profileEditAddress1) nodes.profileEditAddress1.value = profile.address1 || savedLocationDetails().address1 || "";
   if (nodes.profileEditForm) nodes.profileEditForm.hidden = !loggedIn || !state.profileEditOpen;
   if (nodes.profileEditToggle) nodes.profileEditToggle.setAttribute("aria-expanded", state.profileEditOpen ? "true" : "false");
   nodes.profileSavedCount.textContent = state.wishlist.size;
@@ -2396,8 +2417,11 @@ async function verifyOtp() {
         name: customerNameFallback(response.user?.name || name),
         phone: response.user?.phone || phone
       },
+      profile: response.profile || null,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
       loggedInAt: new Date().toISOString()
     };
+    applySavedProfile(response.profile);
     saveJson(storageKeys.session, state.session);
     renderAll();
     closeAccount();
@@ -2407,7 +2431,7 @@ async function verifyOtp() {
   }
 }
 
-function saveProfileName(event) {
+async function saveProfileName(event) {
   event.preventDefault();
   if (!isLoggedIn()) {
     showToast("Login required");
@@ -2421,13 +2445,30 @@ function saveProfileName(event) {
     return;
   }
 
-  state.session = {
-    ...state.session,
-    user: {
-      ...(state.session.user || {}),
-      name
-    }
+  const profile = {
+    name,
+    pincode: String(nodes.profileEditPincode?.value || "").replace(/\D/g, "").slice(0, 6),
+    area: String(nodes.profileEditArea?.value || "").trim(),
+    city: String(nodes.profileEditCity?.value || "").trim(),
+    state: String(nodes.profileEditState?.value || "").trim(),
+    region: String(nodes.profileEditRegion?.value || "").trim(),
+    address1: String(nodes.profileEditAddress1?.value || "").trim()
   };
+  try {
+    const response = await api.saveProfile(profile);
+    state.session = {
+      ...state.session,
+      profile: response.profile || profile,
+      user: {
+        ...(state.session.user || {}),
+        name
+      }
+    };
+    applySavedProfile(response.profile || profile);
+  } catch (error) {
+    showToast(error.message || "Profile save failed");
+    return;
+  }
   saveJson(storageKeys.session, state.session);
   nodes.checkoutName.value = name;
   state.profileEditOpen = false;
@@ -3316,6 +3357,36 @@ if (!history.state?.[appHistoryKey]) {
 if (state.session?.user?.phone) {
   nodes.checkoutPhone.value = state.session.user.phone;
   nodes.checkoutName.value = state.session.user.name || "";
+  api.fetchProfile?.().then((response) => {
+    if (!response?.profile) return;
+    state.session.profile = response.profile;
+    state.session.user.name = response.profile.name || state.session.user.name;
+    applySavedProfile(response.profile);
+    saveJson(storageKeys.session, state.session);
+    renderAll();
+  }).catch(() => {});
+}
+
+function applySavedProfile(profile) {
+  if (!profile) return;
+  const location = {
+    ...savedLocationDetails(),
+    firstName: splitName(profile.name || "")?.firstName || "",
+    lastName: splitName(profile.name || "")?.lastName || "",
+    phone: state.session?.user?.phone || profile.mobile || profile.phone || "",
+    pincode: profile.pincode || "",
+    city: profile.city || "",
+    state: profile.state || "",
+    area: profile.area || "",
+    region: profile.region || "",
+    address1: profile.address1 || "",
+    address2: profile.address2 || ""
+  };
+  if (profile.address1 || profile.pincode || profile.city) {
+    state.savedLocation = location;
+    saveJson(storageKeys.location, location);
+    nodes.checkoutAddress.value = formatAddress(location);
+  }
 }
 
 mountCommerceDrawerPage();

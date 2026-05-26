@@ -46,6 +46,7 @@ window.EVSPEARE_CONFIG = {
   supportEndpoint: "/api/mobile/support",
   otpRequestEndpoint: "/api/mobile/auth/request-otp",
   otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
+  profileEndpoint: "/api/mobile/profile",
   paymentCreateEndpoint: "/api/mobile/payments/create",
   paymentVerifyEndpoint: "/api/mobile/payments/verify",
 

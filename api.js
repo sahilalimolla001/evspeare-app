@@ -316,6 +316,19 @@
     });
   }
 
+  async function fetchProfile() {
+    if (!hasEndpoint(config.profileEndpoint)) return { profile: null };
+    return request(config.profileEndpoint);
+  }
+
+  async function saveProfile(profile) {
+    if (!hasEndpoint(config.profileEndpoint)) return { profile };
+    return request(config.profileEndpoint, {
+      method: "POST",
+      body: profile
+    });
+  }
+
   async function createPaymentOrder(order) {
     if (!hasEndpoint(config.paymentCreateEndpoint)) {
       if (config.demo?.allowDemoPayment) {
@@ -411,6 +424,8 @@
     fetchCatalog,
     requestOtp,
     verifyOtp,
+    fetchProfile,
+    saveProfile,
     createPaymentOrder,
     verifyPayment,
     pushOrder,
