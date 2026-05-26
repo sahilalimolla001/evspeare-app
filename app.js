@@ -535,6 +535,39 @@ function isLoggedIn() {
 function persistShoppingState() {
   saveJson(storageKeys.cart, Array.from(state.cart.entries()));
   saveJson(storageKeys.wishlist, Array.from(state.wishlist));
+  syncCustomerState();
+}
+
+function syncCustomerState() {
+  if (!isLoggedIn() || !api.saveCustomerState) return;
+  api.saveCustomerState({
+    cart: Array.from(state.cart.entries()),
+    wishlist: Array.from(state.wishlist),
+    location: state.savedLocation,
+    orders: state.orders
+  }).catch((error) => console.warn("Unable to sync customer state", error));
+}
+
+async function restoreCustomerState() {
+  if (!isLoggedIn() || !api.fetchCustomerState) return;
+  try {
+    const response = await api.fetchCustomerState();
+    const remote = response?.state;
+    if (!remote) {
+      syncCustomerState();
+      return;
+    }
+    if (Array.isArray(remote.cart)) state.cart = new Map(remote.cart);
+    if (Array.isArray(remote.wishlist)) state.wishlist = new Set(remote.wishlist);
+    if (remote.location && typeof remote.location === "object") state.savedLocation = remote.location;
+    if (Array.isArray(remote.orders)) state.orders = remote.orders;
+    saveJson(storageKeys.cart, Array.from(state.cart.entries()));
+    saveJson(storageKeys.wishlist, Array.from(state.wishlist));
+    saveJson(storageKeys.location, state.savedLocation);
+    saveJson(storageKeys.orders, state.orders);
+  } catch (error) {
+    console.warn("Unable to restore customer state", error);
+  }
 }
 
 function buildCategories(sourceProducts) {
@@ -1400,6 +1433,7 @@ function saveCustomerLocation(details, source = "manual", { silent = false, rere
     address: address || ""
   };
   saveJson(storageKeys.location, state.savedLocation);
+  syncCustomerState();
   nodes.checkoutAddress.value = address;
   if (location.phone) nodes.checkoutPhone.value = location.phone;
   if (formatCustomerName(location)) nodes.checkoutName.value = formatCustomerName(location);
@@ -2380,13 +2414,13 @@ async function googleLogin() {
       showToast("New customer: delivery address add karein", 5000);
       return;
     }
-    completeGoogleSession(response, phone, name);
+    await completeGoogleSession(response, phone, name);
   } catch (error) {
     showToast(googleLoginErrorMessage(error), 7000);
   }
 }
 
-function completeGoogleSession(response, phone, name) {
+async function completeGoogleSession(response, phone, name) {
   state.session = {
     token: response.token || response.access_token || `session-${Date.now()}`,
     user: {
@@ -2400,8 +2434,10 @@ function completeGoogleSession(response, phone, name) {
   };
   pendingGoogleLogin = null;
   nodes.newCustomerForm.hidden = true;
-  applySavedProfile(response.profile);
   saveJson(storageKeys.session, state.session);
+  await restoreCustomerState();
+  applySavedProfile(response.profile);
+  syncCustomerState();
   renderAll();
   closeAccount();
   showToast("Login successful");
@@ -2428,7 +2464,7 @@ async function completeNewCustomerLogin(event) {
     const { idToken, name, phone } = pendingGoogleLogin;
     const response = await api.verifyFirebaseLogin(idToken, name, phone, profile);
     if (response.requiresAddress) throw new Error("Complete delivery address is required");
-    completeGoogleSession(response, phone, name);
+    await completeGoogleSession(response, phone, name);
   } catch (error) {
     showToast(error.message || "Address save failed", 7000);
   }
@@ -2976,6 +3012,7 @@ async function placeOrder() {
 function saveLocalOrder(order) {
   state.orders = [order, ...state.orders.filter((item) => item.orderId !== order.orderId)].slice(0, 50);
   saveJson(storageKeys.orders, state.orders);
+  syncCustomerState();
 }
 
 function ordersPageIsOpen() {
@@ -3020,6 +3057,7 @@ async function cancelOrder(orderId) {
       };
     });
     saveJson(storageKeys.orders, state.orders);
+    syncCustomerState();
     showToast("Cancel request sent");
     if (!response.localOnly) {
       await loadOrders({ silent: true, background: true });
@@ -3068,6 +3106,7 @@ async function returnOrder(orderId) {
       };
     });
     saveJson(storageKeys.orders, state.orders);
+    syncCustomerState();
     showToast("Return request sent");
     if (!response.localOnly) {
       await loadOrders({ silent: true, background: true });
@@ -3094,6 +3133,7 @@ async function loadOrders({ silent = false, background = false } = {}) {
       if (response.orders.length || !state.orders.length) {
         state.orders = response.orders;
         saveJson(storageKeys.orders, state.orders);
+        syncCustomerState();
       }
     }
   } catch (error) {

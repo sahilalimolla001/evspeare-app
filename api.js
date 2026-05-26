@@ -331,6 +331,19 @@
     });
   }
 
+  async function fetchCustomerState() {
+    if (!hasEndpoint(config.customerStateEndpoint)) return { state: null };
+    return request(config.customerStateEndpoint);
+  }
+
+  async function saveCustomerState(state) {
+    if (!hasEndpoint(config.customerStateEndpoint)) return { state };
+    return request(config.customerStateEndpoint, {
+      method: "POST",
+      body: state
+    });
+  }
+
   async function createPaymentOrder(order) {
     if (!hasEndpoint(config.paymentCreateEndpoint)) {
       if (config.demo?.allowDemoPayment) {
@@ -429,6 +442,8 @@
     verifyFirebaseLogin,
     fetchProfile,
     saveProfile,
+    fetchCustomerState,
+    saveCustomerState,
     createPaymentOrder,
     verifyPayment,
     pushOrder,

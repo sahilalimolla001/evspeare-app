@@ -434,6 +434,7 @@ function publicConfig(req) {
     otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
     firebaseVerifyEndpoint: "/api/mobile/auth/firebase",
     profileEndpoint: "/api/mobile/profile",
+    customerStateEndpoint: "/api/mobile/customer-state",
     paymentCreateEndpoint: "/api/mobile/payments/create",
     paymentVerifyEndpoint: "/api/mobile/payments/verify",
     authHeader: "",
@@ -545,8 +546,25 @@ function writeCustomerProfiles(profiles) {
 }
 
 function customerProfileKey(user) {
-  const identity = String(user?.id || user?.sub || "").trim();
-  return identity && identity !== String(user?.phone || "") ? `auth:${identity}` : String(user?.phone || "");
+  return phoneDigits(user?.phone);
+}
+
+function customerStatePath() {
+  const dataDir = path.join(rootDir, "data");
+  fs.mkdirSync(dataDir, { recursive: true });
+  return path.join(dataDir, "customer-state.json");
+}
+
+function readCustomerState() {
+  try {
+    return JSON.parse(fs.readFileSync(customerStatePath(), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeCustomerState(state) {
+  fs.writeFileSync(customerStatePath(), JSON.stringify(state, null, 2));
 }
 
 function pendingRazorpayDir() {
@@ -1429,8 +1447,21 @@ async function handleFirebaseLogin(req, res) {
     if (phone.length !== 10) return send(res, 400, { message: "Mobile number is required for Google login" });
     const name = String(body.name || decodedToken.name || "").trim() || "Customer";
     const profiles = readCustomerProfiles();
-    const profileKey = `auth:${decodedToken.uid}`;
-    let profile = profiles[profileKey] || null;
+    const profileKey = phone;
+    const legacyKeys = Object.keys(profiles).filter((key) => (
+      key.startsWith("auth:") &&
+      phoneDigits(profiles[key]?.phone || profiles[key]?.mobile) === phone
+    ));
+    let profile = profiles[profileKey] || legacyKeys.map((key) => profiles[key]).find(Boolean) || null;
+    if (profile && legacyKeys.length) {
+      profiles[profileKey] = legacyKeys.reduce(
+        (merged, key) => ({ ...profiles[key], ...merged }),
+        { ...(profiles[profileKey] || profile), phone, mobile: phone }
+      );
+      profile = profiles[profileKey];
+      legacyKeys.forEach((key) => delete profiles[key]);
+      writeCustomerProfiles(profiles);
+    }
     if (!profile) {
       const address = body.profile || {};
       const address1 = String(address.address1 || address.address || "").trim();
@@ -1494,6 +1525,29 @@ async function handleCustomerProfile(req, res) {
   profiles[profileKey] = profile;
   writeCustomerProfiles(profiles);
   return send(res, 200, { profile });
+}
+
+async function handleCustomerState(req, res) {
+  const user = verifyToken(req);
+  if (!user) return send(res, 401, { message: "Login required" });
+  const phone = phoneDigits(user.phone);
+  const states = readCustomerState();
+  if (req.method === "GET") return send(res, 200, { state: states[phone] || null });
+
+  const body = await readBody(req);
+  const cart = Array.isArray(body.cart) ? body.cart.slice(0, 100) : [];
+  const wishlist = Array.isArray(body.wishlist) ? body.wishlist.slice(0, 200) : [];
+  const location = body.location && typeof body.location === "object" ? body.location : null;
+  const orders = Array.isArray(body.orders) ? body.orders.slice(0, 50) : [];
+  states[phone] = {
+    cart,
+    wishlist,
+    location,
+    orders,
+    updatedAt: new Date().toISOString()
+  };
+  writeCustomerState(states);
+  return send(res, 200, { state: states[phone] });
 }
 
 async function handleSupportQuery(req, res) {
@@ -3179,6 +3233,7 @@ async function router(req, res) {
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/verify-otp") return handleVerifyOtp(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/firebase") return handleFirebaseLogin(req, res);
     if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/mobile/profile") return handleCustomerProfile(req, res);
+    if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/mobile/customer-state") return handleCustomerState(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/support") return handleSupportQuery(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/products") return handleProducts(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/images") return handleProductImage(req, res);
