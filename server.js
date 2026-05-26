@@ -37,6 +37,15 @@ const port = Number(process.env.PORT || 3000);
 const fallbackPort = 3000;
 const deliveryEstimateDays = 7;
 const pendingRazorpayOrders = new Map();
+const defaultFirebaseWebConfig = {
+  apiKey: "AIzaSyBHAvF01gxheV53SfnzNxh41ODZHSHNWbI",
+  authDomain: "app-evspeare.firebaseapp.com",
+  projectId: "app-evspeare",
+  storageBucket: "app-evspeare.firebasestorage.app",
+  messagingSenderId: "723482884028",
+  appId: "1:723482884028:web:74cc6cdc873ad2c4f25db9",
+  measurementId: "G-E5C6PWX5KV"
+};
 let googleAccessTokenCache = null;
 let websiteLoginCache = null;
 let appVersionCache = null;
@@ -576,25 +585,44 @@ function firebaseServiceAccountJson() {
 }
 
 function firebaseAuthServerConfigured() {
-  return Boolean(process.env.FIREBASE_PROJECT_ID && firebaseServiceAccountJson());
+  return Boolean(firebaseProjectId() && firebaseServiceAccountJson());
+}
+
+function firebaseProjectId() {
+  return process.env.FIREBASE_PROJECT_ID || defaultFirebaseWebConfig.projectId;
+}
+
+function firebaseWebConfig() {
+  return {
+    apiKey: process.env.FIREBASE_API_KEY || defaultFirebaseWebConfig.apiKey,
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN || defaultFirebaseWebConfig.authDomain,
+    projectId: firebaseProjectId(),
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || defaultFirebaseWebConfig.storageBucket,
+    appId: process.env.FIREBASE_APP_ID || defaultFirebaseWebConfig.appId,
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || defaultFirebaseWebConfig.messagingSenderId,
+    measurementId: process.env.FIREBASE_MEASUREMENT_ID || defaultFirebaseWebConfig.measurementId
+  };
 }
 
 function publicFirebaseAuthConfig() {
+  const webConfig = firebaseWebConfig();
   const clientConfigured = Boolean(
-    process.env.FIREBASE_API_KEY &&
-    process.env.FIREBASE_AUTH_DOMAIN &&
-    process.env.FIREBASE_PROJECT_ID &&
-    process.env.FIREBASE_APP_ID
+    webConfig.apiKey &&
+    webConfig.authDomain &&
+    webConfig.projectId &&
+    webConfig.appId
   );
   const enabled = envFlag("FIREBASE_AUTH_ENABLED") && clientConfigured && firebaseAuthServerConfigured();
   return {
     provider: enabled ? "firebase" : "twilio",
     enabled,
-    apiKey: enabled ? process.env.FIREBASE_API_KEY : "",
-    authDomain: enabled ? process.env.FIREBASE_AUTH_DOMAIN : "",
-    projectId: enabled ? process.env.FIREBASE_PROJECT_ID : "",
-    appId: enabled ? process.env.FIREBASE_APP_ID : "",
-    messagingSenderId: enabled ? process.env.FIREBASE_MESSAGING_SENDER_ID || "" : "",
+    apiKey: enabled ? webConfig.apiKey : "",
+    authDomain: enabled ? webConfig.authDomain : "",
+    projectId: enabled ? webConfig.projectId : "",
+    storageBucket: enabled ? webConfig.storageBucket : "",
+    appId: enabled ? webConfig.appId : "",
+    messagingSenderId: enabled ? webConfig.messagingSenderId : "",
+    measurementId: enabled ? webConfig.measurementId : "",
     sdkAppScript: "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js",
     sdkAuthScript: "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"
   };
@@ -602,11 +630,12 @@ function publicFirebaseAuthConfig() {
 
 function firebaseAuthStatus() {
   const publicConfig = publicFirebaseAuthConfig();
+  const webConfig = firebaseWebConfig();
   return {
     enabled: publicConfig.enabled,
     requested: envFlag("FIREBASE_AUTH_ENABLED"),
-    clientConfigSet: Boolean(process.env.FIREBASE_API_KEY && process.env.FIREBASE_AUTH_DOMAIN && process.env.FIREBASE_APP_ID),
-    projectIdSet: Boolean(process.env.FIREBASE_PROJECT_ID),
+    clientConfigSet: Boolean(webConfig.apiKey && webConfig.authDomain && webConfig.appId),
+    projectIdSet: Boolean(webConfig.projectId),
     serviceAccountSet: Boolean(firebaseServiceAccountJson())
   };
 }
@@ -614,14 +643,14 @@ function firebaseAuthStatus() {
 function getFirebaseAdminAuth() {
   if (firebaseAdminAuthClient) return firebaseAdminAuthClient;
   const credentials = firebaseServiceAccountJson();
-  if (!process.env.FIREBASE_PROJECT_ID || !credentials) {
+  if (!firebaseProjectId() || !credentials) {
     throw new Error("Firebase Admin credentials are missing");
   }
   const { cert, initializeApp } = require("firebase-admin/app");
   const { getAuth } = require("firebase-admin/auth");
   const firebaseAdminApp = initializeApp({
     credential: cert(credentials),
-    projectId: process.env.FIREBASE_PROJECT_ID
+    projectId: firebaseProjectId()
   }, "evspeare-customer-auth");
   firebaseAdminAuthClient = getAuth(firebaseAdminApp);
   return firebaseAdminAuthClient;

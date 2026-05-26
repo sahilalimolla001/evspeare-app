@@ -69,12 +69,7 @@ DB_ORDER_ITEMS_TABLE=evspeare_order_items
 DB_AUTO_CREATE_TABLES=true
 
 FIREBASE_AUTH_ENABLED=true
-FIREBASE_API_KEY=your_firebase_web_api_key
-FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_APP_ID=your_firebase_web_app_id
-FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"app-evspeare","private_key":"...","client_email":"..."}
 
 # Optional fallback while Firebase Authentication is not enabled.
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -95,6 +90,7 @@ Use Razorpay Test Mode keys during testing and replace them with Live Mode keys 
 - Product inventory is auto-detected from columns like `stock_quantity`, `inventory`, `available_stock`, `qty`, or `stock`. Quantity `0` is shown as out of stock and cannot be ordered.
 - Database mode is off by default. Set `ENABLE_DATABASE=true` only if you intentionally want DB fallback.
 - With `FIREBASE_AUTH_ENABLED=true`, Firebase Phone Authentication sends and verifies customer OTP in the browser using invisible reCAPTCHA.
+- Firebase web app config for project `app-evspeare` is already included in the customer app. Keep `FIREBASE_SERVICE_ACCOUNT_JSON` server-side only.
 - `POST /api/mobile/auth/firebase` verifies the Firebase ID token through Firebase Admin and returns the app session token used by protected APIs.
 - `POST /api/mobile/auth/request-otp` and `/verify-otp` remain available as the fallback until Firebase is fully configured.
 - `GET /api/mobile/diagnostics` checks whether Firebase Auth, fallback Twilio, Razorpay, and website env vars are set without exposing secrets.

@@ -59,13 +59,15 @@ window.EVSPEARE_CONFIG = {
   authHeader: "",
 
   firebaseAuth: {
-    provider: "twilio",
+    provider: "firebase",
     enabled: false,
-    apiKey: "",
-    authDomain: "",
-    projectId: "",
-    appId: "",
-    messagingSenderId: "",
+    apiKey: "AIzaSyBHAvF01gxheV53SfnzNxh41ODZHSHNWbI",
+    authDomain: "app-evspeare.firebaseapp.com",
+    projectId: "app-evspeare",
+    storageBucket: "app-evspeare.firebasestorage.app",
+    appId: "1:723482884028:web:74cc6cdc873ad2c4f25db9",
+    messagingSenderId: "723482884028",
+    measurementId: "G-E5C6PWX5KV",
     sdkAppScript: "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js",
     sdkAuthScript: "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"
   },

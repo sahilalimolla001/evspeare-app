@@ -2431,8 +2431,10 @@ async function firebaseAuthClient() {
         apiKey: settings.apiKey,
         authDomain: settings.authDomain,
         projectId: settings.projectId,
+        storageBucket: settings.storageBucket,
         appId: settings.appId,
-        messagingSenderId: settings.messagingSenderId
+        messagingSenderId: settings.messagingSenderId,
+        measurementId: settings.measurementId
       });
   firebaseAuthInstance = firebaseApp.auth();
   return firebaseAuthInstance;
