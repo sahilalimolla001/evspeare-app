@@ -321,7 +321,10 @@ const nodes = {
   expressCount: document.querySelector("[data-express-count]"),
   buyAgainCount: document.querySelector("[data-buy-again-count]"),
   buyAgainSection: document.querySelector("[data-buy-again-section]"),
-  buyAgainGrid: document.querySelector("[data-buy-again-grid]")
+  buyAgainGrid: document.querySelector("[data-buy-again-grid]"),
+  smartSection: document.querySelector("[data-smart-section]"),
+  smartGrid: document.querySelector("[data-smart-grid]"),
+  smartBanner: document.querySelector("[data-smart-banner]")
 };
 
 function loadJson(key, fallback) {
@@ -539,6 +542,8 @@ function isProductAvailable(product) {
 }
 
 function stockLabel(product) {
+  const quantity = stockQuantity(product);
+  if (isProductAvailable(product) && quantity !== null && quantity <= 3) return `Only ${quantity} left`;
   return isProductAvailable(product) ? "In stock" : "Out of stock";
 }
 
@@ -547,6 +552,38 @@ function isExpressProduct(product) {
   const tags = (product.tags || []).join(" ").toLowerCase();
   const stock = stockQuantity(product);
   return isProductAvailable(product) && (delivery.includes("fast") || delivery.includes("same") || delivery.includes("express") || tags.includes("deals") || stock === null || stock > 2);
+}
+
+function deliveryEtaText(product, pincode = savedLocationDetails()?.pincode || "") {
+  if (!isProductAvailable(product)) return "Unavailable";
+  const eligibility = fastDeliveryEligibility(pincode);
+  if (isExpressProduct(product) && eligibility.eligible) return "Tomorrow delivery";
+  if (isExpressProduct(product)) return "Express ready";
+  return product.delivery || "6-7 days delivery";
+}
+
+function smartScore(product) {
+  const inCart = state.cart.has(product.id) ? 14 : 0;
+  const wished = state.wishlist.has(product.id) ? 10 : 0;
+  const express = isExpressProduct(product) ? 8 : 0;
+  const off = Math.min(discount(product), 40) / 5;
+  const lowStock = (() => {
+    const quantity = stockQuantity(product);
+    return quantity !== null && quantity <= 3 ? 5 : 0;
+  })();
+  return inCart + wished + express + off + lowStock + Number(product.rating || 0);
+}
+
+function smartProducts(limit = 4) {
+  const cartCategories = new Set(cartEntries().map((item) => item.category).filter(Boolean));
+  return products
+    .filter((product) => isProductAvailable(product) && !state.cart.has(product.id))
+    .sort((a, b) => {
+      const categoryBoostA = cartCategories.has(a.category) ? 12 : 0;
+      const categoryBoostB = cartCategories.has(b.category) ? 12 : 0;
+      return smartScore(b) + categoryBoostB - (smartScore(a) + categoryBoostA);
+    })
+    .slice(0, limit);
 }
 
 function filteredProducts() {
@@ -625,7 +662,7 @@ function productCard(product) {
           ${product.mrp > product.price ? `<del>${formatPrice(product.mrp)}</del>` : ""}
           ${off ? `<span>${off}% off</span>` : ""}
         </div>
-        <p class="delivery-line">${escapeHtml(product.delivery || "Delivery available")}</p>
+        <p class="delivery-line">${escapeHtml(deliveryEtaText(product))}</p>
         <div class="card-actions">
           <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? "Add to cart" : "Out of stock"}</button>
           <button class="buy-button" type="button" aria-label="Buy ${escapeHtml(product.title)}" data-buy-now="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>
@@ -658,7 +695,30 @@ function renderQuickCommerce() {
       ? eligibility.eligible ? `Express delivery available for ${pincode}` : `Standard delivery for ${pincode}`
       : "Check pincode for express delivery";
   }
+  renderSmartSection();
   renderBuyAgain();
+}
+
+function renderSmartSection() {
+  if (!nodes.smartSection || !nodes.smartGrid || !nodes.smartBanner) return;
+  const rows = smartProducts(4);
+  nodes.smartSection.hidden = rows.length === 0;
+  if (!rows.length) {
+    nodes.smartGrid.innerHTML = "";
+    nodes.smartBanner.innerHTML = "";
+    return;
+  }
+  const totals = cartTotals();
+  const pincode = savedLocationDetails()?.pincode || "";
+  const eligibility = fastDeliveryEligibility(pincode);
+  nodes.smartBanner.innerHTML = `
+    <div>
+      <strong>${totals.itemCount ? "Frequently bought together" : "Auto-picked from live stock"}</strong>
+      <span>${escapeHtml(eligibility.eligible ? "Express zone active for your address" : "Add pincode for faster ETA")}</span>
+    </div>
+    <b>${rows.filter(isExpressProduct).length} express</b>
+  `;
+  nodes.smartGrid.innerHTML = rows.map(productCard).join("");
 }
 
 function renderBuyAgain() {
@@ -783,15 +843,47 @@ function cartTotals() {
   const subtotal = entries.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const platformFee = itemCount ? 9 : 0;
   const delivery = state.deliveryMode === "fast" ? fastDeliveryFee(subtotal) : 0;
+  const autoDiscount = subtotal >= 5000 ? Math.min(500, Math.round(subtotal * 0.05)) : 0;
 
   return {
     entries,
     itemCount,
     subtotal,
+    autoDiscount,
     platformFee,
     delivery,
-    total: subtotal + platformFee + delivery
+    total: Math.max(0, subtotal + platformFee + delivery - autoDiscount)
   };
+}
+
+function smartCartProgressHtml(totals) {
+  if (!totals.itemCount) return "";
+  const target = 5000;
+  const remaining = Math.max(0, target - totals.subtotal);
+  const progress = Math.min(100, Math.round((totals.subtotal / target) * 100));
+  return `
+    <div class="smart-cart-progress">
+      <div><strong>${remaining ? `Add ${formatPrice(remaining)} for auto 5% off` : "Auto 5% off applied"}</strong><span>${totals.autoDiscount ? `Saved ${formatPrice(totals.autoDiscount)}` : "Discount applies automatically"}</span></div>
+      <i style="--progress: ${progress}%"></i>
+    </div>
+  `;
+}
+
+function cartAddOnsHtml(limit = 3) {
+  const rows = smartProducts(limit);
+  if (!rows.length) return "";
+  return `
+    <section class="cart-addons" aria-label="Smart add-ons">
+      <div class="cart-addons-head"><strong>Complete your order</strong><span>Auto suggestions</span></div>
+      ${rows.map((product) => `
+        <article>
+          <img ${imageAttrs(product)} alt="${escapeHtml(product.title)}" />
+          <div><strong>${escapeHtml(product.title)}</strong><span>${formatPrice(product.price)} · ${escapeHtml(deliveryEtaText(product))}</span></div>
+          <button type="button" data-add-cart="${escapeHtml(product.id)}">Add</button>
+        </article>
+      `).join("")}
+    </section>
+  `;
 }
 
 function fastDeliveryFee(amount) {
@@ -840,8 +932,14 @@ function renderCart() {
   nodes.cartSummary.textContent = `${itemCount} ${itemCount === 1 ? "item" : "items"}`;
   nodes.priceBox.hidden = itemCount === 0;
   nodes.checkoutForm.hidden = itemCount === 0;
-  nodes.subtotal.textContent = formatPrice(subtotal);
-  nodes.total.textContent = formatPrice(total);
+  nodes.priceBox.innerHTML = itemCount ? `
+    ${smartCartProgressHtml(totals)}
+    <div><span>Subtotal</span><strong>${formatPrice(subtotal)}</strong></div>
+    ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
+    <div><span>Delivery</span><strong>${totals.delivery ? formatPrice(totals.delivery) : "Free"}</strong></div>
+    <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
+    <div class="total"><span>Total</span><strong>${formatPrice(total)}</strong></div>
+  ` : "";
   setCheckoutActionState();
 
   nodes.cartItems.innerHTML =
@@ -867,7 +965,7 @@ function renderCart() {
               </article>
             `
           )
-          .join("");
+          .join("") + cartAddOnsHtml();
 
   if (nodes.cartPage) renderCartPage();
 }
@@ -1072,10 +1170,13 @@ function renderCartPage() {
       `).join("") : `<div class="cart-empty">Your cart is empty.<br />Add products to start checkout.</div>`}
     </div>
     <div class="page-total">
+      ${smartCartProgressHtml(totals)}
       <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
+      ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
       <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
       <div class="total"><span>Total</span><strong>${formatPrice(totals.total)}</strong></div>
     </div>
+    ${cartAddOnsHtml()}
     <button class="checkout-button" type="button" data-action="open-checkout-page" ${totals.itemCount ? "" : "disabled"}>Continue to checkout</button>
   `;
 }
@@ -1556,9 +1657,11 @@ function renderCheckoutPage() {
         <b>${state.deliveryMode === "fast" ? "Fast delivery" : "Free delivery"}</b>
       </div>
       ${deliveryOptionsHtml(totals, deliveryEligibility)}
+      ${smartCartProgressHtml(totals)}
       ${checkoutItemsPreview(totals.entries)}
       <div class="checkout-price-panel">
         <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
+        ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
         <div><span>Delivery</span><strong>${totals.delivery ? formatPrice(totals.delivery) : "Free"}</strong></div>
         <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
         <div class="total"><span>Total</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
@@ -2505,13 +2608,19 @@ function buildOrder(customer, payment) {
       subtotal: totals.subtotal,
       delivery: totals.delivery,
       platformFee: totals.platformFee,
+      autoDiscount: totals.autoDiscount,
       total: totals.total
     },
     delivery: {
       mode: state.deliveryMode,
       label: state.deliveryMode === "fast" ? "Fast delivery" : "Free delivery",
       fee: totals.delivery,
-      estimatedDays: state.deliveryMode === "fast" ? "Delivery by tomorrow" : "6-7 days"
+      estimatedDays: state.deliveryMode === "fast" ? "Delivery by tomorrow" : "6-7 days",
+      automation: state.deliveryMode === "fast" ? "express_zone_selected" : "standard_auto_selected"
+    },
+    promotions: {
+      autoDiscount: totals.autoDiscount,
+      label: totals.autoDiscount ? "Auto 5% off" : ""
     },
     payment,
     status: payment.method === "cod" ? "pending_cod" : "paid",
@@ -3038,6 +3147,17 @@ document.addEventListener("click", async (event) => {
         scrollToSelector("#buy-again-title");
       }
       break;
+    case "auto-fill-cart": {
+      const rows = smartProducts(3);
+      if (!rows.length) {
+        showToast("No smart picks available");
+        break;
+      }
+      rows.forEach((product) => addToCart(product.id));
+      renderAll();
+      showToast(`${rows.length} smart picks added`);
+      break;
+    }
     case "select-address":
       state.locationFormOpen = !hasLocationDetails(savedLocationDetails());
       renderCheckoutPage();
