@@ -46,7 +46,7 @@ const infoPages = {
       },
       {
         heading: "Payments and security",
-        body: "Online payments are processed through PayU secure checkout. We do not store card, UPI, CVV, net banking, or wallet credentials in this app."
+        body: "Online payments are processed through Razorpay secure checkout. We do not store card, UPI, CVV, net banking, or wallet credentials in this app."
       },
       {
         heading: "Sharing with service partners",
@@ -154,15 +154,15 @@ const infoPages = {
   },
   payments: {
     title: "Payment Policy",
-    subtitle: "COD, PayU, refunds, and security",
+    subtitle: "COD, Razorpay, refunds, and security",
     sections: [
       {
         heading: "Available payment modes",
-        body: "Ev Speare supports Cash on Delivery and online payment through PayU secure checkout where available. Payment options may vary by order value, pincode, stock status, and risk checks."
+        body: "Ev Speare supports Cash on Delivery and online payment through Razorpay secure checkout where available. Payment options may vary by order value, pincode, stock status, and risk checks."
       },
       {
         heading: "Online payment security",
-        body: "For online payment, you are redirected to PayU. Payment credentials are entered on the payment gateway page and are not stored by Ev Speare."
+        body: "For online payment, Razorpay secure checkout opens for payment entry. Payment credentials are not stored by Ev Speare."
       },
       {
         heading: "Payment confirmation",
@@ -196,7 +196,7 @@ const infoPages = {
       },
       {
         heading: "Checkout and payments",
-        body: "Customers can choose COD where available or pay online through PayU secure checkout. Orders are verified and pushed to the fulfilment system after checkout."
+        body: "Customers can choose COD where available or pay online through Razorpay secure checkout. Orders are verified and pushed to the fulfilment system after checkout."
       },
       {
         heading: "Tracking and service",
@@ -221,7 +221,7 @@ const promoSlides = [
   {
     kicker: "COD available",
     title: "Order with trust",
-    copy: "Pay online through PayU or choose Cash on Delivery",
+    copy: "Pay online through Razorpay or choose Cash on Delivery",
     terms: "COD availability may vary by pincode and order value.",
     image: "https://images.unsplash.com/photo-1581092921461-39b9d08a9b21?auto=format&fit=crop&w=420&q=80"
   },
@@ -1046,11 +1046,11 @@ function renderGatewayNote() {
   } else if (state.paymentMethod === "cod") {
     message = "";
   } else if (hasKey && hasPaymentServer) {
-    message = "Online payment will open PayU secure checkout.";
+    message = "Online payment will open Razorpay secure checkout.";
   } else if (appConfig.demo?.allowDemoPayment) {
     message = "Demo online payment is enabled. Configure gateway keys before going live.";
   } else {
-    message = "Online payment needs PayU key/salt on Railway.";
+    message = "Online payment needs Razorpay key ID/secret on Railway.";
   }
 
   [nodes.gatewayNote, ...document.querySelectorAll("[data-page-gateway-note]")].filter(Boolean).forEach((node) => {
@@ -1159,7 +1159,7 @@ function renderProductPage(productId) {
       <div class="detail-service">
         <span>Warehouse inventory: ${escapeHtml(stockLabel(product))}</span>
         <span>${escapeHtml(product.delivery || "Delivery available")}</span>
-        <span>Secure checkout with COD and PayU</span>
+        <span>Secure checkout with COD and Razorpay</span>
       </div>
       <div class="detail-actions">
         <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? "Add to cart" : "Out of stock"}</button>
@@ -1484,7 +1484,7 @@ function setCheckoutActionState(processing = false) {
     : !isLoggedIn()
       ? "Login to place order"
       : state.paymentMethod === "online"
-        ? "Continue to PayU"
+        ? "Continue to Razorpay"
         : "Place order";
   document.querySelectorAll("[data-action='checkout']").forEach((button) => {
     button.disabled = disabled;
@@ -1619,7 +1619,7 @@ function renderCheckoutPage() {
           method: "online",
           icon: "online",
           title: "Pay Online",
-          subtitle: "Redirects to PayU secure checkout"
+          subtitle: "Opens Razorpay secure checkout"
         })}
       </section>
 
@@ -2713,24 +2713,6 @@ function loadScript(src) {
   });
 }
 
-function submitPaymentForm(action, fields) {
-  const form = document.createElement("form");
-  form.method = "POST";
-  form.action = action;
-  form.style.display = "none";
-
-  Object.entries(fields || {}).forEach(([name, value]) => {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = name;
-    input.value = value == null ? "" : String(value);
-    form.appendChild(input);
-  });
-
-  document.body.appendChild(form);
-  form.submit();
-}
-
 async function runRazorpay(order, gatewayOrder) {
   const gateway = appConfig.paymentGateway || {};
   if (!gateway.keyId) {
@@ -2806,17 +2788,8 @@ async function runOnlinePayment(order) {
     };
   }
 
-  if (appConfig.paymentGateway?.provider === "razorpay") {
+  if (appConfig.paymentGateway?.provider === "razorpay" && gatewayOrder.gateway === "razorpay") {
     return runRazorpay(order, gatewayOrder);
-  }
-
-  if (appConfig.paymentGateway?.provider === "payu" || gatewayOrder.gateway === "payu") {
-    if (!gatewayOrder.action || !gatewayOrder.fields) {
-      throw new Error("PayU payment form is missing");
-    }
-    showToast("Redirecting to PayU...");
-    submitPaymentForm(gatewayOrder.action, gatewayOrder.fields);
-    return new Promise(() => {});
   }
 
   if (gatewayOrder.redirectUrl) {
@@ -2851,7 +2824,11 @@ async function placeOrder() {
       payment = await runOnlinePayment(draftOrder);
     }
 
-    const order = buildOrder(customer, payment);
+    const order = {
+      ...draftOrder,
+      payment,
+      status: payment.method === "cod" ? "pending_cod" : "paid"
+    };
     const response = await api.pushOrder(order);
     const pushedToWarehouse = response.warehousePushed || response.websitePushed;
     saveLocalOrder({

@@ -52,14 +52,14 @@ window.EVSPEARE_CONFIG = {
 
   /*
    * Add an API token only if your website exposes a secure server-side token.
-   * Do not put PayU salt, Twilio auth token, database passwords, or admin passwords here.
+   * Do not put Razorpay key secret, Twilio auth token, database passwords, or admin passwords here.
    */
   authHeader: "",
 
   paymentGateway: {
-    provider: "payu",
+    provider: "razorpay",
     keyId: "",
-    checkoutScript: ""
+    checkoutScript: "https://checkout.razorpay.com/v1/checkout.js"
   },
 
   demo: {

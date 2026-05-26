@@ -1,6 +1,6 @@
 # Ev Speare Mobile Commerce
 
-Mobile-first e-commerce PWA with website product sync, OTP login, COD orders, PayU online payments, and order push support.
+Mobile-first e-commerce PWA with website product sync, OTP login, COD orders, Razorpay online payments, and order push support.
 
 ## Run
 
@@ -73,17 +73,12 @@ TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_VERIFY_SERVICE_SID=VAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_VERIFY_CHANNEL=sms
 
-PAYU_ENV=test
-PAYU_KEY=your_payu_key
-PAYU_SALT=your_payu_salt
+RAZORPAY_KEY_ID=rzp_test_your_key_id
+RAZORPAY_KEY_SECRET=your_razorpay_key_secret
 DEFAULT_CUSTOMER_EMAIL=orders@yourdomain.com
 ```
 
-For live PayU, set:
-
-```env
-PAYU_ENV=production
-```
+Use Razorpay Test Mode keys during testing and replace them with Live Mode keys only after payment flow verification and live webhook/capture configuration.
 
 ## How It Works
 
@@ -92,7 +87,7 @@ PAYU_ENV=production
 - Database mode is off by default. Set `ENABLE_DATABASE=true` only if you intentionally want DB fallback.
 - `POST /api/mobile/auth/request-otp` sends OTP through Twilio Verify.
 - `POST /api/mobile/auth/verify-otp` verifies OTP through Twilio and returns a saved login token.
-- `GET /api/mobile/diagnostics` checks whether Twilio, PayU, and website env vars are set without exposing secrets.
+- `GET /api/mobile/diagnostics` checks whether Twilio, Razorpay, and website env vars are set without exposing secrets.
 - `POST /api/mobile/orders` validates live catalog inventory and pushes COD/paid orders to `WEBSITE_ORDERS_URL`.
 - If `WAREHOUSE_ORDERS_URL` is set, every placed order is also pushed to the warehouse system.
 - `GET /api/mobile/orders` returns customer orders from `WEBSITE_CUSTOMER_ORDERS_URL` or `WEBSITE_ORDERS_URL`, then merges live website tracking from `WEBSITE_TRACKING_URL` and warehouse tracking from `WAREHOUSE_TRACKING_URL`.
@@ -100,9 +95,9 @@ PAYU_ENV=production
 - `POST /api/mobile/orders/return` accepts return requests for 7 days after delivered status; set `WEBSITE_RETURN_ORDER_URL` or `WAREHOUSE_RETURN_ORDER_URL` to forward order id, AWB, items, EAN/SKU, customer, address, phone, amount, reason, and tracking details.
 - `GET /api/mobile/inventory-diagnostics` shows safe warehouse product/inventory mapping samples without exposing API tokens.
 - `GET /api/mobile/images?src=...` serves warehouse product images through the backend, including private `gs://` Google Storage images when `GOOGLE_SERVICE_ACCOUNT_JSON` is configured.
-- `POST /api/mobile/payments/create` creates a PayU hosted checkout form with server-generated SHA-512 hash.
-- `/payment/payu/success` verifies PayU response hash, confirms transaction status with PayU Verify/Check API, then pushes paid order to your website.
-- `/payment/payu/failure` returns the customer to the app after failed/cancelled payment.
+- `POST /api/mobile/payments/create` creates a Razorpay order on the server and returns its order id to Standard Checkout.
+- `POST /api/mobile/payments/verify` verifies the Razorpay checkout signature on the server and confirms that payment is captured before the order is submitted.
+- In the Razorpay Dashboard, enable automatic capture and configure webhooks before accepting live fulfilment orders.
 - Set `PUBLIC_BASE_URL=https://evspeare.shop` in Railway after adding your custom domain so generated config and payment callbacks use the live domain.
 
 ## Optional Database Mode
@@ -243,9 +238,9 @@ The app/backend pushes:
 
 ## Security Notes
 
-Never put PayU salt, Twilio auth token, database password, or admin credentials in frontend files. They belong only in Railway environment variables or your backend.
+Never put the Razorpay key secret, Twilio auth token, database password, or admin credentials in frontend files. They belong only in Railway environment variables or your backend.
 
-PayU requires server-side hash generation and response hash verification. Twilio Verify requires phone numbers in E.164 format; this app converts Indian 10 digit numbers to `+91`.
+Razorpay requires server-side order creation and payment signature verification. Twilio Verify requires phone numbers in E.164 format; this app converts Indian 10 digit numbers to `+91`.
 
 If OTP does not send, open:
 
@@ -263,12 +258,12 @@ Check that:
 
 Sources:
 
-- PayU hash and hosted checkout docs: https://docs.payu.in/docs/prebuilt-checkout-page-integration
+- Razorpay Standard Checkout docs: https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/integration-steps/
 - Twilio Verify API docs: https://www.twilio.com/docs/verify/api/verification
 
 ## Files
 
-- `server.js` - Railway Node backend, static server, Twilio OTP, PayU, website order push
+- `server.js` - Railway Node backend, static server, Twilio OTP, Razorpay, website order push
 - `index.html` - app shell, login modal, cart checkout
 - `styles.css` - mobile UI styling
 - `config.js` - local fallback config; Railway serves dynamic runtime config

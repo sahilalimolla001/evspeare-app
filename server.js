@@ -36,7 +36,7 @@ loadDotEnv();
 const port = Number(process.env.PORT || 3000);
 const fallbackPort = 3000;
 const deliveryEstimateDays = 7;
-const pendingPayuOrders = new Map();
+const pendingRazorpayOrders = new Map();
 let googleAccessTokenCache = null;
 let websiteLoginCache = null;
 let appVersionCache = null;
@@ -70,14 +70,6 @@ function send(res, status, body, headers = {}) {
     ...headers
   });
   res.end(typeof body === "string" ? body : JSON.stringify(body));
-}
-
-function sendHtml(res, html, status = 200) {
-  res.writeHead(status, {
-    "Content-Type": "text/html; charset=utf-8",
-    "Cache-Control": "no-store"
-  });
-  res.end(html);
 }
 
 function currentAppVersion() {
@@ -146,14 +138,6 @@ function getOrigin(req) {
 
   const protocol = req.socket?.encrypted ? "https" : "http";
   return `${protocol}://${host}`;
-}
-
-function publicOrigin(req) {
-  const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || process.env.APP_BASE_URL || "").replace(/\/+$/g, "");
-  const requestOrigin = getOrigin(req);
-  const forwardedHost = req.headers["x-forwarded-host"] || req.headers.host || "";
-  const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(String(forwardedHost));
-  return publicBaseUrl && !isLocalHost ? publicBaseUrl : requestOrigin;
 }
 
 function localFrontendConfig(req) {
@@ -443,9 +427,9 @@ function publicConfig(req) {
     paymentVerifyEndpoint: "/api/mobile/payments/verify",
     authHeader: "",
     paymentGateway: {
-      provider: "payu",
-      keyId: process.env.PAYU_KEY || "",
-      checkoutScript: ""
+      provider: "razorpay",
+      keyId: process.env.RAZORPAY_KEY_ID || "",
+      checkoutScript: "https://checkout.razorpay.com/v1/checkout.js"
     },
     demo: {
       enabled: false,
@@ -518,31 +502,30 @@ function writeCustomerProfiles(profiles) {
   fs.writeFileSync(customerProfilesPath(), JSON.stringify(profiles, null, 2));
 }
 
-function pendingDir() {
-  const dir = path.join(rootDir, "data", "pending-payu");
+function pendingRazorpayDir() {
+  const dir = path.join(rootDir, "data", "pending-razorpay");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function savePendingPayuOrder(txnid, order) {
-  pendingPayuOrders.set(txnid, order);
-  fs.writeFileSync(path.join(pendingDir(), `${txnid}.json`), JSON.stringify(order, null, 2));
+function savePendingRazorpayOrder(gatewayOrderId, order) {
+  pendingRazorpayOrders.set(gatewayOrderId, order);
+  fs.writeFileSync(path.join(pendingRazorpayDir(), `${gatewayOrderId}.json`), JSON.stringify(order, null, 2));
 }
 
-function loadPendingPayuOrder(txnid) {
-  if (pendingPayuOrders.has(txnid)) return pendingPayuOrders.get(txnid);
+function loadPendingRazorpayOrder(gatewayOrderId) {
+  if (pendingRazorpayOrders.has(gatewayOrderId)) return pendingRazorpayOrders.get(gatewayOrderId);
   try {
-    const filePath = path.join(pendingDir(), `${txnid}.json`);
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return JSON.parse(fs.readFileSync(path.join(pendingRazorpayDir(), `${gatewayOrderId}.json`), "utf8"));
   } catch (error) {
     return null;
   }
 }
 
-function deletePendingPayuOrder(txnid) {
-  pendingPayuOrders.delete(txnid);
+function deletePendingRazorpayOrder(gatewayOrderId) {
+  pendingRazorpayOrders.delete(gatewayOrderId);
   try {
-    fs.unlinkSync(path.join(pendingDir(), `${txnid}.json`));
+    fs.unlinkSync(path.join(pendingRazorpayDir(), `${gatewayOrderId}.json`));
   } catch (error) {
     if (error.code !== "ENOENT") console.warn(error);
   }
@@ -1132,11 +1115,10 @@ function publicDiagnostics(req) {
     ok: true,
     service: "ev-speare",
     twilio: twilioConfigStatus(),
-    payu: {
-      configured: Boolean(process.env.PAYU_KEY && process.env.PAYU_SALT),
-      keySet: Boolean(process.env.PAYU_KEY),
-      saltSet: Boolean(process.env.PAYU_SALT),
-      env: process.env.PAYU_ENV || "test"
+    razorpay: {
+      configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+      keyIdSet: Boolean(process.env.RAZORPAY_KEY_ID),
+      keySecretSet: Boolean(process.env.RAZORPAY_KEY_SECRET)
     },
     website: {
       productsUrlSet: Boolean(websiteProductsUrl),
@@ -1199,7 +1181,7 @@ function quickCommerceConfig(req) {
     },
     payments: {
       codMaxAmount: numberValue(process.env.COD_MAX_AMOUNT, codMaxOrderAmount),
-      onlineEnabled: Boolean(process.env.PAYU_KEY && process.env.PAYU_SALT),
+      onlineEnabled: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
     },
     sync: {
       products: safeUrlSummary(configuredWebsiteProductsUrl(req) || process.env.WAREHOUSE_PRODUCTS_URL),
@@ -2364,8 +2346,8 @@ function buildOrderActionRequest(type, order, user, details = {}, tracking = {})
   const gateway = String(payment.gateway || "").toLowerCase();
   const method = String(payment.method || "").toLowerCase();
   const paymentStatus = String(payment.status || order.paymentStatus || "").toLowerCase();
-  const payuPaymentId = payment.mihpayid || payment.paymentId || payment.gatewayPaymentId || "";
-  const refundEligible = type === "cancel" && gateway === "payu" && method === "online" && ["paid", "captured", "success"].includes(paymentStatus) && Boolean(payuPaymentId);
+  const gatewayPaymentId = payment.paymentId || payment.mihpayid || payment.gatewayPaymentId || "";
+  const refundEligible = type === "cancel" && gateway === "razorpay" && method === "online" && ["paid", "captured", "success"].includes(paymentStatus) && Boolean(gatewayPaymentId);
 
   return {
     requestId: `${type.toUpperCase()}-${Date.now()}`,
@@ -2388,17 +2370,18 @@ function buildOrderActionRequest(type, order, user, details = {}, tracking = {})
     refund: refundEligible
       ? {
           eligible: true,
-          gateway: "payu",
+          gateway,
           status: "approval_required",
           amount: amounts.total,
           currency: amounts.currency,
-          mihpayid: payuPaymentId,
-          txnid: payment.txnid || "",
+          gatewayPaymentId,
+          paymentId: gatewayPaymentId,
+          gatewayOrderId: payment.gatewayOrderId || "",
           reason: details.reason || "Customer requested cancellation"
         }
       : {
           eligible: false,
-          reason: type === "cancel" ? "Order is not a paid PayU order" : ""
+          reason: type === "cancel" ? "Order is not an eligible paid online order" : ""
         },
     delivery: order.delivery || null,
     tracking: {
@@ -2658,9 +2641,23 @@ async function handleOrder(req, res) {
     return send(res, 401, { message: "Login required" });
   }
 
-  const order = await readBody(req);
+  let order = await readBody(req);
   if (!Array.isArray(order.items) || !order.items.length) {
     return send(res, 400, { message: "Order items are required" });
+  }
+
+  const submittedPayment = order.payment || {};
+  if (String(submittedPayment.gateway || "").toLowerCase() === "razorpay" && submittedPayment.method === "online") {
+    const gatewayOrderId = String(submittedPayment.gatewayOrderId || "").trim();
+    const pendingOrder = loadPendingRazorpayOrder(gatewayOrderId);
+    const paymentMatches = pendingOrder &&
+      pendingOrder.orderId === order.orderId &&
+      pendingOrder.payment?.status === "paid" &&
+      pendingOrder.payment?.paymentId === submittedPayment.paymentId;
+    if (!paymentMatches) {
+      return send(res, 400, { message: "Verified Razorpay payment is required for this online order" });
+    }
+    order = pendingOrder;
   }
 
   const inventoryError = await validateOrderInventory(order, req);
@@ -2680,6 +2677,9 @@ async function handleOrder(req, res) {
     },
     verifiedCustomer: user || null
   }, req);
+  if (String(order.payment?.gateway || "").toLowerCase() === "razorpay" && order.payment?.gatewayOrderId) {
+    deletePendingRazorpayOrder(order.payment.gatewayOrderId);
+  }
   send(res, 200, response);
 }
 
@@ -2734,163 +2734,49 @@ async function handleCustomerOrders(req, res) {
   send(res, 200, { orders: enriched });
 }
 
-function payuAmount(value) {
-  return (Number(value || 0)).toFixed(2);
-}
-
-function payuHash(fields) {
-  const salt = process.env.PAYU_SALT;
-  if (!salt) throw new Error("PAYU_SALT is missing");
-  const hashString = [
-    fields.key,
-    fields.txnid,
-    fields.amount,
-    fields.productinfo,
-    fields.firstname,
-    fields.email,
-    fields.udf1 || "",
-    fields.udf2 || "",
-    fields.udf3 || "",
-    fields.udf4 || "",
-    fields.udf5 || ""
-  ].join("|") + "||||||" + salt;
-  return crypto.createHash("sha512").update(hashString).digest("hex").toLowerCase();
-}
-
-function payuField(fields, name) {
-  if (!fields || typeof fields !== "object") return "";
-  return fields[name] ?? fields[name.toLowerCase()] ?? fields[name.toUpperCase()] ?? "";
-}
-
 function secureHashEquals(expected, received) {
   const left = Buffer.from(String(expected || "").toLowerCase(), "utf8");
   const right = Buffer.from(String(received || "").toLowerCase(), "utf8");
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
-function payuReverseHash(fields) {
-  const salt = process.env.PAYU_SALT;
-  if (!salt) throw new Error("PAYU_SALT is missing");
-  const additionalCharges = payuField(fields, "additionalCharges") || payuField(fields, "additional_charges");
-  const hashParts = [
-    salt,
-    payuField(fields, "status"),
-    "",
-    "",
-    "",
-    "",
-    "",
-    payuField(fields, "udf5"),
-    payuField(fields, "udf4"),
-    payuField(fields, "udf3"),
-    payuField(fields, "udf2"),
-    payuField(fields, "udf1"),
-    payuField(fields, "email"),
-    payuField(fields, "firstname"),
-    payuField(fields, "productinfo"),
-    payuField(fields, "amount"),
-    payuField(fields, "txnid"),
-    payuField(fields, "key")
-  ];
-  const hashString = additionalCharges ? [additionalCharges, ...hashParts].join("|") : hashParts.join("|");
-  return crypto.createHash("sha512").update(hashString).digest("hex").toLowerCase();
+function razorpayAmount(value) {
+  const amount = Math.round(Number(value || 0) * 100);
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new Error("Payment amount is invalid");
+  }
+  return amount;
 }
 
-function payuUrl() {
-  if (process.env.PAYU_ENV === "production") return "https://secure.payu.in/_payment";
-  return "https://test.payu.in/_payment";
+function razorpayCredentials() {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) throw new Error("Razorpay env vars are missing");
+  return { keyId, keySecret };
 }
 
-function payuPostServiceUrl() {
-  if (process.env.PAYU_ENV === "production") return "https://secure.payu.in/merchant/postservice.php?form=2";
-  return "https://test.payu.in/merchant/postservice.php?form=2";
-}
-
-function payuCommandHash(command, var1) {
-  const key = process.env.PAYU_KEY;
-  const salt = process.env.PAYU_SALT;
-  if (!key || !salt) throw new Error("PAYU_KEY or PAYU_SALT is missing");
-  return crypto.createHash("sha512").update([key, command, var1, salt].join("|")).digest("hex").toLowerCase();
-}
-
-async function payuPostCommand(command, var1) {
-  const body = new URLSearchParams({
-    key: process.env.PAYU_KEY,
-    command,
-    var1,
-    hash: payuCommandHash(command, var1)
-  });
-  const response = await fetchWithTimeout(payuPostServiceUrl(), {
-    method: "POST",
+async function razorpayRequest(pathname, options = {}) {
+  const { keyId, keySecret } = razorpayCredentials();
+  const response = await fetchWithTimeout(`https://api.razorpay.com/v1${pathname}`, {
+    ...options,
     headers: {
-      Accept: "application/json,text/plain,*/*",
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body
+      Accept: "application/json",
+      Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`,
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {})
+    }
   });
   const text = await response.text();
   let data = {};
-
   try {
     data = text ? JSON.parse(text) : {};
   } catch (error) {
-    throw new Error(`PayU verify API returned non-JSON response: ${text.slice(0, 120)}`);
+    throw new Error(`Razorpay returned non-JSON response: ${text.slice(0, 120)}`);
   }
-
   if (!response.ok) {
-    throw new Error(data.msg || data.message || data.error || `PayU verify API failed with ${response.status}`);
-  }
-
-  return data;
-}
-
-function payuTransactionFromVerification(data, fields) {
-  const details = data?.transaction_details || data?.transactionDetails || data?.details || data?.data;
-  if (details && typeof details === "object" && !Array.isArray(details)) {
-    return details[payuField(fields, "txnid")] || details[payuField(fields, "mihpayid")] || Object.values(details)[0] || details;
+    throw new Error(data.error?.description || data.error?.reason || data.message || `Razorpay API failed with ${response.status}`);
   }
   return data;
-}
-
-function payuVerificationSucceeded(data, fields) {
-  if (!data || typeof data !== "object") return false;
-  const transaction = payuTransactionFromVerification(data, fields);
-  const status = String(transaction?.status || data.status || "").toLowerCase();
-  const unmapped = String(transaction?.unmappedstatus || transaction?.unmapped_status || "").toLowerCase();
-  const paymentId = String(transaction?.mihpayid || transaction?.payuMoneyId || payuField(fields, "mihpayid"));
-  const successStatuses = new Set(["success", "captured"]);
-  return (
-    (data.status === 1 || data.status === "1" || successStatuses.has(status) || unmapped === "captured") &&
-    (successStatuses.has(status) || unmapped === "captured" || unmapped === "auth" || Boolean(paymentId))
-  );
-}
-
-async function verifyPayuTransaction(fields) {
-  const attempts = [];
-  const txnid = payuField(fields, "txnid");
-  const mihpayid = payuField(fields, "mihpayid");
-  if (txnid) attempts.push(["verify_payment", txnid]);
-  if (mihpayid) attempts.push(["check_payment", mihpayid]);
-
-  let lastError = null;
-  for (const [command, var1] of attempts) {
-    try {
-      const data = await payuPostCommand(command, var1);
-      if (payuVerificationSucceeded(data, fields)) {
-        return {
-          verified: true,
-          command,
-          data,
-          transaction: payuTransactionFromVerification(data, fields)
-        };
-      }
-      lastError = new Error(data.msg || data.message || `PayU ${command} did not confirm payment`);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError || new Error("PayU transaction verification failed");
 }
 
 async function handlePaymentCreate(req, res) {
@@ -2900,8 +2786,8 @@ async function handlePaymentCreate(req, res) {
   }
 
   const order = await readBody(req);
-  if (!process.env.PAYU_KEY || !process.env.PAYU_SALT) {
-    return send(res, 503, { message: "PayU env vars are missing" });
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    return send(res, 503, { message: "Razorpay env vars are missing" });
   }
 
   const inventoryError = await validateOrderInventory(order, req);
@@ -2909,155 +2795,104 @@ async function handlePaymentCreate(req, res) {
     return send(res, 409, { message: inventoryError });
   }
 
-  const origin = publicOrigin(req);
-  const txnid = `EV${Date.now()}${crypto.randomBytes(3).toString("hex")}`;
-  const fields = {
-    key: process.env.PAYU_KEY,
-    txnid,
-    amount: payuAmount(order.amounts?.total),
-    productinfo: `Ev Speare Order ${order.orderId || txnid}`,
-    firstname: order.customer?.name || "Customer",
-    email: order.customer?.email || process.env.DEFAULT_CUSTOMER_EMAIL || "customer@example.com",
-    phone: phoneDigits(order.customer?.phone),
-    surl: `${origin}/payment/payu/success`,
-    furl: `${origin}/payment/payu/failure`,
-    udf1: order.orderId || "",
-    udf2: order.customer?.phone || "",
-    udf3: "mobile_pwa",
-    udf4: "",
-    udf5: ""
-  };
-  fields.hash = payuHash(fields);
+  const amount = razorpayAmount(order.amounts?.total);
+  const currency = String(order.amounts?.currency || process.env.CURRENCY || "INR").toUpperCase();
+  const orderId = String(order.orderId || `EV${Date.now()}`);
+  const gatewayOrder = await razorpayRequest("/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      amount,
+      currency,
+      receipt: orderId.slice(0, 40),
+      notes: {
+        app_order_id: orderId.slice(0, 256),
+        customer_phone: phoneDigits(order.customer?.phone)
+      }
+    })
+  });
 
-  savePendingPayuOrder(txnid, {
+  savePendingRazorpayOrder(gatewayOrder.id, {
     ...order,
-    orderId: order.orderId || txnid,
+    orderId,
     payment: {
       method: "online",
-      gateway: "payu",
+      gateway: "razorpay",
       status: "initiated",
-      txnid
+      gatewayOrderId: gatewayOrder.id
     },
     status: "payment_initiated",
     verifiedCustomer: user || null
   });
 
   send(res, 200, {
-    gateway: "payu",
-    redirect: true,
-    method: "POST",
-    action: payuUrl(),
-    fields
+    gateway: "razorpay",
+    gatewayOrderId: gatewayOrder.id,
+    amount: gatewayOrder.amount,
+    currency: gatewayOrder.currency
   });
 }
 
 async function handlePaymentVerify(req, res) {
   const body = await readBody(req);
-  const expected = payuReverseHash(body);
-  const hashVerified = Boolean(payuField(body, "hash") && secureHashEquals(expected, payuField(body, "hash")));
-  if (!hashVerified) return send(res, 400, { verified: false, hashVerified: false });
+  const gatewayOrderId = String(body.gatewayOrderId || body.razorpay_order_id || "").trim();
+  const paymentId = String(body.razorpay_payment_id || "").trim();
+  const signature = String(body.razorpay_signature || "").trim();
+  const pendingOrder = loadPendingRazorpayOrder(gatewayOrderId);
+  if (!gatewayOrderId || !paymentId || !signature || !pendingOrder) {
+    return send(res, 400, { verified: false, message: "Razorpay payment details are missing or expired" });
+  }
+  if (body.orderId && String(body.orderId) !== String(pendingOrder.orderId)) {
+    return send(res, 400, { verified: false, message: "Order does not match payment request" });
+  }
+
+  const expected = crypto
+    .createHmac("sha256", razorpayCredentials().keySecret)
+    .update(`${gatewayOrderId}|${paymentId}`)
+    .digest("hex");
+  const signatureVerified = secureHashEquals(expected, signature);
+  if (!signatureVerified) return send(res, 400, { verified: false, signatureVerified: false });
 
   try {
-    const payuVerification = await verifyPayuTransaction(body);
+    const payment = await razorpayRequest(`/payments/${encodeURIComponent(paymentId)}`);
+    const amountMatches = Number(payment.amount) === razorpayAmount(pendingOrder.amounts?.total);
+    const orderMatches = String(payment.order_id || "") === gatewayOrderId;
+    const captured = String(payment.status || "").toLowerCase() === "captured";
+    if (!amountMatches || !orderMatches || !captured) {
+      return send(res, 400, {
+        verified: false,
+        signatureVerified: true,
+        gatewayVerified: false,
+        message: captured ? "Payment details do not match this order" : "Payment has not been captured"
+      });
+    }
+    savePendingRazorpayOrder(gatewayOrderId, {
+      ...pendingOrder,
+      payment: {
+        method: "online",
+        gateway: "razorpay",
+        status: "paid",
+        gatewayOrderId,
+        paymentId,
+        signature,
+        captured: true,
+        verified: true
+      },
+      status: "paid"
+    });
     return send(res, 200, {
       verified: true,
-      hashVerified: true,
+      signatureVerified: true,
       gatewayVerified: true,
-      command: payuVerification.command
+      paymentStatus: payment.status
     });
   } catch (error) {
     return send(res, 400, {
       verified: false,
-      hashVerified: true,
+      signatureVerified: true,
       gatewayVerified: false,
       message: error.message
     });
   }
-}
-
-async function handlePayuCallback(req, res, success) {
-  const fields = await readBody(req);
-  const expected = payuReverseHash(fields);
-  const verified = Boolean(payuField(fields, "hash") && secureHashEquals(expected, payuField(fields, "hash")));
-  const txnid = payuField(fields, "txnid");
-  const pendingOrder = loadPendingPayuOrder(txnid);
-  const status = String(payuField(fields, "status")).toLowerCase();
-  const amountMatches = !pendingOrder?.amounts?.total || payuAmount(pendingOrder.amounts.total) === payuAmount(payuField(fields, "amount"));
-  const keyMatches = !process.env.PAYU_KEY || payuField(fields, "key") === process.env.PAYU_KEY;
-
-  if (!verified || !success || status !== "success" || !pendingOrder || !amountMatches || !keyMatches) {
-    return sendHtml(
-      res,
-      paymentResultHtml("Payment failed", "Your payment could not be verified.", "/?payment=failure"),
-      400
-    );
-  }
-
-  let payuVerification;
-  try {
-    payuVerification = await verifyPayuTransaction(fields);
-  } catch (error) {
-    console.error("PayU verify API failed", error.message);
-    return sendHtml(
-      res,
-      paymentResultHtml("Payment failed", "PayU could not confirm this transaction.", "/?payment=failure"),
-      400
-    );
-  }
-
-  const order = {
-    ...pendingOrder,
-    payment: {
-      method: "online",
-      gateway: "payu",
-      status: "paid",
-      txnid,
-      mihpayid: payuField(fields, "mihpayid") || payuVerification.transaction?.mihpayid,
-      mode: payuField(fields, "mode") || payuVerification.transaction?.mode,
-      verifyCommand: payuVerification.command,
-      verified: true
-    },
-    status: "paid"
-  };
-
-  try {
-    await persistAndPushOrder(order, req);
-    deletePendingPayuOrder(txnid);
-    return sendHtml(
-      res,
-      paymentResultHtml("Payment successful", "Your order has been placed.", `/?payment=success&orderId=${encodeURIComponent(order.orderId)}`)
-    );
-  } catch (error) {
-    return sendHtml(
-      res,
-      paymentResultHtml("Payment captured", "Payment succeeded, but order push failed. Check Railway logs.", "/?payment=order-push-failed"),
-      500
-    );
-  }
-}
-
-function paymentResultHtml(title, message, redirectPath) {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${title}</title>
-    <meta http-equiv="refresh" content="3;url=${redirectPath}" />
-    <style>
-      body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui;background:#f2f5f9;color:#172033}
-      main{width:min(92vw,420px);background:white;border-radius:14px;padding:24px;box-shadow:0 10px 30px rgba(20,32,55,.14)}
-      h1{margin:0 0 8px;font-size:1.4rem}p{margin:0 0 18px;color:#627086}a{color:#2874f0;font-weight:800}
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>${title}</h1>
-      <p>${message}</p>
-      <a href="${redirectPath}">Back to app</a>
-    </main>
-  </body>
-</html>`;
 }
 
 function serveStatic(req, res) {
@@ -3152,9 +2987,6 @@ async function router(req, res) {
     if (req.method === "POST" && url.pathname === "/api/mobile/orders/return") return handleOrderReturn(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/payments/create") return handlePaymentCreate(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/payments/verify") return handlePaymentVerify(req, res);
-    if (req.method === "POST" && url.pathname === "/payment/payu/success") return handlePayuCallback(req, res, true);
-    if (req.method === "POST" && url.pathname === "/payment/payu/failure") return handlePayuCallback(req, res, false);
-
     if (req.method === "GET") return serveStatic(req, res);
     send(res, 405, { message: "Method not allowed" });
   } catch (error) {
