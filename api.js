@@ -316,6 +316,16 @@
     });
   }
 
+  async function verifyFirebaseLogin(idToken, name = "") {
+    if (!hasEndpoint(config.firebaseVerifyEndpoint)) {
+      throw new Error("Firebase authentication endpoint is not configured");
+    }
+    return request(config.firebaseVerifyEndpoint, {
+      method: "POST",
+      body: { idToken, name }
+    });
+  }
+
   async function fetchProfile() {
     if (!hasEndpoint(config.profileEndpoint)) return { profile: null };
     return request(config.profileEndpoint);
@@ -424,6 +434,7 @@
     fetchCatalog,
     requestOtp,
     verifyOtp,
+    verifyFirebaseLogin,
     fetchProfile,
     saveProfile,
     createPaymentOrder,

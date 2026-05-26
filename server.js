@@ -40,6 +40,7 @@ const pendingRazorpayOrders = new Map();
 let googleAccessTokenCache = null;
 let websiteLoginCache = null;
 let appVersionCache = null;
+let firebaseAdminAuthClient = null;
 
 function envFlag(name) {
   return ["1", "true", "yes", "on"].includes(String(process.env[name] || "").toLowerCase());
@@ -422,10 +423,12 @@ function publicConfig(req) {
     supportEndpoint: "/api/mobile/support",
     otpRequestEndpoint: "/api/mobile/auth/request-otp",
     otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
+    firebaseVerifyEndpoint: "/api/mobile/auth/firebase",
     profileEndpoint: "/api/mobile/profile",
     paymentCreateEndpoint: "/api/mobile/payments/create",
     paymentVerifyEndpoint: "/api/mobile/payments/verify",
     authHeader: "",
+    firebaseAuth: publicFirebaseAuthConfig(),
     paymentGateway: {
       provider: "razorpay",
       keyId: process.env.RAZORPAY_KEY_ID || "",
@@ -556,6 +559,72 @@ function twilioConfigStatus() {
     serviceSidLooksValid: serviceSid.startsWith("VA"),
     channel
   };
+}
+
+function firebaseServiceAccountJson() {
+  const raw = String(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
+  if (!raw) return null;
+  try {
+    const json = raw.startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf8");
+    const credentials = JSON.parse(json);
+    if (credentials.private_key) credentials.private_key = String(credentials.private_key).replace(/\\n/g, "\n");
+    return credentials;
+  } catch (error) {
+    console.error("Invalid FIREBASE_SERVICE_ACCOUNT_JSON", error.message);
+    return null;
+  }
+}
+
+function firebaseAuthServerConfigured() {
+  return Boolean(process.env.FIREBASE_PROJECT_ID && firebaseServiceAccountJson());
+}
+
+function publicFirebaseAuthConfig() {
+  const clientConfigured = Boolean(
+    process.env.FIREBASE_API_KEY &&
+    process.env.FIREBASE_AUTH_DOMAIN &&
+    process.env.FIREBASE_PROJECT_ID &&
+    process.env.FIREBASE_APP_ID
+  );
+  const enabled = envFlag("FIREBASE_AUTH_ENABLED") && clientConfigured && firebaseAuthServerConfigured();
+  return {
+    provider: enabled ? "firebase" : "twilio",
+    enabled,
+    apiKey: enabled ? process.env.FIREBASE_API_KEY : "",
+    authDomain: enabled ? process.env.FIREBASE_AUTH_DOMAIN : "",
+    projectId: enabled ? process.env.FIREBASE_PROJECT_ID : "",
+    appId: enabled ? process.env.FIREBASE_APP_ID : "",
+    messagingSenderId: enabled ? process.env.FIREBASE_MESSAGING_SENDER_ID || "" : "",
+    sdkAppScript: "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js",
+    sdkAuthScript: "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"
+  };
+}
+
+function firebaseAuthStatus() {
+  const publicConfig = publicFirebaseAuthConfig();
+  return {
+    enabled: publicConfig.enabled,
+    requested: envFlag("FIREBASE_AUTH_ENABLED"),
+    clientConfigSet: Boolean(process.env.FIREBASE_API_KEY && process.env.FIREBASE_AUTH_DOMAIN && process.env.FIREBASE_APP_ID),
+    projectIdSet: Boolean(process.env.FIREBASE_PROJECT_ID),
+    serviceAccountSet: Boolean(firebaseServiceAccountJson())
+  };
+}
+
+function getFirebaseAdminAuth() {
+  if (firebaseAdminAuthClient) return firebaseAdminAuthClient;
+  const credentials = firebaseServiceAccountJson();
+  if (!process.env.FIREBASE_PROJECT_ID || !credentials) {
+    throw new Error("Firebase Admin credentials are missing");
+  }
+  const { cert, initializeApp } = require("firebase-admin/app");
+  const { getAuth } = require("firebase-admin/auth");
+  const firebaseAdminApp = initializeApp({
+    credential: cert(credentials),
+    projectId: process.env.FIREBASE_PROJECT_ID
+  }, "evspeare-customer-auth");
+  firebaseAdminAuthClient = getAuth(firebaseAdminApp);
+  return firebaseAdminAuthClient;
 }
 
 function safeUrlSummary(value) {
@@ -1115,6 +1184,7 @@ function publicDiagnostics(req) {
     ok: true,
     service: "ev-speare",
     twilio: twilioConfigStatus(),
+    firebaseAuth: firebaseAuthStatus(),
     razorpay: {
       configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
       keyIdSet: Boolean(process.env.RAZORPAY_KEY_ID),
@@ -1276,6 +1346,33 @@ async function handleVerifyOtp(req, res) {
     user,
     profile
   });
+}
+
+async function handleFirebaseLogin(req, res) {
+  if (!publicFirebaseAuthConfig().enabled) {
+    return send(res, 503, { message: "Firebase Authentication is not configured" });
+  }
+  const body = await readBody(req);
+  const idToken = String(body.idToken || "").trim();
+  if (!idToken) return send(res, 400, { message: "Firebase ID token is required" });
+
+  try {
+    const decodedToken = await getFirebaseAdminAuth().verifyIdToken(idToken);
+    const phone = phoneDigits(decodedToken.phone_number);
+    if (phone.length !== 10) return send(res, 400, { message: "Verified Firebase account has no valid phone number" });
+    const name = String(body.name || "").trim() || "Customer";
+    const profiles = readCustomerProfiles();
+    const profile = profiles[phone] || {};
+    const user = { id: decodedToken.uid || phone, phone, name: profile.name || name };
+    return send(res, 200, {
+      token: signToken(user),
+      user,
+      profile
+    });
+  } catch (error) {
+    console.error("Firebase ID token verification failed", error.message);
+    return send(res, 401, { message: "Firebase login verification failed" });
+  }
 }
 
 async function handleCustomerProfile(req, res) {
@@ -2977,6 +3074,7 @@ async function router(req, res) {
 
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/verify-otp") return handleVerifyOtp(req, res);
+    if (req.method === "POST" && url.pathname === "/api/mobile/auth/firebase") return handleFirebaseLogin(req, res);
     if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/mobile/profile") return handleCustomerProfile(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/support") return handleSupportQuery(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/products") return handleProducts(req, res);

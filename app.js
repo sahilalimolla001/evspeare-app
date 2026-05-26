@@ -23,6 +23,9 @@ const currency = new Intl.NumberFormat("en-IN");
 const deliveryEstimateDays = 7;
 const returnWindowDays = 7;
 const codMaxOrderAmount = 1000;
+let firebaseAuthInstance = null;
+let firebaseConfirmationResult = null;
+let firebaseRecaptchaVerifier = null;
 
 const customerTrackingStages = [
   { key: "placed", label: "Order Placed", offsetDays: 0, icon: "bag" },
@@ -2361,7 +2364,11 @@ async function requestOtp() {
 
   state.pendingPhone = phone;
   try {
-    await api.requestOtp(phone);
+    if (firebasePhoneAuthEnabled()) {
+      await requestFirebaseOtp(phone);
+    } else {
+      await api.requestOtp(phone);
+    }
     nodes.otpPanel.hidden = false;
     nodes.loginPhone.disabled = true;
     nodes.requestOtpButton.hidden = true;
@@ -2383,7 +2390,9 @@ async function verifyOtp() {
   }
 
   try {
-    const response = await api.verifyOtp(phone, otp, name);
+    const response = firebasePhoneAuthEnabled()
+      ? await verifyFirebaseOtp(otp, name)
+      : await api.verifyOtp(phone, otp, name);
     state.session = {
       token: response.token || response.access_token || `session-${Date.now()}`,
       user: {
@@ -2403,6 +2412,56 @@ async function verifyOtp() {
   } catch (error) {
     showToast(error.message || "OTP verification failed");
   }
+}
+
+function firebasePhoneAuthEnabled() {
+  const settings = appConfig.firebaseAuth || {};
+  return settings.enabled === true && settings.provider === "firebase" && Boolean(settings.apiKey && settings.projectId && settings.appId);
+}
+
+async function firebaseAuthClient() {
+  if (firebaseAuthInstance) return firebaseAuthInstance;
+  const settings = appConfig.firebaseAuth || {};
+  await loadScript(settings.sdkAppScript || "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
+  await loadScript(settings.sdkAuthScript || "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js");
+  if (!window.firebase?.auth) throw new Error("Firebase Authentication is unavailable");
+  const firebaseApp = window.firebase.apps.length
+    ? window.firebase.app()
+    : window.firebase.initializeApp({
+        apiKey: settings.apiKey,
+        authDomain: settings.authDomain,
+        projectId: settings.projectId,
+        appId: settings.appId,
+        messagingSenderId: settings.messagingSenderId
+      });
+  firebaseAuthInstance = firebaseApp.auth();
+  return firebaseAuthInstance;
+}
+
+function clearFirebaseVerifier() {
+  if (firebaseRecaptchaVerifier) firebaseRecaptchaVerifier.clear();
+  firebaseRecaptchaVerifier = null;
+}
+
+async function requestFirebaseOtp(phone) {
+  const auth = await firebaseAuthClient();
+  clearFirebaseVerifier();
+  firebaseRecaptchaVerifier = new window.firebase.auth.RecaptchaVerifier("firebase-recaptcha-container", {
+    size: "invisible"
+  });
+  try {
+    firebaseConfirmationResult = await auth.signInWithPhoneNumber(`+91${phone}`, firebaseRecaptchaVerifier);
+  } catch (error) {
+    clearFirebaseVerifier();
+    throw error;
+  }
+}
+
+async function verifyFirebaseOtp(otp, name) {
+  if (!firebaseConfirmationResult) throw new Error("Send OTP again before verification");
+  const credential = await firebaseConfirmationResult.confirm(otp);
+  const idToken = await credential.user.getIdToken(true);
+  return api.verifyFirebaseLogin(idToken, name);
 }
 
 async function saveProfileName(event) {
@@ -2493,6 +2552,10 @@ async function submitSupportQuery(event) {
 function logout() {
   state.session = null;
   state.profileEditOpen = false;
+  state.pendingPhone = "";
+  firebaseConfirmationResult = null;
+  clearFirebaseVerifier();
+  if (firebaseAuthInstance) firebaseAuthInstance.signOut().catch(() => undefined);
   localStorage.removeItem(storageKeys.session);
   if (nodes.loginName) nodes.loginName.value = "";
   nodes.loginOtp.value = "";

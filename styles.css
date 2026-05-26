@@ -2879,6 +2879,10 @@ svg {
   gap: 10px;
 }
 
+.firebase-recaptcha {
+  min-height: 0;
+}
+
 .primary-button,
 .secondary-button {
   min-height: 42px;

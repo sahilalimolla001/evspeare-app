@@ -68,6 +68,15 @@ DB_ORDERS_TABLE=evspeare_orders
 DB_ORDER_ITEMS_TABLE=evspeare_order_items
 DB_AUTO_CREATE_TABLES=true
 
+FIREBASE_AUTH_ENABLED=true
+FIREBASE_API_KEY=your_firebase_web_api_key
+FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_APP_ID=your_firebase_web_app_id
+FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
+
+# Optional fallback while Firebase Authentication is not enabled.
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_VERIFY_SERVICE_SID=VAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -85,9 +94,10 @@ Use Razorpay Test Mode keys during testing and replace them with Live Mode keys 
 - `GET /api/mobile/products` imports products directly from `WEBSITE_PRODUCTS_URL` first. If warehouse endpoints are set, it can also use `WAREHOUSE_PRODUCTS_URL` and merge stock from `WAREHOUSE_INVENTORY_URL`.
 - Product inventory is auto-detected from columns like `stock_quantity`, `inventory`, `available_stock`, `qty`, or `stock`. Quantity `0` is shown as out of stock and cannot be ordered.
 - Database mode is off by default. Set `ENABLE_DATABASE=true` only if you intentionally want DB fallback.
-- `POST /api/mobile/auth/request-otp` sends OTP through Twilio Verify.
-- `POST /api/mobile/auth/verify-otp` verifies OTP through Twilio and returns a saved login token.
-- `GET /api/mobile/diagnostics` checks whether Twilio, Razorpay, and website env vars are set without exposing secrets.
+- With `FIREBASE_AUTH_ENABLED=true`, Firebase Phone Authentication sends and verifies customer OTP in the browser using invisible reCAPTCHA.
+- `POST /api/mobile/auth/firebase` verifies the Firebase ID token through Firebase Admin and returns the app session token used by protected APIs.
+- `POST /api/mobile/auth/request-otp` and `/verify-otp` remain available as the fallback until Firebase is fully configured.
+- `GET /api/mobile/diagnostics` checks whether Firebase Auth, fallback Twilio, Razorpay, and website env vars are set without exposing secrets.
 - `POST /api/mobile/orders` validates live catalog inventory and pushes COD/paid orders to `WEBSITE_ORDERS_URL`.
 - If `WAREHOUSE_ORDERS_URL` is set, every placed order is also pushed to the warehouse system.
 - `GET /api/mobile/orders` returns customer orders from `WEBSITE_CUSTOMER_ORDERS_URL` or `WEBSITE_ORDERS_URL`, then merges live website tracking from `WEBSITE_TRACKING_URL` and warehouse tracking from `WAREHOUSE_TRACKING_URL`.
@@ -238,9 +248,9 @@ The app/backend pushes:
 
 ## Security Notes
 
-Never put the Razorpay key secret, Twilio auth token, database password, or admin credentials in frontend files. They belong only in Railway environment variables or your backend.
+Never put the Razorpay key secret, Firebase service-account JSON, Twilio auth token, database password, or admin credentials in frontend files. They belong only in Railway environment variables or your backend. Firebase web configuration values are intentionally public and are served only after Firebase login is fully enabled on the server.
 
-Razorpay requires server-side order creation and payment signature verification. Twilio Verify requires phone numbers in E.164 format; this app converts Indian 10 digit numbers to `+91`.
+Razorpay requires server-side order creation and payment signature verification. Firebase Phone Authentication requires Phone sign-in to be enabled in Firebase Console and the deployed customer domain to be added as an authorized domain.
 
 If OTP does not send, open:
 
@@ -248,22 +258,24 @@ If OTP does not send, open:
 https://your-railway-domain/api/mobile/diagnostics
 ```
 
-Check that:
+For Firebase login, check that:
 
-- `twilio.configured` is `true`
+- `firebaseAuth.enabled` is `true`
+- `firebaseAuth.clientConfigSet` is `true`
+- `firebaseAuth.projectIdSet` is `true`
+- `firebaseAuth.serviceAccountSet` is `true`
 - `database.configured` is `true` if database mode is being used
-- `twilio.accountSidLooksValid` is `true`
-- `twilio.serviceSidLooksValid` is `true`
-- trial Twilio accounts have the recipient phone number verified in Twilio Console
 
 Sources:
 
 - Razorpay Standard Checkout docs: https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/integration-steps/
+- Firebase Phone Auth for Web: https://firebase.google.com/docs/auth/web/phone-auth
+- Firebase Admin ID token verification: https://firebase.google.com/docs/auth/admin/verify-id-tokens
 - Twilio Verify API docs: https://www.twilio.com/docs/verify/api/verification
 
 ## Files
 
-- `server.js` - Railway Node backend, static server, Twilio OTP, Razorpay, website order push
+- `server.js` - Railway Node backend, static server, Firebase/Twilio OTP authentication, Razorpay, website order push
 - `index.html` - app shell, login modal, cart checkout
 - `styles.css` - mobile UI styling
 - `config.js` - local fallback config; Railway serves dynamic runtime config
