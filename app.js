@@ -351,7 +351,7 @@ function saveJson(key, value) {
 function mountCommerceDrawerPage() {
   const target = document.querySelector("[data-drawer-commerce-page]");
   if (!target || target.dataset.mounted === "true") return;
-  document.querySelectorAll(".home-commerce-panel").forEach((section) => {
+  document.querySelectorAll(".home-commerce-panel.quick-actions, .home-commerce-panel.ops-strip").forEach((section) => {
     section.classList.remove("home-commerce-panel");
     if (section.matches(".quick-actions, .ops-strip")) section.hidden = false;
     target.appendChild(section);
