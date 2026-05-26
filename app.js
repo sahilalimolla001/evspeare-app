@@ -328,10 +328,7 @@ const nodes = {
   expressCount: document.querySelector("[data-express-count]"),
   buyAgainCount: document.querySelector("[data-buy-again-count]"),
   buyAgainSection: document.querySelector("[data-buy-again-section]"),
-  buyAgainGrid: document.querySelector("[data-buy-again-grid]"),
-  smartSection: document.querySelector("[data-smart-section]"),
-  smartGrid: document.querySelector("[data-smart-grid]"),
-  smartBanner: document.querySelector("[data-smart-banner]")
+  buyAgainGrid: document.querySelector("[data-buy-again-grid]")
 };
 
 function loadJson(key, fallback) {
@@ -719,30 +716,7 @@ function renderQuickCommerce() {
       ? eligibility.eligible ? `Express delivery available for ${pincode}` : `Standard delivery for ${pincode}`
       : "Check pincode for express delivery";
   }
-  renderSmartSection();
   renderBuyAgain();
-}
-
-function renderSmartSection() {
-  if (!nodes.smartSection || !nodes.smartGrid || !nodes.smartBanner) return;
-  const rows = smartProducts(4);
-  nodes.smartSection.hidden = rows.length === 0;
-  if (!rows.length) {
-    nodes.smartGrid.innerHTML = "";
-    nodes.smartBanner.innerHTML = "";
-    return;
-  }
-  const totals = cartTotals();
-  const pincode = savedLocationDetails()?.pincode || "";
-  const eligibility = fastDeliveryEligibility(pincode);
-  nodes.smartBanner.innerHTML = `
-    <div>
-      <strong>${totals.itemCount ? "Frequently bought together" : "Auto-picked from live stock"}</strong>
-      <span>${escapeHtml(eligibility.eligible ? "Express zone active for your address" : "Add pincode for faster ETA")}</span>
-    </div>
-    <b>${rows.filter(isExpressProduct).length} express</b>
-  `;
-  nodes.smartGrid.innerHTML = rows.map(productCard).join("");
 }
 
 function renderBuyAgain() {
@@ -3188,17 +3162,6 @@ document.addEventListener("click", async (event) => {
         scrollToSelector("#buy-again-title");
       }
       break;
-    case "auto-fill-cart": {
-      const rows = smartProducts(3);
-      if (!rows.length) {
-        showToast("No smart picks available");
-        break;
-      }
-      rows.forEach((product) => addToCart(product.id));
-      renderAll();
-      showToast(`${rows.length} smart picks added`);
-      break;
-    }
     case "select-address":
       state.locationFormOpen = !hasLocationDetails(savedLocationDetails());
       renderCheckoutPage();
