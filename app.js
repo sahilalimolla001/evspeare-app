@@ -2448,11 +2448,12 @@ function clearFirebaseVerifier() {
 async function requestFirebaseOtp(phone) {
   const auth = await firebaseAuthClient();
   clearFirebaseVerifier();
-  firebaseRecaptchaVerifier = new window.firebase.auth.RecaptchaVerifier("firebase-recaptcha-container", {
+  firebaseRecaptchaVerifier = new window.firebase.auth.RecaptchaVerifier("firebase-send-otp-button", {
     size: "invisible"
   });
   try {
     firebaseConfirmationResult = await auth.signInWithPhoneNumber(`+91${phone}`, firebaseRecaptchaVerifier);
+    clearFirebaseVerifier();
   } catch (error) {
     clearFirebaseVerifier();
     throw error;
