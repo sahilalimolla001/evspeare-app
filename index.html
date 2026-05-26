@@ -87,7 +87,7 @@
 
         </section>
 
-        <section class="quick-actions" aria-label="Fast actions">
+        <section class="quick-actions home-commerce-panel" aria-label="Fast actions" hidden>
           <button type="button" data-filter-chip="Deals">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M20 12v8H4v-8M22 7H2v5h20V7ZM12 20V7M12 7H7.5A2.5 2.5 0 1 1 10 4.5C10 7 12 7 12 7Zm0 0h4.5A2.5 2.5 0 1 0 14 4.5C14 7 12 7 12 7Z" />
@@ -129,13 +129,13 @@
           </button>
         </section>
 
-        <section class="ops-strip" aria-label="Live fulfilment">
+        <section class="ops-strip home-commerce-panel" aria-label="Live fulfilment" hidden>
           <article><span>Warehouse stock</span><strong data-live-stock-count>--</strong></article>
           <article><span>Express items</span><strong data-express-count>--</strong></article>
           <article><span>Saved orders</span><strong data-buy-again-count>0</strong></article>
         </section>
 
-        <section class="section-block smart-section" aria-labelledby="smart-title" data-smart-section hidden>
+        <section class="section-block smart-section home-commerce-panel" aria-labelledby="smart-title" data-smart-section hidden>
           <div class="section-heading">
             <h2 id="smart-title">Smart picks</h2>
             <button type="button" data-action="auto-fill-cart">Auto add</button>
@@ -144,7 +144,7 @@
           <div class="product-grid compact-products" data-smart-grid></div>
         </section>
 
-        <section class="section-block" aria-labelledby="buy-again-title" data-buy-again-section hidden>
+        <section class="section-block home-commerce-panel" aria-labelledby="buy-again-title" data-buy-again-section hidden>
           <div class="section-heading">
             <h2 id="buy-again-title">Buy again</h2>
             <button type="button" data-action="open-orders">Orders</button>
@@ -229,6 +229,9 @@
         <button type="button" data-action="open-account">Login and profile</button>
         <button type="button" data-action="open-cart">Cart and checkout</button>
         <button type="button" data-action="open-orders">Orders and tracking</button>
+        <section class="drawer-commerce-page" aria-label="Quick commerce tools" data-drawer-commerce-page>
+          <span>Quick commerce</span>
+        </section>
         <section class="drawer-about-section" aria-label="About and policies">
           <span>About</span>
           <button type="button" data-info-page="privacy">Privacy policy</button>

@@ -990,6 +990,39 @@ svg {
   gap: 8px;
 }
 
+.drawer-commerce-page {
+  margin-top: 8px;
+  border-top: 1px solid #edf0f5;
+  padding-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.drawer-commerce-page > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.drawer-commerce-page .quick-actions {
+  margin-top: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.drawer-commerce-page .ops-strip {
+  grid-template-columns: 1fr;
+  margin: 0;
+}
+
+.drawer-commerce-page .section-block {
+  margin-top: 4px;
+}
+
+.drawer-commerce-page .product-grid {
+  grid-template-columns: 1fr;
+}
+
 .drawer-about-section > span {
   color: var(--muted);
   font-size: 0.72rem;

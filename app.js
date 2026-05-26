@@ -341,6 +341,17 @@ function saveJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function mountCommerceDrawerPage() {
+  const target = document.querySelector("[data-drawer-commerce-page]");
+  if (!target || target.dataset.mounted === "true") return;
+  document.querySelectorAll(".home-commerce-panel").forEach((section) => {
+    section.classList.remove("home-commerce-panel");
+    if (section.matches(".quick-actions, .ops-strip")) section.hidden = false;
+    target.appendChild(section);
+  });
+  target.dataset.mounted = "true";
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -3295,6 +3306,7 @@ if (state.session?.user?.phone) {
   nodes.checkoutName.value = state.session.user.name || "";
 }
 
+mountCommerceDrawerPage();
 renderAll();
 registerAppUpdateWorker();
 syncProducts({ silent: true });
