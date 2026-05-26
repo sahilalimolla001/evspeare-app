@@ -2470,15 +2470,23 @@ async function firebaseAuthClient() {
 }
 
 function clearFirebaseVerifier() {
-  if (firebaseRecaptchaVerifier) firebaseRecaptchaVerifier.clear();
+  if (firebaseRecaptchaVerifier) {
+    try {
+      firebaseRecaptchaVerifier.clear();
+    } catch (error) {
+      console.warn("Unable to clear Firebase verifier", error);
+    }
+  }
   firebaseRecaptchaVerifier = null;
+  const verifierContainer = document.getElementById("firebase-recaptcha-container");
+  if (verifierContainer) verifierContainer.replaceChildren();
 }
 
 async function requestFirebaseOtp(phone) {
   const auth = await firebaseAuthClient();
   firebaseConfirmationResult = null;
   clearFirebaseVerifier();
-  firebaseRecaptchaVerifier = new window.firebase.auth.RecaptchaVerifier("firebase-send-otp-button", {
+  firebaseRecaptchaVerifier = new window.firebase.auth.RecaptchaVerifier("firebase-recaptcha-container", {
     size: "invisible"
   });
   try {
