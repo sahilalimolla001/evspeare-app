@@ -289,6 +289,7 @@ const nodes = {
   authProfile: document.querySelector("[data-auth-profile]"),
   authTitle: document.querySelector("[data-auth-title]"),
   authSubtitle: document.querySelector("[data-auth-subtitle]"),
+  googleLoginButton: document.querySelector("[data-action='google-login']"),
   loginName: document.querySelector("[data-login-name]"),
   loginPhone: document.querySelector("[data-login-phone]"),
   newCustomerForm: document.querySelector("[data-new-customer-form]"),
@@ -1077,12 +1078,13 @@ function renderSession() {
   if (nodes.profileEditName) nodes.profileEditName.value = loggedIn ? name : "";
   if (nodes.profileEditPhone) nodes.profileEditPhone.value = loggedIn ? phone : "";
   const profile = state.session?.profile || {};
-  if (nodes.profileEditPincode) nodes.profileEditPincode.value = profile.pincode || savedLocationDetails().pincode || "";
+  const savedLocation = savedLocationDetails() || {};
+  if (nodes.profileEditPincode) nodes.profileEditPincode.value = profile.pincode || savedLocation.pincode || "";
   if (nodes.profileEditArea) nodes.profileEditArea.value = profile.area || "";
-  if (nodes.profileEditCity) nodes.profileEditCity.value = profile.city || savedLocationDetails().city || "";
-  if (nodes.profileEditState) nodes.profileEditState.value = profile.state || savedLocationDetails().state || "";
+  if (nodes.profileEditCity) nodes.profileEditCity.value = profile.city || savedLocation.city || "";
+  if (nodes.profileEditState) nodes.profileEditState.value = profile.state || savedLocation.state || "";
   if (nodes.profileEditRegion) nodes.profileEditRegion.value = profile.region || "";
-  if (nodes.profileEditAddress1) nodes.profileEditAddress1.value = profile.address1 || savedLocationDetails().address1 || "";
+  if (nodes.profileEditAddress1) nodes.profileEditAddress1.value = profile.address1 || savedLocation.address1 || "";
   if (nodes.profileEditForm) nodes.profileEditForm.hidden = !loggedIn || !state.profileEditOpen;
   if (nodes.profileEditToggle) nodes.profileEditToggle.setAttribute("aria-expanded", state.profileEditOpen ? "true" : "false");
   nodes.profileSavedCount.textContent = state.wishlist.size;
@@ -2272,7 +2274,7 @@ function openAccount() {
   nodes.authModal.setAttribute("aria-hidden", "false");
   setTimeout(() => {
     if (isLoggedIn()) return;
-    nodes.loginPhone.focus();
+    (pendingGoogleLogin ? nodes.loginPhone : nodes.googleLoginButton)?.focus();
   }, 80);
 }
 
@@ -2440,27 +2442,18 @@ async function syncProducts({ silent = false } = {}) {
 }
 
 async function googleLogin() {
-  const phone = phoneDigits(nodes.loginPhone.value);
-  if (phone.length !== 10) {
-    showToast("Enter valid 10 digit mobile number");
-    return;
-  }
-  const name = customerNameFallback(nodes.loginName?.value);
   try {
     const auth = await firebaseAuthClient();
     const provider = new window.firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
     const result = await auth.signInWithPopup(provider);
     const idToken = await result.user.getIdToken(true);
-    const response = await api.verifyFirebaseLogin(idToken, name, phone);
-    if (response.requiresAddress) {
-      pendingGoogleLogin = { idToken, name, phone };
-      nodes.newCustomerForm.hidden = false;
-      nodes.loginAddress1.focus();
-      showToast("New customer: delivery address add karein", 5000);
-      return;
-    }
-    await completeGoogleSession(response, phone, name);
+    const name = customerNameFallback(result.user?.displayName || nodes.loginName?.value);
+    pendingGoogleLogin = { idToken, name };
+    if (nodes.loginName && !nodes.loginName.value) nodes.loginName.value = name;
+    nodes.newCustomerForm.hidden = false;
+    nodes.loginPhone.focus();
+    showToast("Google verified. Ab mobile number add karein", 5000);
   } catch (error) {
     showToast(googleLoginErrorMessage(error), 7000);
   }
@@ -2495,24 +2488,32 @@ async function completeNewCustomerLogin(event) {
     showToast("Continue with Google first");
     return;
   }
+  const phone = phoneDigits(nodes.loginPhone.value);
+  if (phone.length !== 10) {
+    showToast("Enter valid 10 digit mobile number");
+    nodes.loginPhone.focus();
+    return;
+  }
+  const name = customerNameFallback(nodes.loginName?.value || pendingGoogleLogin.name);
   const profile = {
+    name,
     address1: String(nodes.loginAddress1.value || "").trim(),
     area: String(nodes.loginArea.value || "").trim(),
     city: String(nodes.loginCity.value || "").trim(),
     state: String(nodes.loginState.value || "").trim(),
     pincode: String(nodes.loginPincode.value || "").replace(/\D/g, "").slice(0, 6)
   };
-  if (!profile.address1 || !profile.city || profile.pincode.length !== 6) {
-    showToast("Address, city aur valid pincode enter karein");
-    return;
-  }
   try {
-    const { idToken, name, phone } = pendingGoogleLogin;
+    const { idToken } = pendingGoogleLogin;
     const response = await api.verifyFirebaseLogin(idToken, name, phone, profile);
-    if (response.requiresAddress) throw new Error("Complete delivery address is required");
+    if (response.requiresAddress) {
+      showToast("Address, city aur valid pincode enter karein");
+      nodes.loginAddress1.focus();
+      return;
+    }
     await completeGoogleSession(response, phone, name);
   } catch (error) {
-    showToast(error.message || "Address save failed", 7000);
+    showToast(error.message || "Login failed", 7000);
   }
 }
 

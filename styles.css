@@ -3049,9 +3049,17 @@ svg {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.profile-edit-form[data-new-customer-form] label:first-of-type,
+.profile-edit-form[data-new-customer-form] label {
+  min-width: 0;
+}
+
+.profile-edit-form[data-new-customer-form] label:nth-of-type(3),
 .profile-edit-form[data-new-customer-form] .primary-button {
   grid-column: 1 / -1;
+}
+
+.profile-edit-form[data-new-customer-form] .primary-button {
+  width: 100%;
 }
 
 .profile-shortcuts {
