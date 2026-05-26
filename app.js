@@ -538,6 +538,52 @@ function persistShoppingState() {
   syncCustomerState();
 }
 
+function clearCustomerDeviceState() {
+  state.cart.clear();
+  state.wishlist.clear();
+  state.savedLocation = null;
+  state.orders = [];
+  state.pendingCodCustomer = null;
+  state.codVerificationToken = "";
+  state.checkoutProcessing = false;
+  state.cancellingOrderId = "";
+  state.returningOrderId = "";
+  state.expandedOrderId = "";
+  state.locationFormOpen = false;
+
+  [
+    storageKeys.session,
+    storageKeys.cart,
+    storageKeys.wishlist,
+    storageKeys.location,
+    storageKeys.orders
+  ].forEach((key) => localStorage.removeItem(key));
+
+  [
+    nodes.loginName,
+    nodes.loginPhone,
+    nodes.loginAddress1,
+    nodes.loginArea,
+    nodes.loginCity,
+    nodes.loginState,
+    nodes.loginPincode,
+    nodes.checkoutName,
+    nodes.checkoutPhone,
+    nodes.checkoutAddress,
+    nodes.codOtp,
+    nodes.profileEditName,
+    nodes.profileEditPhone,
+    nodes.profileEditPincode,
+    nodes.profileEditArea,
+    nodes.profileEditCity,
+    nodes.profileEditState,
+    nodes.profileEditRegion,
+    nodes.profileEditAddress1
+  ].filter(Boolean).forEach((node) => {
+    node.value = "";
+  });
+}
+
 function syncCustomerState() {
   if (!isLoggedIn() || !api.saveCustomerState) return;
   api.saveCustomerState({
@@ -2646,14 +2692,10 @@ async function submitSupportQuery(event) {
 function logout() {
   state.session = null;
   state.profileEditOpen = false;
-  state.pendingCodCustomer = null;
-  state.codVerificationToken = "";
   closeCodOtpModal();
   pendingGoogleLogin = null;
   if (firebaseAuthInstance) firebaseAuthInstance.signOut().catch(() => undefined);
-  localStorage.removeItem(storageKeys.session);
-  if (nodes.loginName) nodes.loginName.value = "";
-  if (nodes.loginPhone) nodes.loginPhone.value = "";
+  clearCustomerDeviceState();
   if (nodes.newCustomerForm) nodes.newCustomerForm.hidden = true;
   renderAll();
   closeAccount();

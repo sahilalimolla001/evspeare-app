@@ -3021,7 +3021,8 @@ svg {
   font-weight: 850;
 }
 
-.profile-edit-form input {
+.profile-edit-form input,
+.profile-edit-form textarea {
   width: 100%;
   min-height: 42px;
   border: 1px solid #d8dee8;
@@ -3033,9 +3034,24 @@ svg {
   font-weight: 760;
 }
 
+.profile-edit-form textarea {
+  min-height: 76px;
+  padding-block: 10px;
+  resize: vertical;
+}
+
 .profile-edit-form .primary-button {
   min-height: 42px;
   padding-inline: 14px;
+}
+
+.profile-edit-form[data-new-customer-form] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profile-edit-form[data-new-customer-form] label:first-of-type,
+.profile-edit-form[data-new-customer-form] .primary-button {
+  grid-column: 1 / -1;
 }
 
 .profile-shortcuts {
