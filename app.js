@@ -245,7 +245,6 @@ const state = {
   wishlist: new Set(loadJson(storageKeys.wishlist, [])),
   session: loadJson(storageKeys.session, null),
   pendingPhone: "",
-  pendingOtpProvider: "",
   paymentMethod: "cod",
   paymentMode: "cod",
   deliveryMode: "free",
@@ -2364,21 +2363,9 @@ async function requestOtp() {
   }
 
   state.pendingPhone = phone;
-  state.pendingOtpProvider = "";
   try {
-    if (firebasePhoneAuthEnabled()) {
-      try {
-        await requestFirebaseOtp(phone);
-        state.pendingOtpProvider = "firebase";
-      } catch (firebaseError) {
-        console.warn("Firebase OTP request failed; using server OTP fallback", firebaseError);
-        await api.requestOtp(phone);
-        state.pendingOtpProvider = "server";
-      }
-    } else {
-      await api.requestOtp(phone);
-      state.pendingOtpProvider = "server";
-    }
+    if (!firebasePhoneAuthEnabled()) throw new Error("Firebase login is not ready");
+    await requestFirebaseOtp(phone);
     nodes.otpPanel.hidden = false;
     nodes.loginPhone.disabled = true;
     nodes.requestOtpButton.hidden = true;
@@ -2400,9 +2387,7 @@ async function verifyOtp() {
   }
 
   try {
-    const response = state.pendingOtpProvider === "firebase"
-      ? await verifyFirebaseOtp(otp, name)
-      : await api.verifyOtp(phone, otp, name);
+    const response = await verifyFirebaseOtp(otp, name);
     state.session = {
       token: response.token || response.access_token || `session-${Date.now()}`,
       user: {
@@ -2431,10 +2416,8 @@ async function resendOtp() {
   }
 
   try {
-    await api.requestOtp(state.pendingPhone);
-    state.pendingOtpProvider = "server";
-    firebaseConfirmationResult = null;
-    clearFirebaseVerifier();
+    if (!firebasePhoneAuthEnabled()) throw new Error("Firebase login is not ready");
+    await requestFirebaseOtp(state.pendingPhone);
     nodes.loginOtp.value = "";
     nodes.loginOtp.focus();
     showToast("New OTP sent");
@@ -2594,7 +2577,6 @@ function logout() {
   state.session = null;
   state.profileEditOpen = false;
   state.pendingPhone = "";
-  state.pendingOtpProvider = "";
   firebaseConfirmationResult = null;
   clearFirebaseVerifier();
   if (firebaseAuthInstance) firebaseAuthInstance.signOut().catch(() => undefined);

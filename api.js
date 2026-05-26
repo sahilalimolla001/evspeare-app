@@ -288,34 +288,6 @@
     };
   }
 
-  async function requestOtp(phone) {
-    if (!hasEndpoint(config.otpRequestEndpoint)) {
-      return { demo: true, message: "Demo OTP sent" };
-    }
-
-    return request(config.otpRequestEndpoint, {
-      method: "POST",
-      body: { phone }
-    });
-  }
-
-  async function verifyOtp(phone, otp, name = "") {
-    if (!hasEndpoint(config.otpVerifyEndpoint)) {
-      if (config.demo?.enabled && otp === config.demo.otp) {
-        return {
-          token: `demo-token-${Date.now()}`,
-          user: { id: phone, phone, name: name || "Customer" }
-        };
-      }
-      throw new Error("Invalid OTP. Demo OTP is 123456.");
-    }
-
-    return request(config.otpVerifyEndpoint, {
-      method: "POST",
-      body: { phone, otp, name }
-    });
-  }
-
   async function verifyFirebaseLogin(idToken, name = "") {
     if (!hasEndpoint(config.firebaseVerifyEndpoint)) {
       throw new Error("Firebase authentication endpoint is not configured");
@@ -432,8 +404,6 @@
     config,
     fetchProducts,
     fetchCatalog,
-    requestOtp,
-    verifyOtp,
     verifyFirebaseLogin,
     fetchProfile,
     saveProfile,

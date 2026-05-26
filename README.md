@@ -71,12 +71,6 @@ DB_AUTO_CREATE_TABLES=true
 FIREBASE_AUTH_ENABLED=true
 FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"app-evspeare","private_key":"...","client_email":"..."}
 
-# Optional fallback while Firebase Authentication is not enabled.
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=your_twilio_auth_token
-TWILIO_VERIFY_SERVICE_SID=VAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_VERIFY_CHANNEL=sms
-
 RAZORPAY_KEY_ID=rzp_test_your_key_id
 RAZORPAY_KEY_SECRET=your_razorpay_key_secret
 DEFAULT_CUSTOMER_EMAIL=orders@yourdomain.com
@@ -92,8 +86,7 @@ Use Razorpay Test Mode keys during testing and replace them with Live Mode keys 
 - With `FIREBASE_AUTH_ENABLED=true`, Firebase Phone Authentication sends and verifies customer OTP in the browser using invisible reCAPTCHA.
 - Firebase web app config for project `app-evspeare` is already included in the customer app. Keep `FIREBASE_SERVICE_ACCOUNT_JSON` server-side only.
 - `POST /api/mobile/auth/firebase` verifies the Firebase ID token through Firebase Admin and returns the app session token used by protected APIs.
-- `POST /api/mobile/auth/request-otp` and `/verify-otp` remain available as the fallback until Firebase is fully configured.
-- `GET /api/mobile/diagnostics` checks whether Firebase Auth, fallback Twilio, Razorpay, and website env vars are set without exposing secrets.
+- `GET /api/mobile/diagnostics` checks whether Firebase Auth, Razorpay, and website env vars are set without exposing secrets.
 - `POST /api/mobile/orders` validates live catalog inventory and pushes COD/paid orders to `WEBSITE_ORDERS_URL`.
 - If `WAREHOUSE_ORDERS_URL` is set, every placed order is also pushed to the warehouse system.
 - `GET /api/mobile/orders` returns customer orders from `WEBSITE_CUSTOMER_ORDERS_URL` or `WEBSITE_ORDERS_URL`, then merges live website tracking from `WEBSITE_TRACKING_URL` and warehouse tracking from `WAREHOUSE_TRACKING_URL`.
@@ -244,7 +237,7 @@ The app/backend pushes:
 
 ## Security Notes
 
-Never put the Razorpay key secret, Firebase service-account JSON, Twilio auth token, database password, or admin credentials in frontend files. They belong only in Railway environment variables or your backend. Firebase web configuration values are intentionally public and are served only after Firebase login is fully enabled on the server.
+Never put the Razorpay key secret, Firebase service-account JSON, database password, or admin credentials in frontend files. They belong only in Railway environment variables or your backend. Firebase web configuration values are intentionally public and are served only after Firebase login is fully enabled on the server.
 
 Razorpay requires server-side order creation and payment signature verification. Firebase Phone Authentication requires Phone sign-in to be enabled in Firebase Console and the deployed customer domain to be added as an authorized domain.
 
@@ -267,11 +260,10 @@ Sources:
 - Razorpay Standard Checkout docs: https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/integration-steps/
 - Firebase Phone Auth for Web: https://firebase.google.com/docs/auth/web/phone-auth
 - Firebase Admin ID token verification: https://firebase.google.com/docs/auth/admin/verify-id-tokens
-- Twilio Verify API docs: https://www.twilio.com/docs/verify/api/verification
 
 ## Files
 
-- `server.js` - Railway Node backend, static server, Firebase/Twilio OTP authentication, Razorpay, website order push
+- `server.js` - Railway Node backend, static server, Firebase OTP authentication, Razorpay, website order push
 - `index.html` - app shell, login modal, cart checkout
 - `styles.css` - mobile UI styling
 - `config.js` - local fallback config; Railway serves dynamic runtime config

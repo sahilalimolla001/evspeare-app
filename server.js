@@ -430,8 +430,6 @@ function publicConfig(req) {
     orderCancelEndpoint: "/api/mobile/orders/cancel",
     orderReturnEndpoint: "/api/mobile/orders/return",
     supportEndpoint: "/api/mobile/support",
-    otpRequestEndpoint: "/api/mobile/auth/request-otp",
-    otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
     firebaseVerifyEndpoint: "/api/mobile/auth/firebase",
     profileEndpoint: "/api/mobile/profile",
     paymentCreateEndpoint: "/api/mobile/payments/create",
@@ -547,29 +545,6 @@ function phoneDigits(value) {
   return String(value || "").replace(/\D/g, "").slice(-10);
 }
 
-function phoneE164(value) {
-  const digits = phoneDigits(value);
-  if (digits.length !== 10) return "";
-  return `+91${digits}`;
-}
-
-function twilioConfigStatus() {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID || "";
-  const authToken = process.env.TWILIO_AUTH_TOKEN || "";
-  const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID || "";
-  const channel = (process.env.TWILIO_VERIFY_CHANNEL || "sms").toLowerCase();
-
-  return {
-    configured: Boolean(accountSid && authToken && serviceSid),
-    accountSidSet: Boolean(accountSid),
-    authTokenSet: Boolean(authToken),
-    serviceSidSet: Boolean(serviceSid),
-    accountSidLooksValid: accountSid.startsWith("AC"),
-    serviceSidLooksValid: serviceSid.startsWith("VA"),
-    channel
-  };
-}
-
 function firebaseServiceAccountJson() {
   const raw = String(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
   if (!raw) return null;
@@ -614,7 +589,7 @@ function publicFirebaseAuthConfig() {
   );
   const enabled = envFlag("FIREBASE_AUTH_ENABLED") && clientConfigured && firebaseAuthServerConfigured();
   return {
-    provider: enabled ? "firebase" : "twilio",
+    provider: "firebase",
     enabled,
     apiKey: enabled ? webConfig.apiKey : "",
     authDomain: enabled ? webConfig.authDomain : "",
@@ -1212,7 +1187,6 @@ function publicDiagnostics(req) {
   return {
     ok: true,
     service: "ev-speare",
-    twilio: twilioConfigStatus(),
     firebaseAuth: firebaseAuthStatus(),
     razorpay: {
       configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
@@ -1288,93 +1262,6 @@ function quickCommerceConfig(req) {
       tracking: safeUrlSummary(process.env.WAREHOUSE_TRACKING_URL || process.env.WEBSITE_TRACKING_URL || process.env.WEBSITE_ORDER_TRACKING_URL),
     },
   };
-}
-
-async function twilioRequest(pathname, body) {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
-
-  if (!accountSid || !authToken || !serviceSid) {
-    throw new Error("Twilio Verify env vars are missing");
-  }
-
-  const response = await fetch(`https://verify.twilio.com/v2/Services/${serviceSid}${pathname}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: new URLSearchParams(body)
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    console.error("Twilio Verify request failed", {
-      status: response.status,
-      code: data.code,
-      message: data.message,
-      moreInfo: data.more_info
-    });
-    const code = data.code ? `Twilio ${data.code}: ` : "";
-    throw new Error(`${code}${data.message || data.more_info || "Twilio request failed"}`);
-  }
-  return data;
-}
-
-async function handleRequestOtp(req, res) {
-  const body = await readBody(req);
-  const to = phoneE164(body.phone);
-  if (!to) return send(res, 400, { message: "Enter a valid 10 digit mobile number" });
-
-  try {
-    const verification = await twilioRequest("/Verifications", {
-      To: to,
-      Channel: (process.env.TWILIO_VERIFY_CHANNEL || "sms").toLowerCase()
-    });
-
-    send(res, 200, {
-      message: "OTP sent",
-      sid: verification.sid,
-      status: verification.status
-    });
-  } catch (error) {
-    const status = error.message.includes("env vars") ? 503 : 502;
-    send(res, status, { message: error.message });
-  }
-}
-
-async function handleVerifyOtp(req, res) {
-  const body = await readBody(req);
-  const to = phoneE164(body.phone);
-  const code = String(body.otp || "").trim();
-  if (!to || code.length < 4) return send(res, 400, { message: "Phone and OTP are required" });
-
-  let check;
-  try {
-    check = await twilioRequest("/VerificationCheck", {
-      To: to,
-      Code: code
-    });
-  } catch (error) {
-    const status = error.message.includes("env vars") ? 503 : 502;
-    return send(res, status, { message: error.message });
-  }
-
-  if (check.status !== "approved") {
-    return send(res, 401, { message: "Invalid OTP" });
-  }
-
-  const phone = phoneDigits(body.phone);
-  const name = String(body.name || "").trim() || "Customer";
-  const profiles = readCustomerProfiles();
-  const profile = profiles[phone] || {};
-  const user = { id: phone, phone, name: profile.name || name };
-  send(res, 200, {
-    token: signToken(user),
-    user,
-    profile
-  });
 }
 
 async function handleFirebaseLogin(req, res) {
@@ -3101,8 +2988,6 @@ async function router(req, res) {
       return send(res, 200, { database: db, warehouse });
     }
 
-    if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);
-    if (req.method === "POST" && url.pathname === "/api/mobile/auth/verify-otp") return handleVerifyOtp(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/firebase") return handleFirebaseLogin(req, res);
     if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/mobile/profile") return handleCustomerProfile(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/support") return handleSupportQuery(req, res);
