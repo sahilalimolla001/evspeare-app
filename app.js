@@ -2603,6 +2603,18 @@ function buildOrder(customer, payment) {
       address: customer.address,
       location: customer.location || null
     },
+    shipping_address: {
+      name: customer.name,
+      phone: customer.phone,
+      address: customer.address,
+      ...(customer.location || {})
+    },
+    billing_address: {
+      name: customer.name,
+      phone: customer.phone,
+      address: customer.address,
+      ...(customer.location || {})
+    },
     items: totals.entries.map((item) => ({
       productId: item.sourceId || item.id,
       appProductId: item.id,

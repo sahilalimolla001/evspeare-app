@@ -49,10 +49,10 @@ ADDRESS_PINCODE_RADIUS_KM=25
 FAST_DELIVERY_PINCODES=700136
 PINCODE_COORDINATES_JSON={"700136":{"lat":22.637112,"lng":88.454125}}
 
-WAREHOUSE_ORDERS_URL=https://yourwarehouse.com/api/orders
+WAREHOUSE_ORDERS_URL=https://yourwarehouse.com/api/integrations/orders
 WAREHOUSE_TRACKING_URL=https://yourwarehouse.com/api/order-tracking
 WAREHOUSE_CANCEL_ORDER_URL=https://yourwarehouse.com/api/integrations/order-cancel
-WAREHOUSE_RETURN_ORDER_URL=https://yourwarehouse.com/api/orders/return
+WAREHOUSE_RETURN_ORDER_URL=https://yourwarehouse.com/api/integrations/returns
 WAREHOUSE_PRODUCTS_URL=https://yourwarehouse.com/api/products
 WAREHOUSE_INVENTORY_URL=https://yourwarehouse.com/api/inventory
 WAREHOUSE_API_TOKEN=Bearer your_warehouse_token
