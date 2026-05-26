@@ -288,7 +288,7 @@
     };
   }
 
-  async function requestOtp(phone) {
+  async function requestCodOtp(phone) {
     if (!hasEndpoint(config.otpRequestEndpoint)) {
       throw new Error("OTP endpoint is not configured");
     }
@@ -298,23 +298,23 @@
     });
   }
 
-  async function verifyOtp(phone, otp, name = "") {
+  async function verifyCodOtp(phone, otp) {
     if (!hasEndpoint(config.otpVerifyEndpoint)) {
       throw new Error("OTP verification endpoint is not configured");
     }
     return request(config.otpVerifyEndpoint, {
       method: "POST",
-      body: { phone, otp, name }
+      body: { phone, otp }
     });
   }
 
-  async function verifyFirebaseLogin(idToken, name = "") {
+  async function verifyFirebaseLogin(idToken, name = "", phone = "") {
     if (!hasEndpoint(config.firebaseVerifyEndpoint)) {
       throw new Error("Firebase authentication endpoint is not configured");
     }
     return request(config.firebaseVerifyEndpoint, {
       method: "POST",
-      body: { idToken, name }
+      body: { idToken, name, phone }
     });
   }
 
@@ -424,8 +424,8 @@
     config,
     fetchProducts,
     fetchCatalog,
-    requestOtp,
-    verifyOtp,
+    requestCodOtp,
+    verifyCodOtp,
     verifyFirebaseLogin,
     fetchProfile,
     saveProfile,

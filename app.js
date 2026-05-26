@@ -23,6 +23,7 @@ const currency = new Intl.NumberFormat("en-IN");
 const deliveryEstimateDays = 7;
 const returnWindowDays = 7;
 const codMaxOrderAmount = 1000;
+let firebaseAuthInstance = null;
 const customerTrackingStages = [
   { key: "placed", label: "Order Placed", offsetDays: 0, icon: "bag" },
   { key: "shipped", label: "Shipped", offsetDays: 2, icon: "box" },
@@ -37,7 +38,7 @@ const infoPages = {
     sections: [
       {
         heading: "Information we collect",
-        body: "We collect only the details needed to run your shopping experience, including your mobile number, OTP login status, name, delivery address, cart items, order details, payment status, and live location only when you choose to share it."
+        body: "We collect only the details needed to run your shopping experience, including your Google login identity, mobile number, COD OTP verification status, name, delivery address, cart items, order details, payment status, and live location only when you choose to share it."
       },
       {
         heading: "How we use information",
@@ -240,7 +241,8 @@ const state = {
   cart: new Map(loadJson(storageKeys.cart, [])),
   wishlist: new Set(loadJson(storageKeys.wishlist, [])),
   session: loadJson(storageKeys.session, null),
-  pendingPhone: "",
+  pendingCodCustomer: null,
+  codVerificationToken: "",
   paymentMethod: "cod",
   paymentMode: "cod",
   deliveryMode: "free",
@@ -288,8 +290,8 @@ const nodes = {
   authSubtitle: document.querySelector("[data-auth-subtitle]"),
   loginName: document.querySelector("[data-login-name]"),
   loginPhone: document.querySelector("[data-login-phone]"),
-  loginOtp: document.querySelector("[data-login-otp]"),
-  otpPanel: document.querySelector("[data-otp-panel]"),
+  codOtpModal: document.querySelector("[data-cod-otp-modal]"),
+  codOtp: document.querySelector("[data-cod-otp]"),
   profileAvatar: document.querySelector("[data-profile-avatar]"),
   profileName: document.querySelector("[data-profile-name]"),
   profilePhone: document.querySelector("[data-profile-phone]"),
@@ -310,7 +312,6 @@ const nodes = {
   checkoutAddress: document.querySelector("[data-checkout-address]"),
   gatewayNote: document.querySelector("[data-gateway-note]"),
   checkoutButton: document.querySelector("[data-action='checkout']"),
-  requestOtpButton: document.querySelector("[data-action='request-otp']"),
   productPage: document.querySelector("[data-product-page]"),
   cartPage: document.querySelector("[data-cart-page]"),
   checkoutPage: document.querySelector("[data-checkout-page]"),
@@ -980,7 +981,7 @@ function renderSession() {
   nodes.accountPill.textContent = "Login";
   nodes.authLogin.hidden = loggedIn;
   nodes.authProfile.hidden = !loggedIn;
-  nodes.authTitle.textContent = loggedIn ? "Your profile" : "OTP login";
+  nodes.authTitle.textContent = loggedIn ? "Your profile" : "Account login";
   nodes.authSubtitle.textContent = loggedIn
     ? "You stay logged in until logout"
     : "Login stays active until you logout";
@@ -1455,9 +1456,7 @@ function setCheckoutActionState(processing = false) {
   const label = processing
     ? "Processing..."
     : !isLoggedIn()
-      ? state.paymentMethod === "cod"
-        ? "Mobile login required for COD"
-        : "Login to place order"
+      ? "Login to place order"
       : state.paymentMethod === "online"
         ? "Continue to Razorpay"
         : "Place order";
@@ -1538,11 +1537,7 @@ function renderCheckoutPage() {
     state.paymentMethod = "online";
     state.paymentMode = "online";
   }
-  const checkoutLabel = isLoggedIn()
-    ? "Place order"
-    : state.paymentMethod === "cod"
-      ? "Mobile login required for COD"
-      : "Login to place order";
+  const checkoutLabel = isLoggedIn() ? "Place order" : "Login to place order";
   const savedLocation = savedLocationDetails();
   const hasSavedLocation = hasLocationDetails(savedLocation);
   const showLocationForm = state.locationFormOpen || !hasSavedLocation;
@@ -2357,38 +2352,20 @@ async function syncProducts({ silent = false } = {}) {
   }
 }
 
-async function requestOtp() {
+async function googleLogin() {
   const phone = phoneDigits(nodes.loginPhone.value);
   if (phone.length !== 10) {
     showToast("Enter valid 10 digit mobile number");
     return;
   }
-
-  state.pendingPhone = phone;
-  try {
-    await api.requestOtp(phone);
-    nodes.otpPanel.hidden = false;
-    nodes.loginPhone.disabled = true;
-    nodes.requestOtpButton.hidden = true;
-    nodes.loginOtp.value = "";
-    nodes.loginOtp.focus();
-    showToast(appConfig.demo?.enabled ? "Demo OTP: 123456" : "OTP sent");
-  } catch (error) {
-    showToast(error.message || "Unable to send OTP", 7000);
-  }
-}
-
-async function verifyOtp() {
-  const phone = state.pendingPhone || phoneDigits(nodes.loginPhone.value);
-  const otp = String(nodes.loginOtp.value || "").trim();
   const name = customerNameFallback(nodes.loginName?.value);
-  if (phone.length !== 10 || otp.length < 4) {
-    showToast("Enter mobile number and OTP");
-    return;
-  }
-
   try {
-    const response = await api.verifyOtp(phone, otp, name);
+    const auth = await firebaseAuthClient();
+    const provider = new window.firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    const result = await auth.signInWithPopup(provider);
+    const idToken = await result.user.getIdToken(true);
+    const response = await api.verifyFirebaseLogin(idToken, name, phone);
     state.session = {
       token: response.token || response.access_token || `session-${Date.now()}`,
       user: {
@@ -2406,23 +2383,95 @@ async function verifyOtp() {
     closeAccount();
     showToast("Login successful");
   } catch (error) {
-    showToast(error.message || "OTP verification failed", 7000);
+    showToast(googleLoginErrorMessage(error), 7000);
   }
 }
 
-async function resendOtp() {
-  if (state.pendingPhone.length !== 10) {
-    showToast("Enter mobile number again");
-    return;
-  }
+async function firebaseAuthClient() {
+  if (firebaseAuthInstance) return firebaseAuthInstance;
+  const settings = appConfig.firebaseAuth || {};
+  if (!settings.enabled) throw new Error("Google login is not configured");
+  await loadScript(settings.sdkAppScript || "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
+  await loadScript(settings.sdkAuthScript || "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js");
+  if (!window.firebase?.auth) throw new Error("Firebase Authentication is unavailable");
+  const firebaseApp = window.firebase.apps.length
+    ? window.firebase.app()
+    : window.firebase.initializeApp({
+        apiKey: settings.apiKey,
+        authDomain: settings.authDomain,
+        projectId: settings.projectId,
+        storageBucket: settings.storageBucket,
+        appId: settings.appId,
+        messagingSenderId: settings.messagingSenderId,
+        measurementId: settings.measurementId
+      });
+  firebaseAuthInstance = firebaseApp.auth();
+  return firebaseAuthInstance;
+}
+
+function googleLoginErrorMessage(error) {
+  const messages = {
+    "auth/operation-not-allowed": "Google login Firebase Console me enable karein.",
+    "auth/popup-blocked": "Google login popup allow karke dobara try karein.",
+    "auth/popup-closed-by-user": "Google login complete nahi hua.",
+    "auth/unauthorized-domain": "Website domain Firebase me authorized nahi hai."
+  };
+  return messages[String(error?.code || "")] || error.message || "Unable to login with Google";
+}
+
+function openCodOtpModal() {
+  nodes.codOtpModal.classList.add("open");
+  nodes.codOtpModal.setAttribute("aria-hidden", "false");
+  nodes.codOtp.value = "";
+  requestAnimationFrame(() => nodes.codOtp.focus());
+}
+
+function closeCodOtpModal() {
+  nodes.codOtpModal.classList.remove("open");
+  nodes.codOtpModal.setAttribute("aria-hidden", "true");
+}
+
+async function requestCodOtp(customer) {
+  state.pendingCodCustomer = customer;
+  state.codVerificationToken = "";
 
   try {
-    await api.requestOtp(state.pendingPhone);
-    nodes.loginOtp.value = "";
-    nodes.loginOtp.focus();
+    await api.requestCodOtp(customer.phone);
+    openCodOtpModal();
+    showToast("COD verification OTP sent");
+  } catch (error) {
+    showToast(error.message || "Unable to send COD OTP", 7000);
+  }
+}
+
+async function resendCodOtp() {
+  const phone = state.pendingCodCustomer?.phone;
+  if (!phone) return;
+  try {
+    await api.requestCodOtp(phone);
+    nodes.codOtp.value = "";
+    nodes.codOtp.focus();
     showToast("New OTP sent");
   } catch (error) {
     showToast(error.message || "Unable to resend OTP", 7000);
+  }
+}
+
+async function verifyCodOtp() {
+  const phone = state.pendingCodCustomer?.phone;
+  const otp = String(nodes.codOtp.value || "").trim();
+  if (!phone || otp.length < 4) {
+    showToast("Enter OTP");
+    return;
+  }
+  try {
+    const response = await api.verifyCodOtp(phone, otp);
+    state.codVerificationToken = response.codVerificationToken || "";
+    if (!state.codVerificationToken) throw new Error("COD verification failed");
+    closeCodOtpModal();
+    await placeOrder();
+  } catch (error) {
+    showToast(error.message || "Invalid OTP", 7000);
   }
 }
 
@@ -2514,13 +2563,13 @@ async function submitSupportQuery(event) {
 function logout() {
   state.session = null;
   state.profileEditOpen = false;
-  state.pendingPhone = "";
+  state.pendingCodCustomer = null;
+  state.codVerificationToken = "";
+  closeCodOtpModal();
+  if (firebaseAuthInstance) firebaseAuthInstance.signOut().catch(() => undefined);
   localStorage.removeItem(storageKeys.session);
   if (nodes.loginName) nodes.loginName.value = "";
-  nodes.loginOtp.value = "";
-  nodes.otpPanel.hidden = true;
-  nodes.loginPhone.disabled = false;
-  nodes.requestOtpButton.hidden = false;
+  if (nodes.loginPhone) nodes.loginPhone.value = "";
   renderAll();
   closeAccount();
   showToast("Logged out");
@@ -2543,7 +2592,7 @@ function validateCheckout() {
 
   if (!isLoggedIn()) {
     openAccount();
-    showToast(state.paymentMethod === "cod" ? "Mobile OTP login required for COD order" : "Login required before placing order");
+    showToast("Google login required before placing order");
     return null;
   }
 
@@ -2583,6 +2632,12 @@ function validateCheckout() {
 
   if (phone.length !== 10) {
     showToast("Enter valid mobile number");
+    phoneNode.focus();
+    return null;
+  }
+
+  if (state.paymentMethod === "cod" && phone !== phoneDigits(state.session.user.phone)) {
+    showToast("COD mobile number must match your login mobile");
     phoneNode.focus();
     return null;
   }
@@ -2805,6 +2860,11 @@ async function placeOrder() {
   const totals = cartTotals();
   if (!totals.itemCount) return;
 
+  if (state.paymentMethod === "cod" && !state.codVerificationToken) {
+    await requestCodOtp(customer);
+    return;
+  }
+
   state.checkoutProcessing = true;
   setCheckoutActionState(true);
 
@@ -2823,6 +2883,7 @@ async function placeOrder() {
     const order = {
       ...draftOrder,
       payment,
+      ...(payment.method === "cod" ? { codVerificationToken: state.codVerificationToken } : {}),
       status: payment.method === "cod" ? "pending_cod" : "paid"
     };
     const response = await api.pushOrder(order);
@@ -2846,6 +2907,8 @@ async function placeOrder() {
       }
     });
     state.cart.clear();
+    state.codVerificationToken = "";
+    state.pendingCodCustomer = null;
     persistShoppingState();
     renderAll();
     closeCartSheet();
@@ -3142,14 +3205,17 @@ document.addEventListener("click", async (event) => {
     case "close-account":
       closeAccount();
       break;
-    case "request-otp":
-      await requestOtp();
+    case "google-login":
+      await googleLogin();
       break;
-    case "verify-otp":
-      await verifyOtp();
+    case "verify-cod-otp":
+      await verifyCodOtp();
       break;
-    case "resend-otp":
-      await resendOtp();
+    case "resend-cod-otp":
+      await resendCodOtp();
+      break;
+    case "close-cod-otp":
+      closeCodOtpModal();
       break;
     case "edit-profile":
       state.profileEditOpen = true;

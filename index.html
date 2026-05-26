@@ -327,7 +327,7 @@
       <section class="auth-card" aria-label="Account login">
         <div class="sheet-header">
           <div>
-            <h2 data-auth-title>OTP login</h2>
+            <h2 data-auth-title>Account login</h2>
             <span data-auth-subtitle>Login stays active until you logout</span>
           </div>
           <button class="icon-button" type="button" aria-label="Close account" data-action="close-account">
@@ -346,15 +346,10 @@
             Mobile number
             <input type="tel" inputmode="numeric" maxlength="10" data-login-phone placeholder="Enter 10 digit mobile" autocomplete="tel" />
           </label>
-          <button class="primary-button" type="button" data-action="request-otp">Send OTP</button>
-          <div class="otp-panel" data-otp-panel hidden>
-            <label>
-              OTP
-              <input type="tel" inputmode="numeric" maxlength="6" data-login-otp placeholder="6 digit OTP" autocomplete="one-time-code" />
-            </label>
-            <button class="primary-button" type="button" data-action="verify-otp">Verify and login</button>
-            <button class="secondary-button" type="button" data-action="resend-otp">Resend OTP</button>
-          </div>
+          <button class="google-login-button" type="button" data-action="google-login">
+            <span aria-hidden="true">G</span>
+            Continue with Google
+          </button>
         </div>
 
         <div class="profile-panel" data-auth-profile hidden>
@@ -366,7 +361,7 @@
               <span data-profile-phone>Customer</span>
             </div>
             <div class="profile-status">
-              <b>Verified</b>
+              <b>Google Login</b>
               <button type="button" data-action="edit-profile" data-profile-edit-toggle>Edit</button>
             </div>
           </div>
@@ -427,6 +422,31 @@
             </button>
           </div>
           <button class="secondary-button" type="button" data-action="logout">Logout</button>
+        </div>
+      </section>
+    </aside>
+
+    <aside class="auth-modal" data-cod-otp-modal aria-hidden="true">
+      <div class="modal-backdrop" data-action="close-cod-otp"></div>
+      <section class="auth-card" aria-label="Confirm COD mobile number">
+        <div class="sheet-header">
+          <div>
+            <h2>Verify COD order</h2>
+            <span>Enter the OTP sent to your delivery mobile</span>
+          </div>
+          <button class="icon-button" type="button" aria-label="Close OTP verification" data-action="close-cod-otp">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div class="auth-panel">
+          <label>
+            OTP
+            <input type="tel" inputmode="numeric" maxlength="6" data-cod-otp placeholder="6 digit OTP" autocomplete="one-time-code" />
+          </label>
+          <button class="primary-button" type="button" data-action="verify-cod-otp">Verify and place order</button>
+          <button class="secondary-button" type="button" data-action="resend-cod-otp">Resend OTP</button>
         </div>
       </section>
     </aside>

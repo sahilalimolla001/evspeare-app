@@ -34,9 +34,9 @@ window.EVSPEARE_CONFIG = {
    * POST ordersEndpoint         -> push customer order
    * POST orderCancelEndpoint    -> create cancellation request
    * POST orderReturnEndpoint    -> create return request
-   * POST otpRequestEndpoint     -> send OTP
-   * POST otpVerifyEndpoint      -> verify OTP and return token/user
-   * POST firebaseVerifyEndpoint -> exchange verified Firebase login for app session
+   * POST otpRequestEndpoint     -> send COD confirmation OTP
+   * POST otpVerifyEndpoint      -> verify COD confirmation OTP
+   * POST firebaseVerifyEndpoint -> exchange verified Google login for app session
    * POST paymentCreateEndpoint  -> create gateway order on server
    * POST paymentVerifyEndpoint  -> verify gateway payment signature on server
    */

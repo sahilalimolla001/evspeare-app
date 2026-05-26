@@ -496,6 +496,36 @@ function verifyToken(req) {
   }
 }
 
+function signCodVerification(user) {
+  const payload = {
+    sub: String(user.id || user.phone),
+    phone: phoneDigits(user.phone),
+    purpose: "cod_verification",
+    exp: Math.floor(Date.now() / 1000) + 10 * 60
+  };
+  const encoded = base64Url(JSON.stringify(payload));
+  const signature = crypto.createHmac("sha256", sessionSecret()).update(encoded).digest("base64url");
+  return `${encoded}.${signature}`;
+}
+
+function verifyCodVerification(token, user, phone) {
+  if (!token || !user || !token.includes(".")) return false;
+  const [encoded, signature] = String(token).split(".");
+  const expected = crypto.createHmac("sha256", sessionSecret()).update(encoded).digest("base64url");
+  if (Buffer.byteLength(signature) !== Buffer.byteLength(expected)) return false;
+  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return false;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    return payload.purpose === "cod_verification" &&
+      payload.sub === String(user.id || user.phone) &&
+      payload.phone === phoneDigits(phone) &&
+      payload.phone === phoneDigits(user.phone) &&
+      Number(payload.exp) >= Math.floor(Date.now() / 1000);
+  } catch (error) {
+    return false;
+  }
+}
+
 function customerProfilesPath() {
   const dataDir = path.join(rootDir, "data");
   fs.mkdirSync(dataDir, { recursive: true });
@@ -1323,9 +1353,14 @@ async function twilioRequest(pathname, body) {
 }
 
 async function handleRequestOtp(req, res) {
+  const user = verifyToken(req);
+  if (!user) return send(res, 401, { message: "Google login required" });
   const body = await readBody(req);
   const to = phoneE164(body.phone);
   if (!to) return send(res, 400, { message: "Enter a valid 10 digit mobile number" });
+  if (phoneDigits(body.phone) !== phoneDigits(user.phone)) {
+    return send(res, 403, { message: "COD mobile must match login mobile" });
+  }
 
   try {
     const verification = await twilioRequest("/Verifications", {
@@ -1344,10 +1379,15 @@ async function handleRequestOtp(req, res) {
 }
 
 async function handleVerifyOtp(req, res) {
+  const user = verifyToken(req);
+  if (!user) return send(res, 401, { message: "Google login required" });
   const body = await readBody(req);
   const to = phoneE164(body.phone);
   const code = String(body.otp || "").trim();
   if (!to || code.length < 4) return send(res, 400, { message: "Phone and OTP are required" });
+  if (phoneDigits(body.phone) !== phoneDigits(user.phone)) {
+    return send(res, 403, { message: "COD mobile must match login mobile" });
+  }
 
   let check;
   try {
@@ -1362,15 +1402,9 @@ async function handleVerifyOtp(req, res) {
 
   if (check.status !== "approved") return send(res, 401, { message: "Invalid OTP" });
 
-  const phone = phoneDigits(body.phone);
-  const name = String(body.name || "").trim() || "Customer";
-  const profiles = readCustomerProfiles();
-  const profile = profiles[phone] || {};
-  const user = { id: phone, phone, name: profile.name || name };
   return send(res, 200, {
-    token: signToken(user),
-    user,
-    profile
+    verified: true,
+    codVerificationToken: signCodVerification(user)
   });
 }
 
@@ -1384,9 +1418,11 @@ async function handleFirebaseLogin(req, res) {
 
   try {
     const decodedToken = await getFirebaseAdminAuth().verifyIdToken(idToken);
-    const phone = phoneDigits(decodedToken.phone_number);
-    if (phone.length !== 10) return send(res, 400, { message: "Verified Firebase account has no valid phone number" });
-    const name = String(body.name || "").trim() || "Customer";
+    const provider = decodedToken.firebase?.sign_in_provider || "";
+    if (provider !== "google.com") return send(res, 400, { message: "Google login is required" });
+    const phone = phoneDigits(body.phone);
+    if (phone.length !== 10) return send(res, 400, { message: "Mobile number is required for Google login" });
+    const name = String(body.name || decodedToken.name || "").trim() || "Customer";
     const profiles = readCustomerProfiles();
     const profile = profiles[phone] || {};
     const user = { id: decodedToken.uid || phone, phone, name: profile.name || name };
@@ -2770,6 +2806,13 @@ async function handleOrder(req, res) {
   }
 
   const submittedPayment = order.payment || {};
+  if (submittedPayment.method === "cod") {
+    if (!user || !verifyCodVerification(order.codVerificationToken, user, order.customer?.phone)) {
+      return send(res, 401, { message: "OTP verification is required for COD order" });
+    }
+    const { codVerificationToken, ...verifiedCodOrder } = order;
+    order = verifiedCodOrder;
+  }
   if (String(submittedPayment.gateway || "").toLowerCase() === "razorpay" && submittedPayment.method === "online") {
     const gatewayOrderId = String(submittedPayment.gatewayOrderId || "").trim();
     const pendingOrder = loadPendingRazorpayOrder(gatewayOrderId);

@@ -1,6 +1,6 @@
 # Ev Speare Mobile Commerce
 
-Mobile-first e-commerce PWA with website product sync, OTP login, COD orders, Razorpay online payments, and order push support.
+Mobile-first e-commerce PWA with website product sync, Google login, COD OTP verification, Razorpay online payments, and order push support.
 
 ## Run
 
@@ -68,13 +68,13 @@ DB_ORDERS_TABLE=evspeare_orders
 DB_ORDER_ITEMS_TABLE=evspeare_order_items
 DB_AUTO_CREATE_TABLES=true
 
-# Mobile OTP login for COD checkout.
+# COD mobile verification after Google login.
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_VERIFY_SERVICE_SID=VAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_VERIFY_CHANNEL=sms
 
-# Optional if Firebase authentication is used again later.
+# Firebase Google login.
 FIREBASE_AUTH_ENABLED=true
 FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"app-evspeare","private_key":"...","client_email":"..."}
 
@@ -90,8 +90,9 @@ Use Razorpay Test Mode keys during testing and replace them with Live Mode keys 
 - `GET /api/mobile/products` imports products directly from `WEBSITE_PRODUCTS_URL` first. If warehouse endpoints are set, it can also use `WAREHOUSE_PRODUCTS_URL` and merge stock from `WAREHOUSE_INVENTORY_URL`.
 - Product inventory is auto-detected from columns like `stock_quantity`, `inventory`, `available_stock`, `qty`, or `stock`. Quantity `0` is shown as out of stock and cannot be ordered.
 - Database mode is off by default. Set `ENABLE_DATABASE=true` only if you intentionally want DB fallback.
-- Twilio Verify sends and verifies mobile OTP login used before COD checkout.
-- Firebase backend verification remains available for a future Firebase login option. Keep `FIREBASE_SERVICE_ACCOUNT_JSON` server-side only.
+- Customer login uses Firebase Google Sign-In and requires a 10-digit mobile number before the Google popup is opened.
+- Twilio Verify sends a mobile OTP only when a logged-in customer places a COD order; the backend rejects COD without a recent OTP proof.
+- Keep `FIREBASE_SERVICE_ACCOUNT_JSON` and Twilio credentials server-side only.
 - `GET /api/mobile/diagnostics` checks whether Twilio, Firebase Auth, Razorpay, and website env vars are set without exposing secrets.
 - `POST /api/mobile/orders` validates live catalog inventory and pushes COD/paid orders to `WEBSITE_ORDERS_URL`.
 - If `WAREHOUSE_ORDERS_URL` is set, every placed order is also pushed to the warehouse system.
@@ -245,15 +246,17 @@ The app/backend pushes:
 
 Never put the Razorpay key secret, Firebase service-account JSON, Twilio auth token, database password, or admin credentials in frontend files. They belong only in Railway environment variables or your backend. Firebase web configuration values are intentionally public and are served only after Firebase login is fully enabled on the server.
 
-Razorpay requires server-side order creation and payment signature verification. Firebase Phone Authentication requires Phone sign-in to be enabled in Firebase Console and the deployed customer domain to be added as an authorized domain.
+Razorpay requires server-side order creation and payment signature verification. Google Sign-In must be enabled in Firebase Authentication and the deployed customer domain must be an authorized domain.
 
-If OTP does not send, open:
+Before testing login, open Firebase Console > Authentication > Sign-in method, enable `Google`, select the project support email, and save. The app collects the customer's mobile number before starting Google Sign-In.
+
+If Google login or COD OTP does not work, open:
 
 ```text
 https://your-railway-domain/api/mobile/diagnostics
 ```
 
-For Firebase login, check that:
+For Google login, check that:
 
 - `firebaseAuth.enabled` is `true`
 - `firebaseAuth.clientConfigSet` is `true`
@@ -264,13 +267,13 @@ For Firebase login, check that:
 Sources:
 
 - Razorpay Standard Checkout docs: https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/integration-steps/
-- Firebase Phone Auth for Web: https://firebase.google.com/docs/auth/web/phone-auth
+- Firebase Google Sign-In for Web: https://firebase.google.com/docs/auth/web/google-signin
 - Firebase Admin ID token verification: https://firebase.google.com/docs/auth/admin/verify-id-tokens
 - Twilio Verify API docs: https://www.twilio.com/docs/verify/api/verification
 
 ## Files
 
-- `server.js` - Railway Node backend, static server, Twilio/Firebase OTP authentication, Razorpay, website order push
+- `server.js` - Railway Node backend, static server, Firebase Google login, COD Twilio verification, Razorpay, website order push
 - `index.html` - app shell, login modal, cart checkout
 - `styles.css` - mobile UI styling
 - `config.js` - local fallback config; Railway serves dynamic runtime config
