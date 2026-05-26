@@ -2305,6 +2305,16 @@ function buildOrderActionRequest(type, order, user, details = {}, tracking = {})
   const awbNumber = tracking.awbNumber || trackingAwbNumber(tracking) || trackingAwbNumber(order) || "";
   const items = orderItemsForRequest(order);
   const deliveredAt = orderDeliveredAt(order, tracking);
+  const payment = order.payment || {
+    method: order.paymentMethod || "",
+    status: order.paymentStatus || ""
+  };
+  const amounts = orderAmountsForRequest(order);
+  const gateway = String(payment.gateway || "").toLowerCase();
+  const method = String(payment.method || "").toLowerCase();
+  const paymentStatus = String(payment.status || order.paymentStatus || "").toLowerCase();
+  const payuPaymentId = payment.mihpayid || payment.paymentId || payment.gatewayPaymentId || "";
+  const refundEligible = type === "cancel" && gateway === "payu" && method === "online" && ["paid", "captured", "success"].includes(paymentStatus) && Boolean(payuPaymentId);
 
   return {
     requestId: `${type.toUpperCase()}-${Date.now()}`,
@@ -2322,11 +2332,23 @@ function buildOrderActionRequest(type, order, user, details = {}, tracking = {})
     customer: orderCustomerForRequest(order, user),
     items,
     itemCount: items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
-    amounts: orderAmountsForRequest(order),
-    payment: order.payment || {
-      method: order.paymentMethod || "",
-      status: order.paymentStatus || ""
-    },
+    amounts,
+    payment,
+    refund: refundEligible
+      ? {
+          eligible: true,
+          gateway: "payu",
+          status: "approval_required",
+          amount: amounts.total,
+          currency: amounts.currency,
+          mihpayid: payuPaymentId,
+          txnid: payment.txnid || "",
+          reason: details.reason || "Customer requested cancellation"
+        }
+      : {
+          eligible: false,
+          reason: type === "cancel" ? "Order is not a paid PayU order" : ""
+        },
     delivery: order.delivery || null,
     tracking: {
       ...tracking,
@@ -2684,28 +2706,42 @@ function payuHash(fields) {
   return crypto.createHash("sha512").update(hashString).digest("hex").toLowerCase();
 }
 
+function payuField(fields, name) {
+  if (!fields || typeof fields !== "object") return "";
+  return fields[name] ?? fields[name.toLowerCase()] ?? fields[name.toUpperCase()] ?? "";
+}
+
+function secureHashEquals(expected, received) {
+  const left = Buffer.from(String(expected || "").toLowerCase(), "utf8");
+  const right = Buffer.from(String(received || "").toLowerCase(), "utf8");
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
 function payuReverseHash(fields) {
   const salt = process.env.PAYU_SALT;
-  const hashString = [
+  if (!salt) throw new Error("PAYU_SALT is missing");
+  const additionalCharges = payuField(fields, "additionalCharges") || payuField(fields, "additional_charges");
+  const hashParts = [
     salt,
-    fields.status || "",
+    payuField(fields, "status"),
     "",
     "",
     "",
     "",
     "",
-    fields.udf5 || "",
-    fields.udf4 || "",
-    fields.udf3 || "",
-    fields.udf2 || "",
-    fields.udf1 || "",
-    fields.email || "",
-    fields.firstname || "",
-    fields.productinfo || "",
-    fields.amount || "",
-    fields.txnid || "",
-    fields.key || ""
-  ].join("|");
+    payuField(fields, "udf5"),
+    payuField(fields, "udf4"),
+    payuField(fields, "udf3"),
+    payuField(fields, "udf2"),
+    payuField(fields, "udf1"),
+    payuField(fields, "email"),
+    payuField(fields, "firstname"),
+    payuField(fields, "productinfo"),
+    payuField(fields, "amount"),
+    payuField(fields, "txnid"),
+    payuField(fields, "key")
+  ];
+  const hashString = additionalCharges ? [additionalCharges, ...hashParts].join("|") : hashParts.join("|");
   return crypto.createHash("sha512").update(hashString).digest("hex").toLowerCase();
 }
 
@@ -2760,7 +2796,7 @@ async function payuPostCommand(command, var1) {
 function payuTransactionFromVerification(data, fields) {
   const details = data?.transaction_details || data?.transactionDetails || data?.details || data?.data;
   if (details && typeof details === "object" && !Array.isArray(details)) {
-    return details[fields.txnid] || details[fields.mihpayid] || Object.values(details)[0] || details;
+    return details[payuField(fields, "txnid")] || details[payuField(fields, "mihpayid")] || Object.values(details)[0] || details;
   }
   return data;
 }
@@ -2770,17 +2806,20 @@ function payuVerificationSucceeded(data, fields) {
   const transaction = payuTransactionFromVerification(data, fields);
   const status = String(transaction?.status || data.status || "").toLowerCase();
   const unmapped = String(transaction?.unmappedstatus || transaction?.unmapped_status || "").toLowerCase();
-  const paymentId = String(transaction?.mihpayid || transaction?.payuMoneyId || fields.mihpayid || "");
+  const paymentId = String(transaction?.mihpayid || transaction?.payuMoneyId || payuField(fields, "mihpayid"));
+  const successStatuses = new Set(["success", "captured"]);
   return (
-    (data.status === 1 || data.status === "1" || status === "success") &&
-    (status === "success" || unmapped === "captured" || unmapped === "auth" || Boolean(paymentId))
+    (data.status === 1 || data.status === "1" || successStatuses.has(status) || unmapped === "captured") &&
+    (successStatuses.has(status) || unmapped === "captured" || unmapped === "auth" || Boolean(paymentId))
   );
 }
 
 async function verifyPayuTransaction(fields) {
   const attempts = [];
-  if (fields.txnid) attempts.push(["verify_payment", fields.txnid]);
-  if (fields.mihpayid) attempts.push(["check_payment", fields.mihpayid]);
+  const txnid = payuField(fields, "txnid");
+  const mihpayid = payuField(fields, "mihpayid");
+  if (txnid) attempts.push(["verify_payment", txnid]);
+  if (mihpayid) attempts.push(["check_payment", mihpayid]);
 
   let lastError = null;
   for (const [command, var1] of attempts) {
@@ -2864,17 +2903,38 @@ async function handlePaymentCreate(req, res) {
 async function handlePaymentVerify(req, res) {
   const body = await readBody(req);
   const expected = payuReverseHash(body);
-  const verified = Boolean(body.hash && expected === String(body.hash).toLowerCase());
-  send(res, verified ? 200 : 400, { verified });
+  const hashVerified = Boolean(payuField(body, "hash") && secureHashEquals(expected, payuField(body, "hash")));
+  if (!hashVerified) return send(res, 400, { verified: false, hashVerified: false });
+
+  try {
+    const payuVerification = await verifyPayuTransaction(body);
+    return send(res, 200, {
+      verified: true,
+      hashVerified: true,
+      gatewayVerified: true,
+      command: payuVerification.command
+    });
+  } catch (error) {
+    return send(res, 400, {
+      verified: false,
+      hashVerified: true,
+      gatewayVerified: false,
+      message: error.message
+    });
+  }
 }
 
 async function handlePayuCallback(req, res, success) {
   const fields = await readBody(req);
   const expected = payuReverseHash(fields);
-  const verified = Boolean(fields.hash && expected === String(fields.hash).toLowerCase());
-  const pendingOrder = loadPendingPayuOrder(fields.txnid);
+  const verified = Boolean(payuField(fields, "hash") && secureHashEquals(expected, payuField(fields, "hash")));
+  const txnid = payuField(fields, "txnid");
+  const pendingOrder = loadPendingPayuOrder(txnid);
+  const status = String(payuField(fields, "status")).toLowerCase();
+  const amountMatches = !pendingOrder?.amounts?.total || payuAmount(pendingOrder.amounts.total) === payuAmount(payuField(fields, "amount"));
+  const keyMatches = !process.env.PAYU_KEY || payuField(fields, "key") === process.env.PAYU_KEY;
 
-  if (!verified || !success || fields.status !== "success" || !pendingOrder) {
+  if (!verified || !success || status !== "success" || !pendingOrder || !amountMatches || !keyMatches) {
     return sendHtml(
       res,
       paymentResultHtml("Payment failed", "Your payment could not be verified.", "/?payment=failure"),
@@ -2900,9 +2960,9 @@ async function handlePayuCallback(req, res, success) {
       method: "online",
       gateway: "payu",
       status: "paid",
-      txnid: fields.txnid,
-      mihpayid: fields.mihpayid || payuVerification.transaction?.mihpayid,
-      mode: fields.mode || payuVerification.transaction?.mode,
+      txnid,
+      mihpayid: payuField(fields, "mihpayid") || payuVerification.transaction?.mihpayid,
+      mode: payuField(fields, "mode") || payuVerification.transaction?.mode,
       verifyCommand: payuVerification.command,
       verified: true
     },
@@ -2911,7 +2971,7 @@ async function handlePayuCallback(req, res, success) {
 
   try {
     await persistAndPushOrder(order, req);
-    deletePendingPayuOrder(fields.txnid);
+    deletePendingPayuOrder(txnid);
     return sendHtml(
       res,
       paymentResultHtml("Payment successful", "Your order has been placed.", `/?payment=success&orderId=${encodeURIComponent(order.orderId)}`)

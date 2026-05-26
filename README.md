@@ -51,7 +51,7 @@ PINCODE_COORDINATES_JSON={"700136":{"lat":22.637112,"lng":88.454125}}
 
 WAREHOUSE_ORDERS_URL=https://yourwarehouse.com/api/orders
 WAREHOUSE_TRACKING_URL=https://yourwarehouse.com/api/order-tracking
-WAREHOUSE_CANCEL_ORDER_URL=https://yourwarehouse.com/api/orders/cancel
+WAREHOUSE_CANCEL_ORDER_URL=https://yourwarehouse.com/api/integrations/order-cancel
 WAREHOUSE_RETURN_ORDER_URL=https://yourwarehouse.com/api/orders/return
 WAREHOUSE_PRODUCTS_URL=https://yourwarehouse.com/api/products
 WAREHOUSE_INVENTORY_URL=https://yourwarehouse.com/api/inventory
