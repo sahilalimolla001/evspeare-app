@@ -2193,7 +2193,7 @@ function trackingStage(status) {
   const normalized = String(status || "placed").toLowerCase().replace(/[\s-]+/g, "_");
   if (/delivered|complete/.test(normalized)) return "delivered";
   if (/out_for_delivery|in_transit|transit|dispatch|on_the_way/.test(normalized)) return "in_transit";
-  if (/shipped|picked|packed|ready_to_ship|warehouse_picked/.test(normalized)) return "shipped";
+  if (/shipped|ready_to_ship/.test(normalized)) return "shipped";
   return "placed";
 }
 

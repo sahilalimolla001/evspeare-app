@@ -1974,7 +1974,7 @@ function trackingStageKeyFromText(value) {
   if (/cancel/.test(normalized)) return "placed";
   if (/delivered|complete/.test(normalized)) return "delivered";
   if (/out_for_delivery|in_transit|transit|dispatch|on_the_way/.test(normalized)) return "transit";
-  if (/shipped|picked|packed|ready_to_ship|warehouse_picked/.test(normalized)) return "shipped";
+  if (/shipped|ready_to_ship/.test(normalized)) return "shipped";
   if (/placed|ordered|pending|paid|cod|processing/.test(normalized)) return "placed";
   return "";
 }
