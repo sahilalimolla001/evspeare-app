@@ -2081,7 +2081,6 @@ function isWebsiteOrderFormUrl(value) {
 }
 
 async function pushOrderToWebsiteForm(order, req, endpointUrl) {
-  const submissions = [];
   const customer = order.customer || {};
   const customerLocation = customer.location && typeof customer.location === "object" ? customer.location : {};
   const mapLocation = customerLocation.mapLocation || customerLocation.map_location || "";
@@ -2091,72 +2090,71 @@ async function pushOrderToWebsiteForm(order, req, endpointUrl) {
   const cookie = await websiteLoginCookie(req, endpointUrl);
   if (!cookie) throw new Error("Website login credentials are required for order push");
 
-  for (const [index, item] of items.entries()) {
-    const formResponse = await fetchWithTimeout(endpointUrl, {
-      headers: {
-        Accept: "text/html",
-        Cookie: cookie
-      }
-    });
-    const formHtml = await formResponse.text();
-    if (!formResponse.ok) throw new Error(`Website order form failed with ${formResponse.status}`);
-
-    const csrfToken = csrfTokenFromHtml(formHtml);
-    if (!csrfToken) throw new Error("Website order form CSRF token was not found");
-
-    const orderNumber = items.length > 1 ? `${order.orderId}-${index + 1}` : order.orderId;
-    const body = new URLSearchParams({
-      _csrf_token: csrfToken,
-      order_number: orderNumber,
-      customer_name: customer.name || "Customer",
-      customer_phone: customer.phone || "",
-      product_id: String(item.productId || item.sourceId || item.appProductId || item.id || ""),
-      quantity: String(Math.max(1, Number(item.quantity || 1))),
-      priority: "normal",
-      assigned_to_id: "",
-      customer_address: [
-        customer.address || "",
-        `Mobile order: ${order.orderId}`,
-        `Item: ${item.title || item.productId || ""}`,
-        `Payment: ${order.payment?.method || "cod"} / ${order.payment?.status || "pending"}`,
-        `Amount: ${order.amounts?.currency || "INR"} ${order.amounts?.total || ""}`,
-        mapLocation ? `Map location: ${mapLocation}` : ""
-      ].filter(Boolean).join("\n")
-    });
-
-    const response = await fetchWithTimeout(endpointUrl, {
-      method: "POST",
-      redirect: "manual",
-      headers: {
-        Accept: "text/html,application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-        Cookie: cookie
-      },
-      body
-    });
-    const text = await response.text();
-    if (![200, 302, 303].includes(response.status)) {
-      const sample = text.replace(/\s+/g, " ").trim().slice(0, 180);
-      throw new Error(`Website order form failed with ${response.status}${sample ? `: ${sample}` : ""}`);
+  const formResponse = await fetchWithTimeout(endpointUrl, {
+    headers: {
+      Accept: "text/html",
+      Cookie: cookie
     }
-    if (response.status === 200 && /alert-danger|invalid|required|not found/i.test(text)) {
-      const sample = text.replace(/\s+/g, " ").trim().slice(0, 180);
-      throw new Error(`Website order form rejected item ${item.title || item.productId || index + 1}${sample ? `: ${sample}` : ""}`);
-    }
+  });
+  const formHtml = await formResponse.text();
+  if (!formResponse.ok) throw new Error(`Website order form failed with ${formResponse.status}`);
 
-    submissions.push({
-      orderNumber,
-      productId: String(item.productId || item.sourceId || item.appProductId || item.id || ""),
-      quantity: Number(item.quantity || 1),
-      status: response.status
-    });
+  const csrfToken = csrfTokenFromHtml(formHtml);
+  if (!csrfToken) throw new Error("Website order form CSRF token was not found");
+
+  const submittedItems = items.map((item) => ({
+    product_id: String(item.productId || item.sourceId || item.appProductId || item.id || ""),
+    quantity: Math.max(1, Number(item.quantity || 1))
+  }));
+  const body = new URLSearchParams({
+    _csrf_token: csrfToken,
+    order_number: order.orderId,
+    customer_name: customer.name || "Customer",
+    customer_phone: customer.phone || "",
+    product_id: submittedItems[0].product_id,
+    quantity: String(submittedItems[0].quantity),
+    items_json: JSON.stringify(submittedItems),
+    priority: "normal",
+    assigned_to_id: "",
+    customer_address: [
+      customer.address || "",
+      `Mobile order: ${order.orderId}`,
+      `Items: ${items.map((item) => item.title || item.productId || "").filter(Boolean).join(", ")}`,
+      `Payment: ${order.payment?.method || "cod"} / ${order.payment?.status || "pending"}`,
+      `Amount: ${order.amounts?.currency || "INR"} ${order.amounts?.total || ""}`,
+      mapLocation ? `Map location: ${mapLocation}` : ""
+    ].filter(Boolean).join("\n")
+  });
+
+  const response = await fetchWithTimeout(endpointUrl, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      Accept: "text/html,application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
+      Cookie: cookie
+    },
+    body
+  });
+  const text = await response.text();
+  if (![200, 302, 303].includes(response.status)) {
+    const sample = text.replace(/\s+/g, " ").trim().slice(0, 180);
+    throw new Error(`Website order form failed with ${response.status}${sample ? `: ${sample}` : ""}`);
+  }
+  if (response.status === 200 && /alert-danger|invalid|required|not found/i.test(text)) {
+    const sample = text.replace(/\s+/g, " ").trim().slice(0, 180);
+    throw new Error(`Website order form rejected order ${order.orderId}${sample ? `: ${sample}` : ""}`);
   }
 
   return {
     mode: "warehouse_form",
     endpoint: safeUrlSummary(endpointUrl),
-    submitted: submissions.length,
-    submissions
+    submitted: 1,
+    submissions: [{
+      orderNumber: order.orderId,
+      itemCount: items.length,
+      status: response.status
+    }]
   };
 }
 
