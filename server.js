@@ -2192,8 +2192,8 @@ function orderEstimatedDeliveryDate(order, tracking = {}) {
 function trackingStage(status) {
   const normalized = String(status || "placed").toLowerCase().replace(/[\s-]+/g, "_");
   if (/delivered|complete/.test(normalized)) return "delivered";
-  if (/out_for_delivery|in_transit|transit|dispatch|on_the_way/.test(normalized)) return "in_transit";
-  if (/shipped|ready_to_ship/.test(normalized)) return "shipped";
+  if (/out_for_delivery|in_transit|transit|on_the_way/.test(normalized)) return "in_transit";
+  if (/shipped|dispatch|ready_to_ship/.test(normalized)) return "shipped";
   return "placed";
 }
 
@@ -2738,8 +2738,8 @@ async function handleOrderCancel(req, res) {
     order.fulfillmentStatus,
     order.shippingStatus
   ].filter(Boolean).join(" "));
-  if (stage !== "placed") {
-    return send(res, 409, { message: "Cancel unavailable after order is shipped or out for delivery" });
+  if (stage === "in_transit" || stage === "delivered") {
+    return send(res, 409, { message: "Cancel unavailable after order is in transit" });
   }
 
   const cancelBody = buildOrderActionRequest("cancel", order, user, { reason }, tracking);

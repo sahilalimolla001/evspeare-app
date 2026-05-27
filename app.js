@@ -91,7 +91,7 @@ const infoPages = {
       },
       {
         heading: "Cancellation and refusal",
-        body: "Orders may be cancelled by the customer before shipment. We may cancel or refuse orders because of stock mismatch, pricing error, payment risk, delivery restrictions, suspected misuse, or incomplete information."
+        body: "Orders may be cancelled by the customer until they move into transit. We may cancel or refuse orders because of stock mismatch, pricing error, payment risk, delivery restrictions, suspected misuse, or incomplete information."
       },
       {
         heading: "Limitation",
@@ -207,7 +207,7 @@ const infoPages = {
       },
       {
         heading: "Tracking and service",
-        body: "The Orders section provides live status updates, estimated delivery, shipment progress, and cancellation support before dispatch."
+        body: "The Orders section provides live status updates, estimated delivery, shipment progress, and cancellation support until an order moves into transit."
       },
       {
         heading: "Customer-first approach",
@@ -1973,8 +1973,8 @@ function trackingStageKeyFromText(value) {
   const normalized = String(value || "").toLowerCase().replace(/[\s-]+/g, "_");
   if (/cancel/.test(normalized)) return "placed";
   if (/delivered|complete/.test(normalized)) return "delivered";
-  if (/out_for_delivery|in_transit|transit|dispatch|on_the_way/.test(normalized)) return "transit";
-  if (/shipped|ready_to_ship/.test(normalized)) return "shipped";
+  if (/out_for_delivery|in_transit|transit|on_the_way/.test(normalized)) return "transit";
+  if (/shipped|dispatch|ready_to_ship/.test(normalized)) return "shipped";
   if (/placed|ordered|pending|paid|cod|processing/.test(normalized)) return "placed";
   return "";
 }
@@ -2235,10 +2235,10 @@ function orderCancelHtml(order) {
     `;
   }
 
-  if (activeIndex > 0) {
+  if (activeIndex > 1) {
     return `
       <div class="order-cancel-row locked">
-        <span>Cancel unavailable after shipping / out for delivery</span>
+        <span>Cancel unavailable after order is in transit</span>
       </div>
     `;
   }
