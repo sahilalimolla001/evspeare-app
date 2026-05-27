@@ -415,6 +415,22 @@ function configuredWebsiteOrdersUrl(req) {
   }
 }
 
+function configuredWarehouseCancelUrl(req) {
+  const explicitUrl = validHttpEndpoint(
+    process.env.WAREHOUSE_CANCEL_ORDER_URL || process.env.WAREHOUSE_ORDER_CANCEL_URL || ""
+  );
+  if (explicitUrl) return explicitUrl;
+  if (!process.env.WAREHOUSE_API_TOKEN) return "";
+
+  const productsUrl = process.env.WAREHOUSE_PRODUCTS_URL || configuredWebsiteProductsUrl(req);
+  if (!productsUrl) return "";
+  try {
+    return new URL("/api/integrations/order-cancel", new URL(productsUrl).origin).toString();
+  } catch (error) {
+    return "";
+  }
+}
+
 function publicConfig(req) {
   const websiteProductsUrl = configuredWebsiteProductsUrl(req);
   const websiteOrdersUrl = configuredWebsiteOrdersUrl(req);
@@ -1269,6 +1285,7 @@ async function fetchRemoteJson(endpointUrl, headers, label) {
 function publicDiagnostics(req) {
   const websiteProductsUrl = configuredWebsiteProductsUrl(req);
   const websiteOrdersUrl = configuredWebsiteOrdersUrl(req);
+  const warehouseCancelUrl = configuredWarehouseCancelUrl(req);
   const configuredOrdersEnvUrl = validHttpEndpoint(process.env.WEBSITE_ORDERS_URL);
   const localConfig = localFrontendConfig(req);
   const websiteCredentialSet = Boolean(
@@ -1310,11 +1327,14 @@ function publicDiagnostics(req) {
       productsUrlSet: Boolean(process.env.WAREHOUSE_PRODUCTS_URL),
       inventoryUrlSet: Boolean(process.env.WAREHOUSE_INVENTORY_URL),
       ordersUrlSet: Boolean(process.env.WAREHOUSE_ORDERS_URL),
+      cancelUrlSet: Boolean(warehouseCancelUrl),
+      cancelUrlSource: process.env.WAREHOUSE_CANCEL_ORDER_URL || process.env.WAREHOUSE_ORDER_CANCEL_URL ? "env" : warehouseCancelUrl ? "derived" : null,
       trackingUrlSet: Boolean(process.env.WAREHOUSE_TRACKING_URL),
       apiTokenSet: Boolean(process.env.WAREHOUSE_API_TOKEN),
       productsUrl: safeUrlSummary(process.env.WAREHOUSE_PRODUCTS_URL),
       inventoryUrl: safeUrlSummary(process.env.WAREHOUSE_INVENTORY_URL),
       ordersUrl: safeUrlSummary(process.env.WAREHOUSE_ORDERS_URL),
+      cancelUrl: safeUrlSummary(warehouseCancelUrl),
       trackingUrl: safeUrlSummary(process.env.WAREHOUSE_TRACKING_URL),
       productsUrlSelfReference: isSelfReference(req, process.env.WAREHOUSE_PRODUCTS_URL, "/api/mobile/products")
     },
@@ -2728,7 +2748,7 @@ async function handleOrderCancel(req, res) {
 
   try {
     const websiteCancelUrl = process.env.WEBSITE_CANCEL_ORDER_URL || process.env.WEBSITE_ORDER_CANCEL_URL || "";
-    const warehouseCancelUrl = process.env.WAREHOUSE_CANCEL_ORDER_URL || process.env.WAREHOUSE_ORDER_CANCEL_URL || "";
+    const warehouseCancelUrl = configuredWarehouseCancelUrl(req);
     const websiteCancelHeaders = websiteCancelUrl ? await websiteRequestHeaders(req, websiteCancelUrl) : {};
 
     const [website, warehouse] = await Promise.all([
