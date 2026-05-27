@@ -21,8 +21,11 @@ If the product API is private, set `WEBSITE_API_TOKEN` or `WEBSITE_COOKIE` in
 the server environment.
 For local testing against a form-login warehouse, you can also set
 `websiteLoginUrl`, `websiteLoginEmail`, and `websiteLoginPassword` in `config.js`.
-If `WEBSITE_ORDERS_URL` is not set, the app derives the warehouse form endpoint
-from `WEBSITE_PRODUCTS_URL` as `/add-order`.
+If `WEBSITE_ORDERS_URL` and `WAREHOUSE_ORDERS_URL` are not set, the app derives
+the warehouse form endpoint from `WEBSITE_PRODUCTS_URL` as `/add-order` only
+when form-login credentials are configured. Without an order endpoint, orders
+are accepted into the local order store instead of failing against a protected
+admin form.
 
 ## Railway Environment Variables
 

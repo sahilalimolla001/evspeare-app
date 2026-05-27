@@ -387,6 +387,11 @@ function configuredWebsiteOrdersUrl(req) {
 
   if (explicitUrl) return explicitUrl;
   if (process.env.WAREHOUSE_ORDERS_URL) return "";
+  const formLoginConfigured = Boolean(
+    (process.env.WEBSITE_LOGIN_EMAIL || localConfig.websiteLoginEmail) &&
+    (process.env.WEBSITE_LOGIN_PASSWORD || localConfig.websiteLoginPassword)
+  );
+  if (!formLoginConfigured) return "";
 
   const productsUrl = configuredWebsiteProductsUrl(req);
   if (!productsUrl) return "";
