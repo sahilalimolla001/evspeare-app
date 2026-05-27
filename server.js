@@ -386,6 +386,7 @@ function configuredWebsiteOrdersUrl(req) {
     || "";
 
   if (explicitUrl) return explicitUrl;
+  if (process.env.WAREHOUSE_ORDERS_URL) return "";
 
   const productsUrl = configuredWebsiteProductsUrl(req);
   if (!productsUrl) return "";

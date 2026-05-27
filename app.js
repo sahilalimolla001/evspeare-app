@@ -1812,12 +1812,17 @@ function renderCheckoutPage() {
   const hasSavedLocation = hasLocationDetails(savedLocation);
   const showLocationForm = state.locationFormOpen || !hasSavedLocation;
   const addressVerification = addressMatchesVerifiedLocation(billing);
+  const addressVerificationRequired = state.deliveryMode === "fast";
   const addressVerified = addressVerification.valid && billing.pincode.length === 6;
+  const addressReady = Boolean(billing.address1 && billing.city && billing.pincode.length === 6);
+  const addressStatusReady = addressVerified || (!addressVerificationRequired && addressReady);
   const addressVerificationMessage = addressVerified
     ? addressVerification.reason
-    : billing.coordinates && billing.pincode.length === 6
+    : addressVerificationRequired && billing.coordinates && billing.pincode.length === 6
       ? addressVerification.reason
-      : "Enter address, city and pincode, then verify with live location.";
+      : addressVerificationRequired
+        ? "Enter address, city and pincode, then verify with live location."
+        : "Live or map verification is optional for free delivery.";
 
   nodes.checkoutPage.innerHTML = `
     <div class="payment-page-header">
@@ -1892,8 +1897,8 @@ function renderCheckoutPage() {
             </div>
           </div>
         ` : ""}
-        <div class="address-verify-card ${addressVerified ? "verified" : ""}">
-          <strong>${addressVerified ? "Address verified" : "Address verification required"}</strong>
+        <div class="address-verify-card ${addressStatusReady ? "verified" : ""}">
+          <strong>${addressVerified ? "Address verified" : addressVerificationRequired ? "Address verification required" : "Delivery address ready"}</strong>
           <p>${escapeHtml(addressVerificationMessage)}</p>
         </div>
         <div class="location-action-row">
@@ -2899,7 +2904,6 @@ function validateCheckout() {
   const phone = phoneDigits(billing.phone || phoneNode.value || state.session?.user?.phone);
   const name = formatCustomerName(billing) || String(nameNode.value || state.session?.user?.name || "").trim();
   const address = formatAddress(billing);
-  const hasLiveCoordinates = Boolean(billing.coordinates);
   const totals = cartTotals();
 
   if (!isLoggedIn()) {
@@ -2972,15 +2976,17 @@ function validateCheckout() {
     return null;
   }
 
-  if (!hasLiveCoordinates) {
-    showToast("Verify address with live location");
-    return null;
-  }
+  if (state.deliveryMode === "fast") {
+    if (!billing.coordinates) {
+      showToast("Verify address with live location for fast delivery");
+      return null;
+    }
 
-  const addressVerification = addressMatchesVerifiedLocation(billing);
-  if (!addressVerification.valid) {
-    showToast(addressVerification.reason);
-    return null;
+    const addressVerification = addressMatchesVerifiedLocation(billing);
+    if (!addressVerification.valid) {
+      showToast(addressVerification.reason);
+      return null;
+    }
   }
 
   saveCustomerLocation(billing, billing.coordinates ? billing.source || "map" : "manual", { silent: true, rerender: false });
