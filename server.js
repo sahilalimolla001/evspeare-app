@@ -189,6 +189,16 @@ function absoluteEndpoint(baseUrl, endpointPath) {
   }
 }
 
+function validHttpEndpoint(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(String(value).trim());
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : "";
+  } catch (error) {
+    return "";
+  }
+}
+
 function productImportUrl(value, endpointPath) {
   if (!value) return "";
   try {
@@ -384,8 +394,9 @@ function configuredWebsiteOrdersUrl(req) {
   const explicitUrl = process.env.WEBSITE_ORDERS_URL
     || localConfig.websiteOrdersUrl
     || "";
+  const validExplicitUrl = validHttpEndpoint(explicitUrl);
 
-  if (explicitUrl) return explicitUrl;
+  if (validExplicitUrl) return validExplicitUrl;
   if (process.env.WAREHOUSE_ORDERS_URL) return "";
   const formLoginConfigured = Boolean(
     (process.env.WEBSITE_LOGIN_EMAIL || localConfig.websiteLoginEmail) &&
@@ -1257,6 +1268,7 @@ async function fetchRemoteJson(endpointUrl, headers, label) {
 function publicDiagnostics(req) {
   const websiteProductsUrl = configuredWebsiteProductsUrl(req);
   const websiteOrdersUrl = configuredWebsiteOrdersUrl(req);
+  const configuredOrdersEnvUrl = validHttpEndpoint(process.env.WEBSITE_ORDERS_URL);
   const localConfig = localFrontendConfig(req);
   const websiteCredentialSet = Boolean(
     process.env.WEBSITE_API_TOKEN ||
@@ -1282,7 +1294,8 @@ function publicDiagnostics(req) {
       productsUrlSet: Boolean(websiteProductsUrl),
       productsUrlSource: process.env.WEBSITE_PRODUCTS_URL ? "env" : websiteProductsUrl ? "config.js" : null,
       ordersUrlSet: Boolean(websiteOrdersUrl),
-      ordersUrlSource: process.env.WEBSITE_ORDERS_URL ? "env" : websiteOrdersUrl ? "derived" : null,
+      ordersUrlSource: configuredOrdersEnvUrl ? "env" : websiteOrdersUrl ? "derived" : null,
+      ordersEnvUrlValid: !process.env.WEBSITE_ORDERS_URL || Boolean(configuredOrdersEnvUrl),
       trackingUrlSet: Boolean(process.env.WEBSITE_TRACKING_URL || process.env.WEBSITE_ORDER_TRACKING_URL),
       apiTokenSet: websiteCredentialSet,
       loginCredentialsSet: websiteLoginSet,
