@@ -102,7 +102,7 @@ Use Razorpay Test Mode keys during testing and replace them with Live Mode keys 
 - `POST /api/mobile/orders` validates live catalog inventory and pushes COD/paid orders to `WEBSITE_ORDERS_URL`.
 - If `WAREHOUSE_ORDERS_URL` is set, every placed order is also pushed to the warehouse system.
 - `GET /api/mobile/orders` returns customer orders from `WEBSITE_CUSTOMER_ORDERS_URL` or `WEBSITE_ORDERS_URL`, then merges live website tracking from `WEBSITE_TRACKING_URL` and warehouse tracking from `WAREHOUSE_TRACKING_URL`.
-- `POST /api/mobile/orders/cancel` accepts customer cancel requests before the order reaches shipped/out-for-delivery; set `WEBSITE_CANCEL_ORDER_URL` or `WAREHOUSE_CANCEL_ORDER_URL` to forward full order details.
+- `POST /api/mobile/orders/cancel` accepts customer cancel requests until the order is in transit; set `WEBSITE_CANCEL_ORDER_URL` or `WAREHOUSE_CANCEL_ORDER_URL` to forward full order details. Warehouse cancellation first uses `WAREHOUSE_API_TOKEN` and can fall back to configured server-side warehouse login credentials when the warehouse supports authenticated staff-session cancellation.
 - `POST /api/mobile/orders/return` accepts return requests for 7 days after delivered status; set `WEBSITE_RETURN_ORDER_URL` or `WAREHOUSE_RETURN_ORDER_URL` to forward order id, AWB, items, EAN/SKU, customer, address, phone, amount, reason, and tracking details.
 - `GET /api/mobile/inventory-diagnostics` shows safe warehouse product/inventory mapping samples without exposing API tokens.
 - `GET /api/mobile/images?src=...` serves warehouse product images through the backend, including private `gs://` Google Storage images when `GOOGLE_SERVICE_ACCOUNT_JSON` is configured.

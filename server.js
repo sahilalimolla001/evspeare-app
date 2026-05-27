@@ -2534,6 +2534,23 @@ async function postOrderCancel(endpoint, headers, body, label) {
   return data;
 }
 
+async function postWarehouseOrderCancel(req, endpoint, body) {
+  if (!endpoint) return null;
+  try {
+    return await postOrderCancel(endpoint, warehouseHeaders(), body, "Warehouse cancel request");
+  } catch (error) {
+    if (!/invalid integration key|unauthorized|login required/i.test(error.message || "")) throw error;
+    const cookie = await websiteLoginCookie(req, endpoint);
+    if (!cookie) throw error;
+    return postOrderCancel(
+      endpoint,
+      { Accept: "application/json", Cookie: cookie },
+      body,
+      "Warehouse cancel request"
+    );
+  }
+}
+
 function orderItemsForRequest(order = {}) {
   const rows = Array.isArray(order.items) && order.items.length
     ? order.items
@@ -2753,7 +2770,7 @@ async function handleOrderCancel(req, res) {
 
     const [website, warehouse] = await Promise.all([
       postOrderCancel(websiteCancelUrl, websiteCancelHeaders, cancelBody, "Website cancel request"),
-      postOrderCancel(warehouseCancelUrl, warehouseHeaders(), cancelBody, "Warehouse cancel request")
+      postWarehouseOrderCancel(req, warehouseCancelUrl, cancelBody)
     ]);
     if (website) results.website = website;
     if (warehouse) results.warehouse = warehouse;
