@@ -36,6 +36,7 @@ loadDotEnv();
 const port = Number(process.env.PORT || 3000);
 const fallbackPort = 3000;
 const deliveryEstimateDays = 7;
+const codMaxOrderAmount = 1000;
 const pendingRazorpayOrders = new Map();
 const defaultFirebaseWebConfig = {
   apiKey: "AIzaSyBHAvF01gxheV53SfnzNxh41ODZHSHNWbI",
