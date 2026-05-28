@@ -206,6 +206,10 @@ const infoPages = {
         body: "Customers can choose COD where available or pay online through Razorpay secure checkout. Orders are verified and pushed to the fulfilment system after checkout."
       },
       {
+        heading: "Company address",
+        body: "Narayanpur, Rajarhat, Gopalpur, Kolkata, 700136."
+      },
+      {
         heading: "Tracking and service",
         body: "The Orders section provides live status updates, estimated delivery, shipment progress, and cancellation support until an order moves into transit."
       },
