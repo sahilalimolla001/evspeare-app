@@ -1133,6 +1133,30 @@ svg {
   font-weight: 760;
 }
 
+.product-share-button {
+  width: 100%;
+  margin: 0 0 12px;
+  border: 1px solid #d8e8f7;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--blue-dark);
+  background: #f7fbff;
+  font-weight: 850;
+}
+
+.product-share-button span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.product-share-button strong {
+  font-size: 0.82rem;
+}
+
 .detail-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

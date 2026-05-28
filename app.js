@@ -1190,6 +1190,35 @@ function closeCurrentPage() {
   closePages();
 }
 
+function productShareUrl(product) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("product", product.id);
+  url.hash = "";
+  return url.toString();
+}
+
+async function shareProduct(productId) {
+  const product = productById(productId);
+  if (!product) return;
+  const url = productShareUrl(product);
+  const shareData = {
+    title: product.title,
+    text: `Check this EV spare part: ${product.title}`,
+    url
+  };
+  try {
+    if (navigator.share) {
+      await navigator.share(shareData);
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    showToast("Product link copied");
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    showToast("Unable to share product link");
+  }
+}
+
 function handlePageHistoryChange(event) {
   const page = event.state?.[appHistoryKey] ? event.state.page : "home";
   if (page && page !== "home") {
@@ -1246,6 +1275,10 @@ function renderProductPage(productId) {
         <span>${escapeHtml(product.delivery || "Delivery available")}</span>
         <span>Secure checkout with COD and Razorpay</span>
       </div>
+      <button class="product-share-button" type="button" data-share-product="${escapeHtml(product.id)}">
+        <span>Product link</span>
+        <strong>Copy / Share</strong>
+      </button>
       <div class="detail-actions">
         <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? "Add to cart" : "Out of stock"}</button>
         <button class="checkout-button" type="button" data-buy-now="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>Buy now</button>
@@ -1253,6 +1286,14 @@ function renderProductPage(productId) {
     </div>
   `;
   openPage("product");
+}
+
+function openProductFromUrl() {
+  const productId = new URLSearchParams(window.location.search).get("product");
+  if (!productId || openProductFromUrl.opened) return;
+  if (!productById(productId)) return;
+  openProductFromUrl.opened = true;
+  renderProductPage(productId);
 }
 
 function renderCartPage() {
@@ -2643,6 +2684,7 @@ async function syncProducts({ silent = false } = {}) {
       if (!silent) showToast(message);
     }
     renderAll();
+    openProductFromUrl();
   } catch (error) {
     console.error(error);
     products = [];
@@ -3460,6 +3502,7 @@ document.addEventListener("click", async (event) => {
   const removeId = target.dataset.remove;
   const cancelOrderId = target.dataset.cancelOrder;
   const returnOrderId = target.dataset.returnOrder;
+  const shareProductId = target.dataset.shareProduct;
   const infoPageKey = target.dataset.infoPage;
   const orderDetailsId = target.dataset.orderDetails;
 
@@ -3493,6 +3536,10 @@ document.addEventListener("click", async (event) => {
     }
     persistShoppingState();
     renderAll();
+  }
+
+  if (shareProductId) {
+    await shareProduct(shareProductId);
   }
 
   if (increaseId) {
