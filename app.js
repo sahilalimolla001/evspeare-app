@@ -950,6 +950,18 @@ function standardDeliveryFee(subtotal, itemCount = 1) {
   return itemCount && subtotal > 0 && subtotal < 200 ? 79 : 0;
 }
 
+function freeDeliveryPopupHtml(totals) {
+  if (!totals.itemCount) return "";
+  const threshold = 200;
+  const remaining = Math.max(0, threshold - totals.subtotal);
+  return `
+    <div class="free-delivery-popup ${remaining ? "" : "unlocked"}">
+      <strong>${remaining ? `Add ${formatPrice(remaining)} more` : "Free delivery unlocked"}</strong>
+      <span>${remaining ? "Cart value Rs. 200 hone par standard delivery free ho jayegi." : "Standard delivery fee removed for this order."}</span>
+    </div>
+  `;
+}
+
 function smartCartProgressHtml(totals) {
   if (!totals.itemCount) return "";
   const target = 5000;
@@ -1028,6 +1040,7 @@ function renderCart() {
   nodes.priceBox.hidden = itemCount === 0;
   nodes.checkoutForm.hidden = itemCount === 0;
   nodes.priceBox.innerHTML = itemCount ? `
+    ${freeDeliveryPopupHtml(totals)}
     ${smartCartProgressHtml(totals)}
     <div><span>Subtotal</span><strong>${formatPrice(subtotal)}</strong></div>
     ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
@@ -1274,9 +1287,11 @@ function renderCartPage() {
       `).join("") : `<div class="cart-empty">Your cart is empty.<br />Add products to start checkout.</div>`}
     </div>
     <div class="page-total">
+      ${freeDeliveryPopupHtml(totals)}
       ${smartCartProgressHtml(totals)}
       <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
       ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
+      <div><span>Delivery</span><strong>${totals.delivery ? formatPrice(totals.delivery) : "Free"}</strong></div>
       <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
       <div class="total"><span>Total</span><strong>${formatPrice(totals.total)}</strong></div>
     </div>
@@ -1947,6 +1962,7 @@ function renderCheckoutPage() {
         <b>${state.deliveryMode === "fast" ? "Fast delivery" : "Standard delivery"}</b>
       </div>
       ${deliveryOptionsHtml(totals, deliveryEligibility)}
+      ${freeDeliveryPopupHtml(totals)}
       ${smartCartProgressHtml(totals)}
       ${checkoutItemsPreview(totals.entries)}
       <div class="checkout-price-panel">

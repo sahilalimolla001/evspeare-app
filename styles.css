@@ -2642,6 +2642,37 @@ svg {
   background: linear-gradient(90deg, var(--green), var(--blue));
 }
 
+.free-delivery-popup {
+  border: 1px solid #f7d7a8;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 3px;
+  background: #fff7e8;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.free-delivery-popup strong {
+  color: #9a5a00;
+  font-size: 0.82rem;
+}
+
+.free-delivery-popup span {
+  color: #68420b;
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.free-delivery-popup.unlocked {
+  border-color: #b7e2c3;
+  background: #edfff4;
+}
+
+.free-delivery-popup.unlocked strong,
+.free-delivery-popup.unlocked span {
+  color: #087f5b;
+}
+
 .cart-addons {
   margin-top: 12px;
   display: grid;
