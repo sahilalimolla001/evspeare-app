@@ -1,4 +1,4 @@
-const CACHE_NAME = "evspeare-shell-v2";
+const CACHE_NAME = "evspeare-shell-v3";
 const APP_SHELL = [
   "/",
   "/index.html",

@@ -529,8 +529,7 @@ function orderDisplayId(order) {
 }
 
 function discount(product) {
-  if (!product.mrp || product.mrp <= product.price) return 0;
-  return Math.round(((product.mrp - product.price) / product.mrp) * 100);
+  return 0;
 }
 
 function phoneDigits(value) {
@@ -688,7 +687,7 @@ function smartScore(product) {
   const inCart = state.cart.has(product.id) ? 14 : 0;
   const wished = state.wishlist.has(product.id) ? 10 : 0;
   const express = isExpressProduct(product) ? 8 : 0;
-  const off = Math.min(discount(product), 40) / 5;
+  const off = 0;
   const lowStock = (() => {
     const quantity = stockQuantity(product);
     return quantity !== null && quantity <= 3 ? 5 : 0;
@@ -933,7 +932,7 @@ function cartTotals() {
   const itemCount = entries.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = entries.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const platformFee = 0;
-  const delivery = state.deliveryMode === "fast" ? fastDeliveryFee(subtotal) : 0;
+  const delivery = standardDeliveryFee(subtotal, itemCount) || (state.deliveryMode === "fast" ? fastDeliveryFee(subtotal) : 0);
   const autoDiscount = subtotal >= 5000 ? Math.min(500, Math.round(subtotal * 0.05)) : 0;
 
   return {
@@ -945,6 +944,10 @@ function cartTotals() {
     delivery,
     total: Math.max(0, subtotal + platformFee + delivery - autoDiscount)
   };
+}
+
+function standardDeliveryFee(subtotal, itemCount = 1) {
+  return itemCount && subtotal > 0 && subtotal < 200 ? 79 : 0;
 }
 
 function smartCartProgressHtml(totals) {
@@ -986,15 +989,16 @@ function fastDeliveryFee(amount) {
 
 function deliveryOptionsHtml(totals, eligibility) {
   const fastFee = fastDeliveryFee(totals.subtotal);
+  const standardFee = standardDeliveryFee(totals.subtotal, totals.itemCount);
   return `
     <section class="delivery-options" aria-label="Delivery options">
       <label class="${state.deliveryMode === "free" ? "selected" : ""}">
         <input type="radio" name="delivery-mode" value="free" data-delivery-mode ${state.deliveryMode === "free" ? "checked" : ""} />
         <span>
-          <strong>Free delivery</strong>
+          <strong>Standard delivery</strong>
           <small>Standard delivery in 6-7 days</small>
         </span>
-        <b>Free</b>
+        <b>${standardFee ? formatPrice(standardFee) : "Free"}</b>
       </label>
       ${eligibility.eligible ? `
       <label class="${state.deliveryMode === "fast" ? "selected" : ""}">
@@ -1940,7 +1944,7 @@ function renderCheckoutPage() {
           <span>Order summary</span>
           <h3>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"}</h3>
         </div>
-        <b>${state.deliveryMode === "fast" ? "Fast delivery" : "Free delivery"}</b>
+        <b>${state.deliveryMode === "fast" ? "Fast delivery" : "Standard delivery"}</b>
       </div>
       ${deliveryOptionsHtml(totals, deliveryEligibility)}
       ${smartCartProgressHtml(totals)}
@@ -3050,7 +3054,7 @@ function buildOrder(customer, payment) {
     },
     delivery: {
       mode: state.deliveryMode,
-      label: state.deliveryMode === "fast" ? "Fast delivery" : "Free delivery",
+      label: state.deliveryMode === "fast" ? "Fast delivery" : "Standard delivery",
       fee: totals.delivery,
       estimatedDays: state.deliveryMode === "fast" ? "Delivery by tomorrow" : "6-7 days",
       automation: state.deliveryMode === "fast" ? "express_zone_selected" : "standard_auto_selected"

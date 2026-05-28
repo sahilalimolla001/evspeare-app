@@ -1209,7 +1209,7 @@ function normalizeRemoteProduct(item, index, endpointUrl, source) {
   const id = firstPresent(item, ["id", "product_id", "productId", "sku", "product_sku", "productSku", "code"]);
   const sourceId = firstPresent(item, ["product_id", "productId", "id", "sku", "product_sku", "productSku", "code"]);
   const sku = firstPresent(item, ["sku", "product_sku", "productSku", "code"]);
-  const price = productPrice(item) || 0;
+  const price = markedUpSellingPrice(productPrice(item) || 0);
   const mrp = productMrp(item, price) || price;
   const quantity = numericValue(firstPresent(item, [
     "stock_quantity",
@@ -1258,6 +1258,12 @@ function normalizeRemoteProduct(item, index, endpointUrl, source) {
     stockQuantity: quantity,
     source
   };
+}
+
+function markedUpSellingPrice(price) {
+  const value = Number(price || 0);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.round(value * 1.2 * 100) / 100;
 }
 
 async function fetchRemoteJson(endpointUrl, headers, label) {
