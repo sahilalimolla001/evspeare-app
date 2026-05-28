@@ -3156,6 +3156,10 @@ async function runRazorpay(order, gatewayOrder) {
       }
     });
 
+    checkout.on("payment.failed", (response) => {
+      reject(new Error(response?.error?.description || response?.error?.reason || "Payment failed"));
+    });
+
     checkout.open();
   });
 }

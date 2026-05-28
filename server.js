@@ -4,6 +4,7 @@ const http = require("http");
 const path = require("path");
 const vm = require("vm");
 const { URLSearchParams } = require("url");
+const Razorpay = require("razorpay");
 const database = require("./database");
 
 const rootDir = __dirname;
@@ -3066,8 +3067,10 @@ function secureHashEquals(expected, received) {
 
 function razorpayAmount(value) {
   const amount = Math.round(Number(value || 0) * 100);
-  if (!Number.isSafeInteger(amount) || amount <= 0) {
-    throw new Error("Payment amount is invalid");
+  if (!Number.isSafeInteger(amount) || amount < 100) {
+    const error = new Error("Minimum payment amount is 100 paise");
+    error.statusCode = 400;
+    throw error;
   }
   return amount;
 }
@@ -3077,6 +3080,19 @@ function razorpayCredentials() {
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
   if (!keyId || !keySecret) throw new Error("Razorpay env vars are missing");
   return { keyId, keySecret };
+}
+
+function razorpayClient() {
+  const { keyId, keySecret } = razorpayCredentials();
+  return new Razorpay({ key_id: keyId, key_secret: keySecret });
+}
+
+function razorpayStatusCode(error) {
+  const status = Number(error?.statusCode || error?.status_code || error?.status || 0);
+  if (status === 401 || status === 403) return 401;
+  if (status >= 400 && status < 500) return status;
+  if (/auth|key|credential/i.test(String(error?.message || ""))) return 401;
+  return 500;
 }
 
 async function razorpayRequest(pathname, options = {}) {
@@ -3098,7 +3114,9 @@ async function razorpayRequest(pathname, options = {}) {
     throw new Error(`Razorpay returned non-JSON response: ${text.slice(0, 120)}`);
   }
   if (!response.ok) {
-    throw new Error(data.error?.description || data.error?.reason || data.message || `Razorpay API failed with ${response.status}`);
+    const error = new Error(data.error?.description || data.error?.reason || data.message || `Razorpay API failed with ${response.status}`);
+    error.statusCode = response.status;
+    throw error;
   }
   return data;
 }
@@ -3111,7 +3129,7 @@ async function handlePaymentCreate(req, res) {
 
   const order = await readBody(req);
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-    return send(res, 503, { message: "Razorpay env vars are missing" });
+    return send(res, 401, { message: "Razorpay credentials are not configured" });
   }
 
   const inventoryError = await validateOrderInventory(order, req);
@@ -3119,12 +3137,15 @@ async function handlePaymentCreate(req, res) {
     return send(res, 409, { message: inventoryError });
   }
 
-  const amount = razorpayAmount(order.amounts?.total);
-  const currency = String(order.amounts?.currency || process.env.CURRENCY || "INR").toUpperCase();
-  const orderId = String(order.orderId || `EV${Date.now()}`);
-  const gatewayOrder = await razorpayRequest("/orders", {
-    method: "POST",
-    body: JSON.stringify({
+  let gatewayOrder;
+  let amount;
+  let currency;
+  let orderId;
+  try {
+    amount = razorpayAmount(order.amounts?.total);
+    currency = String(order.amounts?.currency || process.env.CURRENCY || "INR").toUpperCase();
+    orderId = String(order.orderId || `EV${Date.now()}`);
+    gatewayOrder = await razorpayClient().orders.create({
       amount,
       currency,
       receipt: orderId.slice(0, 40),
@@ -3132,8 +3153,10 @@ async function handlePaymentCreate(req, res) {
         app_order_id: orderId.slice(0, 256),
         customer_phone: phoneDigits(order.customer?.phone)
       }
-    })
-  });
+    });
+  } catch (error) {
+    return send(res, razorpayStatusCode(error), { message: error.message || "Razorpay order API failed" });
+  }
 
   savePendingRazorpayOrder(gatewayOrder.id, {
     ...order,
@@ -3149,7 +3172,9 @@ async function handlePaymentCreate(req, res) {
   });
 
   send(res, 200, {
+    ok: true,
     gateway: "razorpay",
+    order_id: gatewayOrder.id,
     gatewayOrderId: gatewayOrder.id,
     amount: gatewayOrder.amount,
     currency: gatewayOrder.currency
@@ -3164,6 +3189,9 @@ async function handlePaymentVerify(req, res) {
   const pendingOrder = loadPendingRazorpayOrder(gatewayOrderId);
   if (!gatewayOrderId || !paymentId || !signature || !pendingOrder) {
     return send(res, 400, { verified: false, message: "Razorpay payment details are missing or expired" });
+  }
+  if (!process.env.RAZORPAY_KEY_SECRET) {
+    return send(res, 401, { verified: false, message: "Razorpay credentials are not configured" });
   }
   if (body.orderId && String(body.orderId) !== String(pendingOrder.orderId)) {
     return send(res, 400, { verified: false, message: "Order does not match payment request" });
@@ -3204,13 +3232,16 @@ async function handlePaymentVerify(req, res) {
       status: "paid"
     });
     return send(res, 200, {
+      ok: true,
       verified: true,
       signatureVerified: true,
       gatewayVerified: true,
-      paymentStatus: payment.status
+      paymentStatus: payment.status,
+      payment_id: paymentId,
+      order_id: gatewayOrderId
     });
   } catch (error) {
-    return send(res, 400, {
+    return send(res, razorpayStatusCode(error), {
       verified: false,
       signatureVerified: true,
       gatewayVerified: false,
