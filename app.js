@@ -928,7 +928,7 @@ function cartTotals() {
   const entries = cartEntries();
   const itemCount = entries.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = entries.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const platformFee = itemCount ? 9 : 0;
+  const platformFee = 0;
   const delivery = state.deliveryMode === "fast" ? fastDeliveryFee(subtotal) : 0;
   const autoDiscount = subtotal >= 5000 ? Math.min(500, Math.round(subtotal * 0.05)) : 0;
 
