@@ -2643,22 +2643,22 @@ svg {
 }
 
 .free-delivery-popup {
-  border: 1px solid #f7d7a8;
+  border: 1px solid #d8e8f7;
   border-radius: 8px;
-  padding: 10px;
+  padding: 11px 12px;
   display: grid;
-  gap: 3px;
-  background: #fff7e8;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  gap: 4px;
+  background: linear-gradient(180deg, #f7fbff 0%, #ffffff 100%);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
 }
 
 .free-delivery-popup strong {
-  color: #9a5a00;
+  color: var(--blue-dark);
   font-size: 0.82rem;
 }
 
 .free-delivery-popup span {
-  color: #68420b;
+  color: var(--muted);
   font-size: 0.74rem;
   font-weight: 750;
 }

@@ -956,8 +956,8 @@ function freeDeliveryPopupHtml(totals) {
   const remaining = Math.max(0, threshold - totals.subtotal);
   return `
     <div class="free-delivery-popup ${remaining ? "" : "unlocked"}">
-      <strong>${remaining ? `Add ${formatPrice(remaining)} more` : "Free delivery unlocked"}</strong>
-      <span>${remaining ? "Cart value Rs. 200 hone par standard delivery free ho jayegi." : "Standard delivery fee removed for this order."}</span>
+      <strong>${remaining ? `Add ${formatPrice(remaining)} to unlock free delivery` : "Free delivery unlocked"}</strong>
+      <span>${remaining ? "Orders of Rs. 200 or more qualify for free standard delivery." : "Standard delivery is free on this order."}</span>
     </div>
   `;
 }
@@ -2209,6 +2209,7 @@ function trackingTimelineHtml(order) {
 }
 
 function customerTrackingHtml(order) {
+  if (orderIsCancelled(order)) return "";
   const activeIndex = trackingActiveIndex(order);
   const progress = Math.round((activeIndex / (customerTrackingStages.length - 1)) * 75);
   const createdAt = orderCreatedDate(order);
@@ -2254,7 +2255,7 @@ function orderCancelHtml(order) {
   if (orderIsCancelled(order)) {
     return `
       <div class="order-cancel-row locked">
-        <span>Cancellation requested</span>
+        <span>Order cancelled</span>
       </div>
     `;
   }
@@ -2367,9 +2368,12 @@ function renderOrdersPage() {
       ${state.orders.length ? state.orders.map((order) => {
         const createdAt = orderCreatedDate(order);
         const estimatedAt = orderEstimatedDeliveryDate(order);
+        const cancelled = orderIsCancelled(order);
         const delivered = orderIsDelivered(order);
         const deliveredAt = orderDeliveredDate(order);
         const awbNumber = orderAwbNumber(order);
+        const dateLabel = cancelled ? "Order Status" : delivered ? "Delivered" : "Estimated Delivery";
+        const dateValue = cancelled ? "Cancelled" : formatOrderDate(delivered && deliveredAt ? deliveredAt : estimatedAt, false);
         return `
           <article class="order-card">
             <div class="order-head">
@@ -2382,7 +2386,7 @@ function renderOrdersPage() {
             </div>
             <div class="order-date-grid">
               <span>Order Date<strong>${escapeHtml(formatOrderDate(createdAt, false))}</strong></span>
-              <span>${delivered ? "Delivered" : "Estimated Delivery"}<strong>${escapeHtml(formatOrderDate(delivered && deliveredAt ? deliveredAt : estimatedAt, false))}</strong></span>
+              <span>${dateLabel}<strong>${escapeHtml(dateValue)}</strong></span>
             </div>
             ${customerTrackingHtml(order)}
             ${orderReturnHtml(order)}
