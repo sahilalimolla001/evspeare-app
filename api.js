@@ -344,6 +344,16 @@
     });
   }
 
+  async function applyCoupon(coupon) {
+    if (!hasEndpoint(config.couponEndpoint)) {
+      throw new Error("Coupon service is not configured");
+    }
+    return request(config.couponEndpoint, {
+      method: "POST",
+      body: coupon
+    });
+  }
+
   async function createPaymentOrder(order) {
     if (!hasEndpoint(config.paymentCreateEndpoint)) {
       if (config.demo?.allowDemoPayment) {
@@ -444,6 +454,7 @@
     saveProfile,
     fetchCustomerState,
     saveCustomerState,
+    applyCoupon,
     createPaymentOrder,
     verifyPayment,
     pushOrder,

@@ -50,6 +50,7 @@ window.EVSPEARE_CONFIG = {
   firebaseVerifyEndpoint: "/api/mobile/auth/firebase",
   profileEndpoint: "/api/mobile/profile",
   customerStateEndpoint: "/api/mobile/customer-state",
+  couponEndpoint: "/api/mobile/coupons/apply",
   paymentCreateEndpoint: "/api/mobile/payments/create",
   paymentVerifyEndpoint: "/api/mobile/payments/verify",
 

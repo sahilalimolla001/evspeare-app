@@ -2697,6 +2697,54 @@ svg {
   color: #087f5b;
 }
 
+.coupon-box {
+  border: 1px solid #d7e7fb;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  background: #f8fbff;
+}
+
+.coupon-box > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.coupon-box span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.coupon-box label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.coupon-box input {
+  min-width: 0;
+  border: 1px solid #d7e7fb;
+  border-radius: 8px;
+  padding: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.coupon-box button {
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: var(--blue);
+  color: #fff;
+  font-weight: 900;
+}
+
+.coupon-box button:disabled {
+  opacity: 0.65;
+}
+
 .cart-addons {
   margin-top: 12px;
   display: grid;

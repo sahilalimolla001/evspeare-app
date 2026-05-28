@@ -257,6 +257,8 @@ const state = {
   paymentMethod: "cod",
   paymentMode: "cod",
   deliveryMode: "free",
+  coupon: null,
+  couponApplying: false,
   syncing: false,
   selectedProductId: "",
   savedLocation: loadJson(storageKeys.location, null),
@@ -934,15 +936,17 @@ function cartTotals() {
   const platformFee = 0;
   const delivery = standardDeliveryFee(subtotal, itemCount) || (state.deliveryMode === "fast" ? fastDeliveryFee(subtotal) : 0);
   const autoDiscount = subtotal >= 5000 ? Math.min(500, Math.round(subtotal * 0.05)) : 0;
+  const couponDiscount = itemCount && state.coupon ? Math.min(subtotal, Math.round(Number(state.coupon.discount) || 0)) : 0;
 
   return {
     entries,
     itemCount,
     subtotal,
     autoDiscount,
+    couponDiscount,
     platformFee,
     delivery,
-    total: Math.max(0, subtotal + platformFee + delivery - autoDiscount)
+    total: Math.max(0, subtotal + platformFee + delivery - autoDiscount - couponDiscount)
   };
 }
 
@@ -975,6 +979,27 @@ function smartCartProgressHtml(totals) {
   `;
 }
 
+function couponBoxHtml(totals) {
+  if (!totals.itemCount) return "";
+  const coupon = state.coupon;
+  return `
+    <section class="coupon-box" aria-label="Apply coupon">
+      <div>
+        <strong>${coupon ? escapeHtml(coupon.code) : "Have a coupon?"}</strong>
+        <span>${coupon ? `Saved ${formatPrice(totals.couponDiscount)}` : "Apply coupon code for instant discount"}</span>
+      </div>
+      ${coupon ? `
+        <button type="button" data-action="remove-coupon">Remove</button>
+      ` : `
+        <label>
+          <input type="text" data-coupon-code placeholder="Coupon code" autocomplete="off" />
+          <button type="button" data-action="apply-coupon" ${state.couponApplying ? "disabled" : ""}>${state.couponApplying ? "Applying" : "Apply"}</button>
+        </label>
+      `}
+    </section>
+  `;
+}
+
 function cartAddOnsHtml(limit = 3) {
   const rows = smartProducts(limit);
   if (!rows.length) return "";
@@ -990,6 +1015,49 @@ function cartAddOnsHtml(limit = 3) {
       `).join("")}
     </section>
   `;
+}
+
+async function applyCouponCode() {
+  if (!isLoggedIn()) {
+    openAccount();
+    showToast("Login required for coupon");
+    return;
+  }
+  const input = document.querySelector("[data-coupon-code]");
+  const code = String(input?.value || "").trim().toUpperCase();
+  if (!code) {
+    showToast("Enter coupon code");
+    input?.focus();
+    return;
+  }
+  if (!api?.applyCoupon) {
+    showToast("Coupon service is not available");
+    return;
+  }
+  state.couponApplying = true;
+  renderAll();
+  try {
+    const totals = cartTotals();
+    const response = await api.applyCoupon({
+      code,
+      subtotal: totals.subtotal,
+      customer_phone: state.session?.user?.phone || ""
+    });
+    state.coupon = response.coupon;
+    showToast(`Coupon ${response.coupon.code} applied`);
+  } catch (error) {
+    state.coupon = null;
+    showToast(error.message || "Coupon could not be applied");
+  } finally {
+    state.couponApplying = false;
+    renderAll();
+  }
+}
+
+function removeCoupon() {
+  state.coupon = null;
+  renderAll();
+  showToast("Coupon removed");
 }
 
 function fastDeliveryFee(amount) {
@@ -1042,8 +1110,10 @@ function renderCart() {
   nodes.priceBox.innerHTML = itemCount ? `
     ${freeDeliveryPopupHtml(totals)}
     ${smartCartProgressHtml(totals)}
+    ${couponBoxHtml(totals)}
     <div><span>Subtotal</span><strong>${formatPrice(subtotal)}</strong></div>
     ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
+    ${totals.couponDiscount ? `<div><span>Coupon</span><strong>- ${formatPrice(totals.couponDiscount)}</strong></div>` : ""}
     <div><span>Delivery</span><strong>${totals.delivery ? formatPrice(totals.delivery) : "Free"}</strong></div>
     <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
     <div class="total"><span>Total</span><strong>${formatPrice(total)}</strong></div>
@@ -1330,8 +1400,10 @@ function renderCartPage() {
     <div class="page-total">
       ${freeDeliveryPopupHtml(totals)}
       ${smartCartProgressHtml(totals)}
+      ${couponBoxHtml(totals)}
       <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
       ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
+      ${totals.couponDiscount ? `<div><span>Coupon</span><strong>- ${formatPrice(totals.couponDiscount)}</strong></div>` : ""}
       <div><span>Delivery</span><strong>${totals.delivery ? formatPrice(totals.delivery) : "Free"}</strong></div>
       <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
       <div class="total"><span>Total</span><strong>${formatPrice(totals.total)}</strong></div>
@@ -2005,10 +2077,12 @@ function renderCheckoutPage() {
       ${deliveryOptionsHtml(totals, deliveryEligibility)}
       ${freeDeliveryPopupHtml(totals)}
       ${smartCartProgressHtml(totals)}
+      ${couponBoxHtml(totals)}
       ${checkoutItemsPreview(totals.entries)}
       <div class="checkout-price-panel">
         <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
         ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
+        ${totals.couponDiscount ? `<div><span>Coupon</span><strong>- ${formatPrice(totals.couponDiscount)}</strong></div>` : ""}
         <div><span>Delivery</span><strong>${totals.delivery ? formatPrice(totals.delivery) : "Free"}</strong></div>
         <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
         <div class="total"><span>Total</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
@@ -3112,6 +3186,7 @@ function buildOrder(customer, payment) {
       delivery: totals.delivery,
       platformFee: totals.platformFee,
       autoDiscount: totals.autoDiscount,
+      couponDiscount: totals.couponDiscount,
       total: totals.total
     },
     delivery: {
@@ -3123,7 +3198,14 @@ function buildOrder(customer, payment) {
     },
     promotions: {
       autoDiscount: totals.autoDiscount,
-      label: totals.autoDiscount ? "Auto 5% off" : ""
+      coupon: state.coupon ? {
+        code: state.coupon.code,
+        title: state.coupon.title || state.coupon.code,
+        discount: totals.couponDiscount
+      } : null,
+      couponCode: state.coupon?.code || "",
+      couponDiscount: totals.couponDiscount,
+      label: state.coupon ? `Coupon ${state.coupon.code}` : totals.autoDiscount ? "Auto 5% off" : ""
     },
     payment,
     status: payment.method === "cod" ? "pending_cod" : "paid",
@@ -3315,6 +3397,7 @@ async function placeOrder() {
       }
     });
     state.cart.clear();
+    state.coupon = null;
     state.codVerificationToken = "";
     state.pendingCodCustomer = null;
     persistShoppingState();
@@ -3692,6 +3775,12 @@ document.addEventListener("click", async (event) => {
       break;
     case "save-location":
       saveLocationFromForm();
+      break;
+    case "apply-coupon":
+      await applyCouponCode();
+      break;
+    case "remove-coupon":
+      removeCoupon();
       break;
     case "use-live-location":
       useLiveLocation();

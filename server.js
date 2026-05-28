@@ -432,6 +432,19 @@ function configuredWarehouseCancelUrl(req) {
   }
 }
 
+function configuredWarehouseCouponUrl(req) {
+  const explicitUrl = validHttpEndpoint(process.env.WAREHOUSE_COUPON_VALIDATE_URL || process.env.WAREHOUSE_COUPON_URL || "");
+  if (explicitUrl) return explicitUrl;
+  if (!process.env.WAREHOUSE_API_TOKEN) return "";
+  const baseUrl = process.env.WAREHOUSE_ORDERS_URL || process.env.WAREHOUSE_PRODUCTS_URL || configuredWebsiteProductsUrl(req);
+  if (!baseUrl) return "";
+  try {
+    return new URL("/api/coupons/validate", new URL(baseUrl).origin).toString();
+  } catch (error) {
+    return "";
+  }
+}
+
 function publicConfig(req) {
   const websiteProductsUrl = configuredWebsiteProductsUrl(req);
   const websiteOrdersUrl = configuredWebsiteOrdersUrl(req);
@@ -470,6 +483,7 @@ function publicConfig(req) {
     firebaseVerifyEndpoint: "/api/mobile/auth/firebase",
     profileEndpoint: "/api/mobile/profile",
     customerStateEndpoint: "/api/mobile/customer-state",
+    couponEndpoint: "/api/mobile/coupons/apply",
     paymentCreateEndpoint: "/api/mobile/payments/create",
     paymentVerifyEndpoint: "/api/mobile/payments/verify",
     authHeader: "",
@@ -1656,6 +1670,26 @@ async function handleSupportQuery(req, res) {
   });
 }
 
+async function handleCouponApply(req, res) {
+  const user = verifyToken(req);
+  if (!user) return send(res, 401, { message: "Login required" });
+  const body = await readBody(req);
+  const code = String(body.code || "").trim().toUpperCase();
+  const subtotal = Number(body.subtotal || 0);
+  if (!code) return send(res, 400, { message: "Coupon code is required" });
+  if (!subtotal || subtotal <= 0) return send(res, 400, { message: "Cart subtotal is required" });
+  try {
+    const result = await validateCouponWithWarehouse(req, {
+      code,
+      customerPhone: user.phone,
+      subtotal
+    });
+    return send(res, 200, result);
+  } catch (error) {
+    return send(res, 400, { message: error.message || "Coupon could not be applied" });
+  }
+}
+
 function websiteHeaders(extra = {}, req = null) {
   const localConfig = req ? localFrontendConfig(req) : {};
   const headers = {
@@ -1691,6 +1725,53 @@ function warehouseHeaders(extra = {}) {
     headers.Authorization = process.env.WAREHOUSE_API_TOKEN;
   }
   return headers;
+}
+
+function orderCoupon(order) {
+  const promotions = order?.promotions && typeof order.promotions === "object" ? order.promotions : {};
+  const coupon = promotions.coupon && typeof promotions.coupon === "object" ? promotions.coupon : {};
+  const code = String(coupon.code || promotions.couponCode || order?.couponCode || "").trim().toUpperCase();
+  const discount = Number(coupon.discount || promotions.couponDiscount || order?.amounts?.couponDiscount || 0);
+  return { code, discount: Number.isFinite(discount) ? Math.max(0, discount) : 0 };
+}
+
+function orderHasCoupon(order) {
+  return Boolean(orderCoupon(order).code);
+}
+
+async function validateCouponWithWarehouse(req, { code, customerPhone, subtotal }) {
+  const endpoint = configuredWarehouseCouponUrl(req);
+  if (!endpoint) {
+    throw new Error("Coupon service is not configured");
+  }
+  const response = await fetchWithTimeout(endpoint, {
+    method: "POST",
+    headers: warehouseHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ code, customer_phone: customerPhone, subtotal })
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) {
+    throw new Error(data.message || data.error || "Coupon is not valid");
+  }
+  return data;
+}
+
+async function validateOrderCoupon(order, req) {
+  const coupon = orderCoupon(order);
+  if (!coupon.code) return null;
+  const subtotal = Number(order.amounts?.subtotal || 0);
+  const phone = phoneDigits(order.customer?.phone || order.customer_phone || order.customerPhone || "");
+  const result = await validateCouponWithWarehouse(req, {
+    code: coupon.code,
+    customerPhone: phone,
+    subtotal
+  });
+  const expectedDiscount = Math.round(Number(result.coupon?.discount || 0));
+  if (Math.abs(expectedDiscount - Math.round(coupon.discount || 0)) > 1) {
+    throw new Error("Coupon discount amount changed. Apply coupon again.");
+  }
+  return result;
 }
 
 function inventoryKeys(row) {
@@ -2905,6 +2986,9 @@ async function persistAndPushOrder(order, req) {
   const result = await storeOrderAndPushWebsite(order, req);
   try {
     const warehouse = await pushOrderToWarehouse(order);
+    if (!warehouse && orderHasCoupon(order)) {
+      throw new Error("Warehouse order API is required to redeem coupon");
+    }
     return {
       ...result,
       warehousePushed: Boolean(warehouse),
@@ -2912,6 +2996,9 @@ async function persistAndPushOrder(order, req) {
     };
   } catch (error) {
     console.error("Warehouse order push failed", error);
+    if (orderHasCoupon(order)) {
+      throw error;
+    }
     return {
       ...result,
       warehousePushed: false,
@@ -2989,6 +3076,12 @@ async function handleOrder(req, res) {
       return send(res, 400, { message: "Verified Razorpay payment is required for this online order" });
     }
     order = pendingOrder;
+  }
+
+  try {
+    await validateOrderCoupon(order, req);
+  } catch (error) {
+    return send(res, 400, { message: error.message || "Coupon is not valid" });
   }
 
   const inventoryError = await validateOrderInventory(order, req);
@@ -3141,6 +3234,12 @@ async function handlePaymentCreate(req, res) {
   const inventoryError = await validateOrderInventory(order, req);
   if (inventoryError) {
     return send(res, 409, { message: inventoryError });
+  }
+
+  try {
+    await validateOrderCoupon(order, req);
+  } catch (error) {
+    return send(res, 400, { message: error.message || "Coupon is not valid" });
   }
 
   let gatewayOrder;
@@ -3342,6 +3441,7 @@ async function router(req, res) {
     if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/mobile/profile") return handleCustomerProfile(req, res);
     if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/mobile/customer-state") return handleCustomerState(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/support") return handleSupportQuery(req, res);
+    if (req.method === "POST" && url.pathname === "/api/mobile/coupons/apply") return handleCouponApply(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/products") return handleProducts(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/images") return handleProductImage(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/orders") return handleCustomerOrders(req, res);
