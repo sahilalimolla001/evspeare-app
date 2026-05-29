@@ -3,6 +3,19 @@ const { Pool: PgPool } = require("pg");
 
 let pool;
 
+function indiaDate(date = new Date()) {
+  return new Date(date.getTime() + 5.5 * 60 * 60 * 1000);
+}
+
+function indiaIso(date = new Date()) {
+  return `${indiaDate(date).toISOString().slice(0, 19)}+05:30`;
+}
+
+function dbTimestamp(value = null) {
+  const date = value ? new Date(value) : new Date();
+  return indiaIso(Number.isNaN(date.getTime()) ? new Date() : date).replace("T", " ").replace("+05:30", "");
+}
+
 function databaseUrl() {
   return process.env.DATABASE_URL || process.env.MYSQL_URL || process.env.POSTGRES_URL || "";
 }
@@ -435,28 +448,30 @@ async function insertOrder(order) {
     order.payment?.method || "",
     order.payment?.status || "",
     order.status || "",
-    payload
+    payload,
+    dbTimestamp(order.createdAt)
   ];
 
   await execute(
     `INSERT INTO ${orders}
-      (order_id, customer_name, customer_phone, customer_address, amount_total, payment_method, payment_status, status, payload)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      (order_id, customer_name, customer_phone, customer_address, amount_total, payment_method, payment_status, status, payload, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
     values
   );
 
   for (const item of order.items || []) {
     await execute(
       `INSERT INTO ${items}
-        (order_id, product_id, title, price, quantity, line_total)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
+        (order_id, product_id, title, price, quantity, line_total, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [
         order.orderId,
         item.productId || item.appProductId || "",
         item.title || "",
         Number(item.price || 0),
         Number(item.quantity || 0),
-        Number(item.total || 0)
+        Number(item.total || 0),
+        dbTimestamp(order.createdAt)
       ]
     );
   }

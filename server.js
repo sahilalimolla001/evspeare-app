@@ -1551,7 +1551,7 @@ async function handleFirebaseLogin(req, res) {
           accuracy: Number(address.coordinates.accuracy) || null
         } : null,
         mapLocation: String(address.mapLocation || address.map_location || "").trim(),
-        updatedAt: new Date().toISOString()
+        updatedAt: indiaIso()
       };
       profiles[profileKey] = profile;
       writeCustomerProfiles(profiles);
@@ -1593,7 +1593,7 @@ async function handleCustomerProfile(req, res) {
       accuracy: Number(body.coordinates.accuracy) || null
     } : null,
     mapLocation: String(body.mapLocation || body.map_location || "").trim(),
-    updatedAt: new Date().toISOString()
+    updatedAt: indiaIso()
   };
   profiles[profileKey] = profile;
   writeCustomerProfiles(profiles);
@@ -1617,7 +1617,7 @@ async function handleCustomerState(req, res) {
     wishlist,
     location,
     orders,
-    updatedAt: new Date().toISOString()
+    updatedAt: indiaIso()
   };
   writeCustomerState(states);
   return send(res, 200, { state: states[phone] });
@@ -1641,7 +1641,7 @@ async function handleSupportQuery(req, res) {
     message,
     source: body.source || "mobile_app",
     user: user || null,
-    createdAt: new Date().toISOString()
+    createdAt: indiaIso()
   };
 
   const dataDir = path.join(rootDir, "data");
@@ -2252,6 +2252,14 @@ function addDays(date, days) {
   return next;
 }
 
+function indiaDate(date = new Date()) {
+  return new Date(date.getTime() + 5.5 * 60 * 60 * 1000);
+}
+
+function indiaIso(date = new Date()) {
+  return `${indiaDate(date).toISOString().slice(0, 19)}+05:30`;
+}
+
 function validDate(value) {
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
@@ -2462,13 +2470,13 @@ function trackingSteps(status, order = {}, tracking = {}) {
       key: "placed",
       label: "Order Placed",
       done: true,
-      date: createdAt.toISOString()
+      date: indiaIso(createdAt)
     },
     {
       key: "shipped",
       label: "Shipped",
       done: activeIndex >= 1,
-      date: (firstDate(tracking.shippedAt, tracking.shipped_at, order.shippedAt, order.shipped_at) || addDays(createdAt, 2)).toISOString()
+      date: indiaIso(firstDate(tracking.shippedAt, tracking.shipped_at, order.shippedAt, order.shipped_at) || addDays(createdAt, 2))
     },
     {
       key: "in_transit",
@@ -2483,13 +2491,13 @@ function trackingSteps(status, order = {}, tracking = {}) {
         order.in_transit_at,
         order.outForDeliveryAt,
         order.out_for_delivery_at
-      ) || addDays(createdAt, 4)).toISOString()
+      ) || addDays(createdAt, 4))
     },
     {
       key: "delivered",
       label: "Delivered",
       done: activeIndex >= 3,
-      date: (firstDate(tracking.deliveredAt, tracking.delivered_at, order.deliveredAt, order.delivered_at) || estimatedAt).toISOString()
+      date: indiaIso(firstDate(tracking.deliveredAt, tracking.delivered_at, order.deliveredAt, order.delivered_at) || estimatedAt)
     }
   ];
 }
@@ -2765,8 +2773,8 @@ function buildOrderActionRequest(type, order, user, details = {}, tracking = {})
     reason: details.reason || "",
     note: details.note || details.details || "",
     source: "mobile_app",
-    requestedAt: new Date().toISOString(),
-    deliveredAt: deliveredAt ? deliveredAt.toISOString() : "",
+    requestedAt: indiaIso(),
+    deliveredAt: deliveredAt ? indiaIso(deliveredAt) : "",
     customer: orderCustomerForRequest(order, user),
     items,
     itemCount: items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
@@ -2943,7 +2951,7 @@ async function handleOrderReturn(req, res) {
 
   const returnBody = buildOrderActionRequest("return", order, user, { reason, note }, tracking);
   returnBody.returnWindowDays = 7;
-  returnBody.returnAvailableUntil = returnAvailableUntil.toISOString();
+  returnBody.returnAvailableUntil = indiaIso(returnAvailableUntil);
   appendOrderActionRequest("return", returnBody);
   const results = {};
 
@@ -3093,11 +3101,11 @@ async function handleOrder(req, res) {
   const estimatedDeliveryAt = orderEstimatedDeliveryDate(order);
   const response = await persistAndPushOrder({
     ...order,
-    createdAt: (validDate(order.createdAt) || createdAt).toISOString(),
-    estimatedDeliveryAt: estimatedDeliveryAt.toISOString(),
+    createdAt: indiaIso(validDate(order.createdAt) || createdAt),
+    estimatedDeliveryAt: indiaIso(estimatedDeliveryAt),
     deliveryEstimate: {
       days: order.deliveryEstimate?.days || deliveryEstimateDays,
-      estimatedDeliveryAt: estimatedDeliveryAt.toISOString()
+      estimatedDeliveryAt: indiaIso(estimatedDeliveryAt)
     },
     verifiedCustomer: user || null
   }, req);
@@ -3139,17 +3147,17 @@ async function handleCustomerOrders(req, res) {
 
     enriched.push({
       ...order,
-      estimatedDeliveryAt: estimatedAt.toISOString(),
+      estimatedDeliveryAt: indiaIso(estimatedAt),
       deliveryEstimate: {
         ...(order.deliveryEstimate || {}),
         days: order.deliveryEstimate?.days || tracking.estimatedDays || deliveryEstimateDays,
-        estimatedDeliveryAt: estimatedAt.toISOString()
+        estimatedDeliveryAt: indiaIso(estimatedAt)
       },
       tracking: {
         ...tracking,
         awbNumber: tracking.awbNumber || trackingAwbNumber(tracking) || trackingAwbNumber(order) || "",
         estimatedDays: tracking.estimatedDays || deliveryEstimateDays,
-        estimatedDeliveryAt: estimatedAt.toISOString(),
+        estimatedDeliveryAt: indiaIso(estimatedAt),
         steps: tracking.steps || trackingSteps(status, order, tracking)
       }
     });
@@ -3406,14 +3414,14 @@ async function router(req, res) {
       return send(res, 200, {
         ok: true,
         service: "ev-speare",
-        time: new Date().toISOString()
+        time: indiaIso()
       });
     }
 
     if (req.method === "GET" && url.pathname === "/app-version") {
       return send(res, 200, {
         version: currentAppVersion(),
-        checkedAt: new Date().toISOString()
+        checkedAt: indiaIso()
       });
     }
 

@@ -434,6 +434,14 @@ function addDays(date, days) {
   return next;
 }
 
+function indiaDate(date = new Date()) {
+  return new Date(date.getTime() + 5.5 * 60 * 60 * 1000);
+}
+
+function indiaIso(date = new Date()) {
+  return `${indiaDate(date).toISOString().slice(0, 19)}+05:30`;
+}
+
 function validDate(value) {
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
@@ -1480,7 +1488,7 @@ function normalizeBillingDetails(details = {}, source = details.source || "manua
     coordinates: base.coordinates || null,
     mapLocation: String(base.mapLocation || base.map_location || "").trim(),
     source,
-    updatedAt: base.updatedAt || new Date().toISOString()
+    updatedAt: base.updatedAt || indiaIso()
   };
 }
 
@@ -1614,7 +1622,7 @@ function renderSavedLocation() {
 function saveCustomerLocation(details, source = "manual", { silent = false, rerender = true } = {}) {
   const location = {
     ...normalizeBillingDetails(details, source),
-    updatedAt: new Date().toISOString()
+    updatedAt: indiaIso()
   };
   const address = formatAddress(location);
   state.savedLocation = {
@@ -2800,7 +2808,7 @@ async function completeGoogleSession(response, phone, name) {
     },
     profile: response.profile || null,
     expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-    loggedInAt: new Date().toISOString()
+    loggedInAt: indiaIso()
   };
   pendingGoogleLogin = null;
   nodes.newCustomerForm.hidden = true;
@@ -3209,11 +3217,11 @@ function buildOrder(customer, payment) {
     },
     payment,
     status: payment.method === "cod" ? "pending_cod" : "paid",
-    createdAt: createdAt.toISOString(),
-    estimatedDeliveryAt: estimatedDeliveryAt.toISOString(),
+    createdAt: indiaIso(createdAt),
+    estimatedDeliveryAt: indiaIso(estimatedDeliveryAt),
     deliveryEstimate: {
       days: deliveryEstimateDays,
-      estimatedDeliveryAt: estimatedDeliveryAt.toISOString()
+      estimatedDeliveryAt: indiaIso(estimatedDeliveryAt)
     }
   };
 }
@@ -3390,8 +3398,8 @@ async function placeOrder() {
         estimatedDeliveryAt: order.estimatedDeliveryAt,
         steps: [
           { key: "placed", label: "Order Placed", done: true, date: order.createdAt },
-          { key: "shipped", label: "Shipped", done: false, date: addDays(validDate(order.createdAt) || new Date(), 2).toISOString() },
-          { key: "in_transit", label: "In Transit", done: false, date: addDays(validDate(order.createdAt) || new Date(), 4).toISOString() },
+          { key: "shipped", label: "Shipped", done: false, date: indiaIso(addDays(validDate(order.createdAt) || new Date(), 2)) },
+          { key: "in_transit", label: "In Transit", done: false, date: indiaIso(addDays(validDate(order.createdAt) || new Date(), 4)) },
           { key: "delivered", label: "Delivered", done: false, date: order.estimatedDeliveryAt }
         ]
       }
@@ -3507,7 +3515,7 @@ async function returnOrder(orderId) {
           status: response.status || "return_requested",
           reason: cleanReason,
           note,
-          requestedAt: new Date().toISOString()
+          requestedAt: indiaIso()
         }
       };
     });
