@@ -380,6 +380,61 @@ svg {
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
 }
 
+.home-trust-strip {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.home-trust-strip article {
+  min-width: 0;
+  min-height: 74px;
+  border: 1px solid #dce8f5;
+  border-radius: 8px;
+  padding: 9px 8px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(23, 32, 51, 0.07);
+}
+
+.home-trust-strip svg {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  padding: 7px;
+  color: var(--blue-dark);
+  background: #eaf3ff;
+}
+
+.home-trust-strip div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.home-trust-strip strong,
+.home-trust-strip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-trust-strip strong {
+  color: var(--ink);
+  font-size: 0.74rem;
+  line-height: 1.15;
+}
+
+.home-trust-strip span {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 760;
+}
+
 .support-card {
   border-radius: 8px;
   padding: 12px;
@@ -547,10 +602,10 @@ svg {
 .category-rail,
 .filter-row {
   display: flex;
-  gap: 9px;
+  gap: 10px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-bottom: 1px;
+  padding: 1px 0 3px;
 }
 
 .category-rail::-webkit-scrollbar,
@@ -559,36 +614,42 @@ svg {
 }
 
 .category-card {
-  min-width: 82px;
+  min-width: 96px;
   border-radius: 8px;
-  padding: 9px 8px;
+  padding: 10px 9px;
   display: grid;
   justify-items: center;
-  gap: 7px;
+  gap: 8px;
   color: var(--ink);
-  background: var(--surface);
-  box-shadow: 0 1px 0 rgba(23, 32, 51, 0.06);
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+  border: 1px solid #e1ebf6;
+  box-shadow: 0 8px 22px rgba(23, 32, 51, 0.07);
 }
 
 .category-card.active {
-  color: var(--blue);
-  box-shadow: inset 0 0 0 2px rgba(40, 116, 240, 0.22);
+  color: var(--blue-dark);
+  border-color: rgba(40, 116, 240, 0.32);
+  background: #eef6ff;
+  box-shadow: inset 0 0 0 1px rgba(40, 116, 240, 0.2), 0 10px 24px rgba(40, 116, 240, 0.12);
 }
 
 .category-card img {
-  width: 48px;
-  height: 48px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
   object-fit: cover;
+  padding: 3px;
+  background: #ffffff;
+  box-shadow: 0 8px 16px rgba(23, 32, 51, 0.12);
 }
 
 .category-card span {
-  max-width: 70px;
+  max-width: 80px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.72rem;
-  font-weight: 760;
+  font-size: 0.74rem;
+  font-weight: 850;
 }
 
 .deal-strip {
@@ -642,7 +703,7 @@ svg {
 .product-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .product-card {
@@ -650,8 +711,8 @@ svg {
   border-radius: 8px;
   overflow: hidden;
   background: var(--surface);
-  border: 1px solid rgba(228, 233, 242, 0.8);
-  box-shadow: 0 1px 0 rgba(23, 32, 51, 0.05);
+  border: 1px solid #dde8f3;
+  box-shadow: 0 10px 26px rgba(23, 32, 51, 0.08);
 }
 
 .product-card.out-of-stock .product-media img {
@@ -660,9 +721,9 @@ svg {
 }
 
 .product-media {
-  aspect-ratio: 1 / 0.82;
+  aspect-ratio: 1 / 0.88;
   position: relative;
-  background: #eef3f8;
+  background: linear-gradient(180deg, #f5f8fb 0%, #e9f0f7 100%);
 }
 
 .product-media img {
@@ -676,8 +737,8 @@ svg {
   position: absolute;
   top: 8px;
   right: 8px;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 999px;
   display: grid;
   place-items: center;
@@ -696,12 +757,12 @@ svg {
   top: 8px;
   max-width: calc(100% - 52px);
   border-radius: 999px;
-  padding: 5px 8px;
+  padding: 5px 9px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: white;
-  background: rgba(23, 32, 51, 0.82);
+  background: rgba(23, 32, 51, 0.86);
   font-size: 0.66rem;
   font-weight: 900;
 }
@@ -716,6 +777,7 @@ svg {
   background: var(--yellow);
   font-size: 0.68rem;
   font-weight: 900;
+  box-shadow: 0 6px 14px rgba(23, 32, 51, 0.16);
 }
 
 .stock-badge.in {
@@ -727,22 +789,22 @@ svg {
 }
 
 .product-body {
-  padding: 9px;
+  padding: 10px;
 }
 
 .product-title {
-  min-height: 38px;
+  min-height: 40px;
   margin: 0;
   display: -webkit-box;
   overflow: hidden;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  font-size: 0.86rem;
-  line-height: 1.28;
+  font-size: 0.88rem;
+  line-height: 1.3;
 }
 
 .rating-row {
-  margin-top: 5px;
+  margin-top: 7px;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -751,9 +813,9 @@ svg {
 }
 
 .rating-pill {
-  min-width: 38px;
+  min-width: 40px;
   height: 20px;
-  border-radius: 4px;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -763,7 +825,7 @@ svg {
 }
 
 .price-row {
-  margin-top: 7px;
+  margin-top: 8px;
   display: flex;
   align-items: baseline;
   gap: 5px;
@@ -771,7 +833,8 @@ svg {
 }
 
 .price-row strong {
-  font-size: 1rem;
+  color: #111827;
+  font-size: 1.04rem;
 }
 
 .price-row del {
@@ -780,42 +843,47 @@ svg {
 }
 
 .price-row span {
-  color: var(--green);
-  font-size: 0.72rem;
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: #087f5b;
+  background: #e7f8ef;
+  font-size: 0.68rem;
   font-weight: 850;
 }
 
 .delivery-line {
-  min-height: 17px;
-  margin: 5px 0 9px;
+  min-height: 18px;
+  margin: 6px 0 10px;
   color: #596980;
   font-size: 0.72rem;
+  font-weight: 720;
 }
 
 .card-actions {
   display: grid;
-  grid-template-columns: 1fr 38px;
-  gap: 7px;
+  grid-template-columns: 1fr 40px;
+  gap: 8px;
 }
 
 .add-button,
 .buy-button,
 .checkout-button {
-  min-height: 38px;
+  min-height: 40px;
   border-radius: 8px;
-  font-weight: 850;
+  font-weight: 900;
 }
 
 .add-button {
-  color: var(--blue-dark);
-  background: #e8f0fe;
+  color: #ffffff;
+  background: var(--blue);
 }
 
 .buy-button {
   display: grid;
   place-items: center;
-  color: var(--ink);
+  color: #172033;
   background: var(--yellow);
+  box-shadow: inset 0 -1px 0 rgba(23, 32, 51, 0.12);
 }
 
 .empty-state {
@@ -3400,6 +3468,36 @@ svg {
   .content {
     padding-left: 9px;
     padding-right: 9px;
+  }
+
+  .home-trust-strip {
+    gap: 6px;
+  }
+
+  .home-trust-strip article {
+    min-height: 68px;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+    gap: 5px;
+    padding: 8px 5px;
+  }
+
+  .home-trust-strip svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .home-trust-strip strong {
+    font-size: 0.68rem;
+  }
+
+  .home-trust-strip span {
+    font-size: 0.6rem;
+  }
+
+  .category-card {
+    min-width: 88px;
   }
 
   .promo-band {
