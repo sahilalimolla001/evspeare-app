@@ -37,6 +37,7 @@ loadDotEnv();
 const port = Number(process.env.PORT || 3000);
 const fallbackPort = 3000;
 const deliveryEstimateDays = 7;
+const fastDeliveryEstimateDays = 1;
 const codMaxOrderAmount = 1000;
 const pendingRazorpayOrders = new Map();
 const defaultFirebaseWebConfig = {
@@ -2269,8 +2270,23 @@ function orderCreatedDate(order) {
   return validDate(order.createdAt || order.created_at || order.orderDate || order.date || order.created) || new Date();
 }
 
+function isFastDeliveryOrder(order = {}) {
+  const mode = String(order.delivery?.mode || order.deliveryMode || order.delivery_mode || "").toLowerCase();
+  const label = String(order.delivery?.label || order.deliveryLabel || order.delivery_label || "").toLowerCase();
+  const automation = String(order.delivery?.automation || "").toLowerCase();
+  return mode === "fast" || label.includes("fast") || automation.includes("express");
+}
+
+function orderDeliveryEstimateDays(order = {}, tracking = {}) {
+  if (isFastDeliveryOrder(order)) return fastDeliveryEstimateDays;
+  const rawDays = Number(order.deliveryEstimate?.days || tracking.estimatedDays || order.delivery?.days || order.delivery?.estimateDays);
+  if (Number.isFinite(rawDays) && rawDays > 0) return rawDays;
+  return deliveryEstimateDays;
+}
+
 function orderEstimatedDeliveryDate(order, tracking = {}) {
   const createdAt = orderCreatedDate(order);
+  if (isFastDeliveryOrder(order)) return addDays(createdAt, fastDeliveryEstimateDays);
   return validDate(
     order.estimatedDeliveryAt ||
       order.estimatedDeliveryDate ||
@@ -2280,7 +2296,7 @@ function orderEstimatedDeliveryDate(order, tracking = {}) {
       tracking.estimatedDeliveryAt ||
       tracking.estimatedDeliveryDate ||
       tracking.eta
-  ) || addDays(createdAt, deliveryEstimateDays);
+  ) || addDays(createdAt, orderDeliveryEstimateDays(order, tracking));
 }
 
 function trackingStage(status) {
@@ -3098,13 +3114,22 @@ async function handleOrder(req, res) {
   }
 
   const createdAt = orderCreatedDate(order);
-  const estimatedDeliveryAt = orderEstimatedDeliveryDate(order);
+  const estimateDays = orderDeliveryEstimateDays(order);
+  const estimatedDeliveryAt = isFastDeliveryOrder(order) ? addDays(createdAt, estimateDays) : orderEstimatedDeliveryDate(order);
   const response = await persistAndPushOrder({
     ...order,
     createdAt: indiaIso(validDate(order.createdAt) || createdAt),
     estimatedDeliveryAt: indiaIso(estimatedDeliveryAt),
+    delivery: {
+      ...(order.delivery || {}),
+      mode: isFastDeliveryOrder(order) ? "fast" : (order.delivery?.mode || "free"),
+      label: isFastDeliveryOrder(order) ? "Fast delivery" : (order.delivery?.label || "Standard delivery"),
+      days: estimateDays,
+      estimatedDays: isFastDeliveryOrder(order) ? "1 day delivery" : (order.delivery?.estimatedDays || "6-7 days"),
+      automation: isFastDeliveryOrder(order) ? "express_zone_selected" : (order.delivery?.automation || "standard_auto_selected")
+    },
     deliveryEstimate: {
-      days: order.deliveryEstimate?.days || deliveryEstimateDays,
+      days: estimateDays,
       estimatedDeliveryAt: indiaIso(estimatedDeliveryAt)
     },
     verifiedCustomer: user || null
@@ -3143,6 +3168,7 @@ async function handleCustomerOrders(req, res) {
     if (liveTracking.error) tracking = { ...tracking, error: liveTracking.error };
 
     const estimatedAt = orderEstimatedDeliveryDate(order, tracking);
+    const estimateDays = orderDeliveryEstimateDays(order, tracking);
     const status = tracking.status || order.status || "placed";
 
     enriched.push({
@@ -3150,13 +3176,13 @@ async function handleCustomerOrders(req, res) {
       estimatedDeliveryAt: indiaIso(estimatedAt),
       deliveryEstimate: {
         ...(order.deliveryEstimate || {}),
-        days: order.deliveryEstimate?.days || tracking.estimatedDays || deliveryEstimateDays,
+        days: estimateDays,
         estimatedDeliveryAt: indiaIso(estimatedAt)
       },
       tracking: {
         ...tracking,
         awbNumber: tracking.awbNumber || trackingAwbNumber(tracking) || trackingAwbNumber(order) || "",
-        estimatedDays: tracking.estimatedDays || deliveryEstimateDays,
+        estimatedDays: estimateDays,
         estimatedDeliveryAt: indiaIso(estimatedAt),
         steps: tracking.steps || trackingSteps(status, order, tracking)
       }

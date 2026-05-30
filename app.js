@@ -21,6 +21,7 @@ const api = window.BazaarGoApi;
 const appConfig = window.EVSPEARE_CONFIG || window.BAZAARGO_CONFIG || {};
 const currency = new Intl.NumberFormat("en-IN");
 const deliveryEstimateDays = 7;
+const fastDeliveryEstimateDays = 1;
 const returnWindowDays = 7;
 const codMaxOrderAmount = 1000;
 let firebaseAuthInstance = null;
@@ -453,6 +454,7 @@ function orderCreatedDate(order) {
 
 function orderEstimatedDeliveryDate(order) {
   const createdAt = orderCreatedDate(order);
+  if (isFastDeliveryOrder(order)) return addDays(createdAt, fastDeliveryEstimateDays);
   return validDate(
     order.estimatedDeliveryAt ||
       order.estimatedDeliveryDate ||
@@ -461,7 +463,25 @@ function orderEstimatedDeliveryDate(order) {
       order.deliveryEstimate?.estimatedDeliveryAt ||
       order.tracking?.estimatedDeliveryAt ||
       order.tracking?.eta
-  ) || addDays(createdAt, deliveryEstimateDays);
+  ) || addDays(createdAt, orderDeliveryEstimateDays(order));
+}
+
+function isFastDeliveryOrder(order = {}) {
+  const mode = String(order.delivery?.mode || order.deliveryMode || order.delivery_mode || "").toLowerCase();
+  const label = String(order.delivery?.label || order.deliveryLabel || order.delivery_label || "").toLowerCase();
+  const automation = String(order.delivery?.automation || "").toLowerCase();
+  return mode === "fast" || label.includes("fast") || automation.includes("express");
+}
+
+function orderDeliveryEstimateDays(order = {}) {
+  if (isFastDeliveryOrder(order)) return fastDeliveryEstimateDays;
+  const rawDays = Number(order.deliveryEstimate?.days || order.delivery?.days || order.delivery?.estimateDays);
+  if (Number.isFinite(rawDays) && rawDays > 0) return rawDays;
+  return deliveryEstimateDays;
+}
+
+function deliveryPromiseText(order = {}) {
+  return isFastDeliveryOrder(order) ? "1 day delivery" : `${orderDeliveryEstimateDays(order)} days delivery`;
 }
 
 function formatOrderDate(value, includeYear = true) {
@@ -948,7 +968,7 @@ function cartTotals() {
   const itemCount = entries.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = entries.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const platformFee = 0;
-  const delivery = standardDeliveryFee(subtotal, itemCount) || (state.deliveryMode === "fast" ? fastDeliveryFee(subtotal) : 0);
+  const delivery = state.deliveryMode === "fast" ? fastDeliveryFee(subtotal) : standardDeliveryFee(subtotal, itemCount);
   const autoDiscount = subtotal >= 5000 ? Math.min(500, Math.round(subtotal * 0.05)) : 0;
   const couponDiscount = itemCount && state.coupon ? Math.min(subtotal, Math.round(Number(state.coupon.discount) || 0)) : 0;
 
@@ -2501,6 +2521,7 @@ function renderOrdersPage() {
         const delivered = orderIsDelivered(order);
         const deliveredAt = orderDeliveredDate(order);
         const awbNumber = orderAwbNumber(order);
+        const deliveryPromise = deliveryPromiseText(order);
         const dateLabel = cancelled ? "Order Status" : delivered ? "Delivered" : "Estimated Delivery";
         const dateValue = cancelled ? "Cancelled" : formatOrderDate(delivered && deliveredAt ? deliveredAt : estimatedAt, false);
         return `
@@ -2516,6 +2537,7 @@ function renderOrdersPage() {
             <div class="order-date-grid">
               <span>Order Date<strong>${escapeHtml(formatOrderDate(createdAt, false))}</strong></span>
               <span>${dateLabel}<strong>${escapeHtml(dateValue)}</strong></span>
+              <span>Delivery Type<strong>${escapeHtml(deliveryPromise)}</strong></span>
             </div>
             ${customerTrackingHtml(order)}
             ${orderReturnHtml(order)}
@@ -3160,7 +3182,8 @@ function validateCheckout() {
 function buildOrder(customer, payment) {
   const totals = cartTotals();
   const createdAt = new Date();
-  const estimatedDeliveryAt = addDays(createdAt, deliveryEstimateDays);
+  const estimateDays = state.deliveryMode === "fast" ? fastDeliveryEstimateDays : deliveryEstimateDays;
+  const estimatedDeliveryAt = addDays(createdAt, estimateDays);
   return {
     orderId: `BG-${Date.now()}`,
     source: "mobile_pwa",
@@ -3207,7 +3230,8 @@ function buildOrder(customer, payment) {
       mode: state.deliveryMode,
       label: state.deliveryMode === "fast" ? "Fast delivery" : "Standard delivery",
       fee: totals.delivery,
-      estimatedDays: state.deliveryMode === "fast" ? "Delivery by tomorrow" : "6-7 days",
+      days: estimateDays,
+      estimatedDays: state.deliveryMode === "fast" ? "1 day delivery" : "6-7 days",
       automation: state.deliveryMode === "fast" ? "express_zone_selected" : "standard_auto_selected"
     },
     promotions: {
@@ -3226,7 +3250,7 @@ function buildOrder(customer, payment) {
     createdAt: indiaIso(createdAt),
     estimatedDeliveryAt: indiaIso(estimatedDeliveryAt),
     deliveryEstimate: {
-      days: deliveryEstimateDays,
+      days: estimateDays,
       estimatedDeliveryAt: indiaIso(estimatedDeliveryAt)
     }
   };
