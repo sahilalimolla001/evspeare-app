@@ -672,6 +672,12 @@ function isProductAvailable(product) {
   return !["out_of_stock", "out of stock", "sold_out", "sold out", "unavailable"].includes(status);
 }
 
+function productStockSort(a, b) {
+  const availableA = isProductAvailable(a) ? 1 : 0;
+  const availableB = isProductAvailable(b) ? 1 : 0;
+  return availableB - availableA;
+}
+
 function stockLabel(product) {
   const quantity = stockQuantity(product);
   if (isProductAvailable(product) && quantity !== null && quantity <= 3) return `Only ${quantity} left`;
@@ -736,7 +742,7 @@ function filteredProducts() {
 
       return matchesText && matchesFilter;
     })
-    .sort((a, b) => (state.sortAscending ? a.price - b.price : b.price - a.price));
+    .sort((a, b) => productStockSort(a, b) || (state.sortAscending ? a.price - b.price : b.price - a.price));
 }
 
 function renderCategories() {
