@@ -1903,6 +1903,10 @@ async function fetchWebsiteProducts(req) {
         missingEndpointError = error;
         continue;
       }
+      if (isLoginRequiredError(error)) {
+        missingEndpointError = error;
+        continue;
+      }
       throw error;
     }
   }
@@ -1937,10 +1941,6 @@ async function fetchCatalogProducts(req) {
       console.error("Website product import failed", error);
       errors.push(`Website: ${error.message}`);
     }
-  }
-
-  if (websiteConfigured && errors.length) {
-    throw new Error(errors[0]);
   }
 
   if (process.env.WAREHOUSE_PRODUCTS_URL) {

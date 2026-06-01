@@ -1789,6 +1789,22 @@ svg {
   font-weight: 900;
 }
 
+.checkout-section-head > button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #fff;
+  background: var(--blue);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.checkout-address-summary .saved-location-card,
+.address-page-section .saved-location-card {
+  margin-top: 10px;
+}
+
 .delivery-card {
   border: 1px solid #dbe3ef;
   border-radius: 8px;

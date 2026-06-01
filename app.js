@@ -70,7 +70,7 @@ const infoPages = {
       },
       {
         heading: "Customer rights and grievance",
-        body: "You can request access, correction, update, withdrawal of consent, or deletion where legally permitted by contacting support@evspeare.com or +91 6289498289. Some order, invoice, dispute, fraud-prevention, and legal records may still be retained where required by law."
+        body: "You can request access, correction, update, withdrawal of consent, or deletion where legally permitted by contacting support@evspeare.shop or +91 6289498289. Some order, invoice, dispute, fraud-prevention, and legal records may still be retained where required by law."
       },
       {
         heading: "Children",
@@ -112,7 +112,7 @@ const infoPages = {
       },
       {
         heading: "Grievance redressal",
-        body: "For complaints, contact the Grievance Officer, Ev Speare, at support@evspeare.com or +91 6289498289. We aim to acknowledge complaints within 48 hours and resolve them within one month where possible."
+        body: "For complaints, contact the Grievance Officer, Ev Speare, at support@evspeare.shop or +91 6289498289. We aim to acknowledge complaints within 48 hours and resolve them within one month where possible."
       }
     ]
   },
@@ -220,7 +220,7 @@ const infoPages = {
       },
       {
         heading: "Grievance officer",
-        body: "Grievance Officer: Ev Speare Support Lead. Email: support@evspeare.com. Phone: +91 6289498289. Complaints are acknowledged as early as possible, targeted within 48 hours, and resolved within one month where possible."
+        body: "Grievance Officer: Ev Speare Support Lead. Email: support@evspeare.shop. Phone: +91 6289498289. Complaints are acknowledged as early as possible, targeted within 48 hours, and resolved within one month where possible."
       },
       {
         heading: "Consumer information",
@@ -232,7 +232,7 @@ const infoPages = {
       },
       {
         heading: "Data requests",
-        body: "For personal data access, correction, update, withdrawal of consent, or deletion requests, contact support@evspeare.com. Requests may be limited where retention is required for invoices, orders, fraud prevention, disputes, or legal compliance."
+        body: "For personal data access, correction, update, withdrawal of consent, or deletion requests, contact support@evspeare.shop. Requests may be limited where retention is required for invoices, orders, fraud prevention, disputes, or legal compliance."
       }
     ]
   },
@@ -310,6 +310,7 @@ const state = {
   selectedProductId: "",
   savedLocation: loadJson(storageKeys.location, null),
   locationFormOpen: false,
+  addressReturnPage: "",
   orders: loadJson(storageKeys.orders, []),
   ordersLoading: false,
   checkoutProcessing: false,
@@ -386,6 +387,7 @@ const nodes = {
   productPage: document.querySelector("[data-product-page]"),
   cartPage: document.querySelector("[data-cart-page]"),
   checkoutPage: document.querySelector("[data-checkout-page]"),
+  addressPage: document.querySelector("[data-address-page]"),
   ordersPage: document.querySelector("[data-orders-page]"),
   infoPage: document.querySelector("[data-info-page-content]"),
   promoKicker: document.querySelector("[data-promo-kicker]"),
@@ -1549,7 +1551,9 @@ function policyConsentHtml() {
 }
 
 function checkoutField(selector, fallbackNode) {
-  return document.querySelector(`[data-page-panel="checkout"] ${selector}`) || fallbackNode;
+  return document.querySelector(`[data-page-panel="address"].open ${selector}`) ||
+    document.querySelector(`[data-page-panel="checkout"].open ${selector}`) ||
+    fallbackNode;
 }
 
 function splitName(value) {
@@ -1636,9 +1640,10 @@ function coordinatesText(coordinates) {
 }
 
 function checkoutBillingDetails() {
-  const pagePanel = document.querySelector('[data-page-panel="checkout"]');
+  const pagePanel = document.querySelector('[data-page-panel="address"].open') ||
+    document.querySelector('[data-page-panel="checkout"].open');
   const saved = savedLocationDetails();
-  if (!pagePanel || pagePanel.getAttribute("aria-hidden") === "true") {
+  if (!pagePanel) {
     const nameParts = splitName(nodes.checkoutName.value || state.session?.user?.name || formatCustomerName(saved || {}));
     return {
       ...emptyBillingDetails(),
@@ -1766,6 +1771,9 @@ function saveCustomerLocation(details, source = "manual", { silent = false, rere
   renderProducts();
   renderCart();
   renderQuickCommerce();
+  if (document.querySelector('[data-page-panel="address"]')?.classList.contains("open")) {
+    renderAddressPage();
+  }
   if (rerender && document.querySelector('[data-page-panel="checkout"]')?.classList.contains("open")) {
     renderCheckoutPage();
   }
@@ -2058,6 +2066,106 @@ function paymentOptionRow({ mode, method, icon, title, subtitle, disabled = fals
   `;
 }
 
+function addressStatusHtml(billing) {
+  const savedLocation = savedLocationDetails();
+  const hasSavedLocation = hasLocationDetails(savedLocation);
+  const addressVerification = addressMatchesVerifiedLocation(billing);
+  const addressVerificationRequired = state.deliveryMode === "fast";
+  const addressVerified = addressVerification.valid && billing.pincode.length === 6;
+  const addressReady = Boolean(billing.address1 && billing.city && billing.pincode.length === 6);
+  const addressStatusReady = addressVerified || (!addressVerificationRequired && addressReady);
+  const message = addressVerified
+    ? addressVerification.reason
+    : addressVerificationRequired && billing.coordinates && billing.pincode.length === 6
+      ? addressVerification.reason
+      : addressVerificationRequired
+        ? "Enter address, city and pincode, then verify with live location."
+        : addressReady
+          ? "Saved address will be used for delivery."
+          : "Add delivery address before placing order.";
+
+  return `
+    ${hasSavedLocation ? `
+      <div class="saved-location-card">
+        <span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-5.1 7-12A7 7 0 1 0 5 9c0 6.9 7 12 7 12Z" /><path d="M12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /></svg>
+        </span>
+        <div>
+          <strong>${savedLocation.source === "live" ? "Saved live location" : savedLocation.source === "map" ? "Saved map location" : "Saved delivery location"}</strong>
+          <p>${escapeHtml(locationSummary(savedLocation))}</p>
+        </div>
+      </div>
+    ` : ""}
+    <div class="address-verify-card ${addressStatusReady ? "verified" : ""}">
+      <strong>${addressVerified ? "Address verified" : addressReady ? "Delivery address ready" : "Delivery address needed"}</strong>
+      <p>${escapeHtml(message)}</p>
+    </div>
+  `;
+}
+
+function renderAddressPage() {
+  if (!nodes.addressPage) return;
+  const saved = savedLocationDetails();
+  const currentBilling = checkoutBillingDetails();
+  const existingName = nodes.checkoutName.value || state.session?.user?.name || formatCustomerName(saved || {});
+  const billing = {
+    ...currentBilling,
+    ...(!currentBilling.firstName && !currentBilling.lastName ? splitName(existingName) : {}),
+    phone: currentBilling.phone || phoneDigits(state.session?.user?.phone || nodes.checkoutPhone.value || "")
+  };
+  const name = formatCustomerName(billing) || existingName;
+  const address = formatAddress(billing) || nodes.checkoutAddress.value || "";
+
+  nodes.addressPage.innerHTML = `
+    <div class="page-header">
+      <button class="icon-button" type="button" data-action="close-page" aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+      </button>
+      <div><h2>Delivery Address</h2><span>Saved separately from payment</span></div>
+      <span></span>
+    </div>
+    <section class="checkout-section checkout-address-section address-page-section">
+      <div class="checkout-section-head">
+        <div>
+          <span>Delivery details</span>
+          <h3>Address</h3>
+          <p>These details are sent to warehouse after order placement.</p>
+        </div>
+        <label class="shipping-toggle">
+          <input type="checkbox" data-page-shipping-same ${billing.shippingSame === false ? "" : "checked"} />
+          <span>Shipping same</span>
+        </label>
+      </div>
+      ${addressStatusHtml(billing)}
+      <div class="location-action-row">
+        <button type="button" data-action="use-live-location">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" /></svg>
+          Verify live location
+        </button>
+        <button type="button" data-action="select-address-map">Select on map</button>
+      </div>
+      <div class="manual-location-panel">
+        <div class="checkout-field-grid">
+          <label>First Name<input type="text" data-page-checkout-first-name value="${escapeHtml(billing.firstName)}" autocomplete="given-name" /></label>
+          <label>Last Name<input type="text" data-page-checkout-last-name value="${escapeHtml(billing.lastName)}" autocomplete="family-name" /></label>
+          <label>Phone<input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(billing.phone)}" autocomplete="tel" /></label>
+          <label>Email<input type="email" data-page-checkout-email value="${escapeHtml(billing.email)}" autocomplete="email" /></label>
+          <label>Alternate Phone<input type="tel" inputmode="numeric" data-page-checkout-alt-phone value="${escapeHtml(billing.alternatePhone)}" /></label>
+          <label>Country<input type="text" data-page-checkout-country value="${escapeHtml(billing.country || "India")}" autocomplete="country-name" /></label>
+          <label class="wide">Address<textarea data-page-checkout-address1 rows="3" autocomplete="address-line1">${escapeHtml(billing.address1)}</textarea></label>
+          <label class="wide">Address 2<textarea data-page-checkout-address2 rows="2" autocomplete="address-line2">${escapeHtml(billing.address2)}</textarea></label>
+          <label>City<input type="text" data-page-checkout-city value="${escapeHtml(billing.city)}" autocomplete="address-level2" /></label>
+          <label>State<input type="text" data-page-checkout-state value="${escapeHtml(billing.state)}" autocomplete="address-level1" /></label>
+          <label>Pincode<input type="tel" inputmode="numeric" maxlength="6" data-page-checkout-pincode value="${escapeHtml(billing.pincode)}" autocomplete="postal-code" /></label>
+          <input type="hidden" data-page-checkout-name value="${escapeHtml(name)}" />
+          <input type="hidden" data-page-checkout-address value="${escapeHtml(address)}" />
+        </div>
+        <button class="save-location-button" type="button" data-action="save-location">Save address</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderCheckoutPage() {
   const nameNode = checkoutField("[data-page-checkout-name]", nodes.checkoutName);
   const phoneNode = checkoutField("[data-page-checkout-phone]", nodes.checkoutPhone);
@@ -2148,59 +2256,16 @@ function renderCheckoutPage() {
 
       <p class="gateway-note payment-gateway-note" data-page-gateway-note></p>
 
-      <section class="checkout-section checkout-address-section">
+      <section class="checkout-section checkout-address-summary">
         <div class="checkout-section-head">
           <div>
-            <span>Delivery details</span>
-            <h3>Billing Address</h3>
-            <p>These details are sent to warehouse with your payment choice.</p>
+            <span>Delivery address</span>
+            <h3>${address ? "Saved address" : "Add address"}</h3>
+            <p>${address ? escapeHtml(locationSummary(billing)) : "Add delivery address on the address page before placing order."}</p>
           </div>
-          <label class="shipping-toggle">
-            <input type="checkbox" data-page-shipping-same ${billing.shippingSame === false ? "" : "checked"} />
-            <span>Shipping same</span>
-          </label>
+          <button type="button" data-action="edit-location">${address ? "Change" : "Add"}</button>
         </div>
-        ${hasSavedLocation ? `
-          <div class="saved-location-card">
-            <span>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-5.1 7-12A7 7 0 1 0 5 9c0 6.9 7 12 7 12Z" /><path d="M12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /></svg>
-            </span>
-            <div>
-              <strong>${savedLocation.source === "live" ? "Saved live location" : savedLocation.source === "map" ? "Saved map location" : "Saved delivery location"}</strong>
-              <p>${escapeHtml(locationSummary(savedLocation))}</p>
-            </div>
-          </div>
-        ` : ""}
-        <div class="address-verify-card ${addressStatusReady ? "verified" : ""}">
-          <strong>${addressVerified ? "Address verified" : addressVerificationRequired ? "Address verification required" : "Delivery address ready"}</strong>
-          <p>${escapeHtml(addressVerificationMessage)}</p>
-        </div>
-        <div class="location-action-row">
-          <button type="button" data-action="use-live-location">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" /></svg>
-            Verify live location
-          </button>
-          <button type="button" data-action="select-address-map">Select on map</button>
-          <button type="button" data-action="edit-location">${hasSavedLocation ? "Add location" : "Manual location"}</button>
-        </div>
-        <div class="manual-location-panel ${showLocationForm ? "" : "collapsed"}">
-          <div class="checkout-field-grid">
-            <label>First Name<input type="text" data-page-checkout-first-name value="${escapeHtml(billing.firstName)}" autocomplete="given-name" /></label>
-            <label>Last Name<input type="text" data-page-checkout-last-name value="${escapeHtml(billing.lastName)}" autocomplete="family-name" /></label>
-            <label>Phone<input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(billing.phone)}" autocomplete="tel" /></label>
-            <label>Email<input type="email" data-page-checkout-email value="${escapeHtml(billing.email)}" autocomplete="email" /></label>
-            <label>Alternate Phone<input type="tel" inputmode="numeric" data-page-checkout-alt-phone value="${escapeHtml(billing.alternatePhone)}" /></label>
-            <label>Country<input type="text" data-page-checkout-country value="${escapeHtml(billing.country || "India")}" autocomplete="country-name" /></label>
-            <label class="wide">Address<textarea data-page-checkout-address1 rows="3" autocomplete="address-line1">${escapeHtml(billing.address1)}</textarea></label>
-            <label class="wide">Address 2<textarea data-page-checkout-address2 rows="2" autocomplete="address-line2">${escapeHtml(billing.address2)}</textarea></label>
-            <label>City<input type="text" data-page-checkout-city value="${escapeHtml(billing.city)}" autocomplete="address-level2" /></label>
-            <label>State<input type="text" data-page-checkout-state value="${escapeHtml(billing.state)}" autocomplete="address-level1" /></label>
-            <label>Pincode<input type="tel" inputmode="numeric" maxlength="6" data-page-checkout-pincode value="${escapeHtml(billing.pincode)}" autocomplete="postal-code" /></label>
-            <input type="hidden" data-page-checkout-name value="${escapeHtml(name)}" />
-            <input type="hidden" data-page-checkout-address value="${escapeHtml(address)}" />
-          </div>
-          <button class="save-location-button" type="button" data-action="save-location">Save location</button>
-        </div>
+        ${addressStatusHtml(billing)}
       </section>
     </form>
 
@@ -2688,6 +2753,7 @@ function renderAll() {
   renderSavedLocation();
   renderGatewayNote();
   renderCartPage();
+  renderAddressPage();
   renderCheckoutPage();
   renderOrdersPage();
   renderInfoPage("about");
@@ -3223,49 +3289,73 @@ function validateCheckout() {
 
   if (!name) {
     showToast("Enter customer name");
-    firstNameNode.focus();
+    state.addressReturnPage = "checkout";
+    renderAddressPage();
+    openPage("address");
+    requestAnimationFrame(() => checkoutField("[data-page-checkout-first-name]", firstNameNode)?.focus());
     return null;
   }
 
   if (phone.length !== 10) {
     showToast("Enter valid mobile number");
-    phoneNode.focus();
+    state.addressReturnPage = "checkout";
+    renderAddressPage();
+    openPage("address");
+    requestAnimationFrame(() => checkoutField("[data-page-checkout-phone]", phoneNode)?.focus());
     return null;
   }
 
   if (state.paymentMethod === "cod" && phone !== phoneDigits(state.session.user.phone)) {
     showToast("COD mobile number must match your login mobile");
-    phoneNode.focus();
+    state.addressReturnPage = "checkout";
+    renderAddressPage();
+    openPage("address");
+    requestAnimationFrame(() => checkoutField("[data-page-checkout-phone]", phoneNode)?.focus());
     return null;
   }
 
   if (!billing.address1) {
     showToast("Enter delivery address");
-    address1Node.focus();
+    state.addressReturnPage = "checkout";
+    renderAddressPage();
+    openPage("address");
+    requestAnimationFrame(() => checkoutField("[data-page-checkout-address1]", address1Node)?.focus());
     return null;
   }
 
   if (!billing.city) {
     showToast("Enter city");
-    cityNode.focus();
+    state.addressReturnPage = "checkout";
+    renderAddressPage();
+    openPage("address");
+    requestAnimationFrame(() => checkoutField("[data-page-checkout-city]", cityNode)?.focus());
     return null;
   }
 
   if (billing.pincode.length !== 6) {
     showToast("Enter valid 6 digit pincode");
-    pincodeNode.focus();
+    state.addressReturnPage = "checkout";
+    renderAddressPage();
+    openPage("address");
+    requestAnimationFrame(() => checkoutField("[data-page-checkout-pincode]", pincodeNode)?.focus());
     return null;
   }
 
   if (state.deliveryMode === "fast") {
     if (!billing.coordinates) {
       showToast("Verify address with live location for fast delivery");
+      state.addressReturnPage = "checkout";
+      renderAddressPage();
+      openPage("address");
       return null;
     }
 
     const addressVerification = addressMatchesVerifiedLocation(billing);
     if (!addressVerification.valid) {
       showToast(addressVerification.reason);
+      state.addressReturnPage = "checkout";
+      renderAddressPage();
+      openPage("address");
       return null;
     }
   }
@@ -3909,18 +3999,30 @@ document.addEventListener("click", async (event) => {
       }
       break;
     case "select-address":
-      state.locationFormOpen = !hasLocationDetails(savedLocationDetails());
-      renderCheckoutPage();
-      openPage("checkout");
+      state.addressReturnPage = activePageName();
+      state.locationFormOpen = true;
+      renderAddressPage();
+      openPage("address");
       closeAccount();
       break;
     case "edit-location":
+      state.addressReturnPage = activePageName() || "checkout";
       state.locationFormOpen = true;
-      renderCheckoutPage();
-      requestAnimationFrame(() => checkoutField("[data-page-checkout-address1]", nodes.checkoutAddress).focus());
+      renderAddressPage();
+      openPage("address");
+      requestAnimationFrame(() => checkoutField("[data-page-checkout-address1]", nodes.checkoutAddress)?.focus());
       break;
     case "save-location":
       saveLocationFromForm();
+      renderCheckoutPage();
+      if (state.addressReturnPage === "checkout") {
+        openPage("checkout");
+      } else if (state.addressReturnPage && state.addressReturnPage !== "address") {
+        openPage(state.addressReturnPage);
+      } else {
+        closePages();
+      }
+      state.addressReturnPage = "";
       break;
     case "apply-coupon":
       await applyCouponCode();
