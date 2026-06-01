@@ -2926,7 +2926,7 @@ async function googleLogin() {
     if (nodes.loginName && !nodes.loginName.value) nodes.loginName.value = name;
     nodes.newCustomerForm.hidden = false;
     nodes.loginPhone.focus();
-    showToast("Google verified. Ab mobile number add karein", 5000);
+    showToast("Google verified. Mobile number add karein, address baad mein checkout par de sakte hain.", 5000);
   } catch (error) {
     showToast(googleLoginErrorMessage(error), 7000);
   }
@@ -2981,11 +2981,6 @@ async function completeNewCustomerLogin(event) {
   try {
     const { idToken } = pendingGoogleLogin;
     const response = await api.verifyFirebaseLogin(idToken, name, phone, profile);
-    if (response.requiresAddress) {
-      showToast("Address, city aur valid pincode enter karein");
-      nodes.loginAddress1.focus();
-      return;
-    }
     await completeGoogleSession(response, phone, name);
   } catch (error) {
     showToast(error.message || "Login failed", 7000);

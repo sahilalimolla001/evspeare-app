@@ -1529,12 +1529,6 @@ async function handleFirebaseLogin(req, res) {
       const address1 = String(address.address1 || address.address || "").trim();
       const city = String(address.city || "").trim();
       const pincode = String(address.pincode || "").replace(/\D/g, "").slice(0, 6);
-      if (!address1 || !city || pincode.length !== 6) {
-        return send(res, 200, {
-          requiresAddress: true,
-          user: { id: decodedToken.uid || phone, phone, name }
-        });
-      }
       profile = {
         phone,
         mobile: phone,
@@ -1545,7 +1539,7 @@ async function handleFirebaseLogin(req, res) {
         city,
         state: String(address.state || "").trim(),
         region: String(address.region || "").trim(),
-        pincode,
+        pincode: pincode.length === 6 ? pincode : "",
         coordinates: address.coordinates && typeof address.coordinates === "object" ? {
           latitude: Number(address.coordinates.latitude),
           longitude: Number(address.coordinates.longitude),

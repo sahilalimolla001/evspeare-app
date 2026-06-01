@@ -226,8 +226,9 @@
       <div class="drawer-panel">
         <div class="drawer-head">
           <div>
+            <small>EV Speare</small>
             <strong>Hello, Shopper</strong>
-            <span>Manage account and orders</span>
+            <span>Shop parts, manage orders, get support</span>
           </div>
           <button class="icon-button" type="button" aria-label="Close menu" data-action="close-menu">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -235,17 +236,23 @@
             </svg>
           </button>
         </div>
-        <button type="button" data-filter-chip="Deals">Deals</button>
-        <button type="button" data-filter-chip="Motors">Motors</button>
-        <button type="button" data-filter-chip="Lights">Lights</button>
-        <button type="button" data-action="show-wishlist">Wishlist</button>
-        <button type="button" data-action="open-account">Login and profile</button>
-        <button type="button" data-action="open-cart">Cart and checkout</button>
-        <button type="button" data-action="open-orders">Orders and tracking</button>
+        <section class="drawer-section drawer-shortcuts" aria-label="Shopping shortcuts">
+          <span>Shop</span>
+          <button type="button" data-filter-chip="Deals">Deals</button>
+          <button type="button" data-filter-chip="Motors">Motors</button>
+          <button type="button" data-filter-chip="Lights">Lights</button>
+        </section>
+        <section class="drawer-section drawer-account-links" aria-label="Account shortcuts">
+          <span>Account</span>
+          <button type="button" data-action="open-account">Login and profile</button>
+          <button type="button" data-action="show-wishlist">Wishlist</button>
+          <button type="button" data-action="open-cart">Cart and checkout</button>
+          <button type="button" data-action="open-orders">Orders and tracking</button>
+        </section>
         <section class="drawer-commerce-page" aria-label="Quick commerce tools" data-drawer-commerce-page>
           <span>Quick commerce</span>
         </section>
-        <section class="drawer-about-section" aria-label="About and policies">
+        <section class="drawer-section drawer-about-section" aria-label="About and policies">
           <span>About</span>
           <button type="button" data-info-page="privacy">Privacy policy</button>
           <button type="button" data-info-page="terms">Terms and conditions</button>
@@ -370,13 +377,13 @@
           <form class="profile-edit-form" data-new-customer-form hidden>
             <label>Customer name<input type="text" data-login-name placeholder="Enter your name" autocomplete="name" /></label>
             <label>Mobile number<input type="tel" inputmode="numeric" maxlength="10" data-login-phone placeholder="Enter 10 digit mobile" autocomplete="tel" /></label>
-            <label>Address<textarea data-login-address1 placeholder="House no, street" autocomplete="address-line1" rows="2"></textarea></label>
+            <label>Address <small>optional before checkout</small><textarea data-login-address1 placeholder="House no, street" autocomplete="address-line1" rows="2"></textarea></label>
             <label>Area<input type="text" data-login-area placeholder="Area" /></label>
             <label>City<input type="text" data-login-city placeholder="City" autocomplete="address-level2" /></label>
             <label>State<input type="text" data-login-state placeholder="State" autocomplete="address-level1" /></label>
             <label>Pincode<input type="tel" inputmode="numeric" maxlength="6" data-login-pincode placeholder="6 digit pincode" autocomplete="postal-code" /></label>
             <button class="map-select-button" type="button" data-action="select-address-map">Select on map</button>
-            <button class="primary-button" type="submit">Save and continue</button>
+            <button class="primary-button" type="submit">Continue to app</button>
           </form>
         </div>
 
