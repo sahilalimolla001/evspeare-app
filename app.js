@@ -3121,7 +3121,10 @@ function googleLoginErrorMessage(error) {
     "auth/operation-not-allowed": "Google login Firebase Console me enable karein.",
     "auth/popup-blocked": "Google login popup allow karke dobara try karein.",
     "auth/popup-closed-by-user": "Google login complete nahi hua.",
-    "auth/unauthorized-domain": "Website domain Firebase me authorized nahi hai."
+    "auth/unauthorized-domain": "Website domain Firebase me authorized nahi hai.",
+    "auth/network-request-failed": "Firebase request block ho raha hai. Page refresh karke dobara try karein.",
+    "auth/invalid-api-key": "Firebase API key galat hai. Railway/Firebase config check karein.",
+    "auth/app-deleted": "Firebase app config invalid hai."
   };
   return messages[String(error?.code || "")] || error.message || "Unable to login with Google";
 }

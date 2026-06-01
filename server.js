@@ -95,12 +95,12 @@ function securityHeaders() {
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    "script-src 'self' https://www.gstatic.com https://checkout.razorpay.com https://unpkg.com",
+    "script-src 'self' https://www.gstatic.com https://apis.google.com https://checkout.razorpay.com https://unpkg.com",
     "style-src 'self' 'unsafe-inline' https://unpkg.com",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
-    "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://nominatim.openstreetmap.org https://api.razorpay.com",
-    "frame-src 'self' https://accounts.google.com https://checkout.razorpay.com https://api.razorpay.com",
+    "connect-src 'self' https://*.googleapis.com https://www.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.firebaseinstallations.googleapis.com https://nominatim.openstreetmap.org https://api.razorpay.com",
+    "frame-src 'self' https://accounts.google.com https://*.google.com https://*.firebaseapp.com https://checkout.razorpay.com https://api.razorpay.com",
     "upgrade-insecure-requests"
   ].join("; ");
   return {
