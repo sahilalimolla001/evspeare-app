@@ -49,6 +49,10 @@ const infoPages = {
         body: "We collect only the details needed to run your shopping experience, including your Google login identity, mobile number, COD OTP verification status, name, delivery address, cart items, order details, payment status, and live location only when you choose to share it."
       },
       {
+        heading: "Notice and consent",
+        body: "By logging in, saving an address, using live location, or placing an order, you give clear consent for processing the personal data needed for that specific action. Live location is optional except where fast delivery verification is selected."
+      },
+      {
         heading: "How we use information",
         body: "Your information is used to verify login, confirm orders, arrange delivery, process payments, show order tracking, handle cancellation or return requests, and improve product availability and customer support."
       },
@@ -62,11 +66,15 @@ const infoPages = {
       },
       {
         heading: "Data retention",
-        body: "Order records are retained as required for customer support, tax, accounting, dispute resolution, fraud prevention, and legal compliance. You may contact support for data correction requests."
+        body: "Order records are retained as required for customer support, tax, accounting, dispute resolution, fraud prevention, and legal compliance. Data that is no longer needed is deleted or anonymised where reasonably possible."
       },
       {
-        heading: "Customer choice",
-        body: "You can logout from the profile section, update delivery details before checkout, and choose whether to share live location. Some services may not work if required details are not provided."
+        heading: "Customer rights and grievance",
+        body: "You can request access, correction, update, withdrawal of consent, or deletion where legally permitted by contacting support@evspeare.com or +91 6289498289. Some order, invoice, dispute, fraud-prevention, and legal records may still be retained where required by law."
+      },
+      {
+        heading: "Children",
+        body: "The app is intended for customers who can lawfully place orders. If a user is below 18 years, a parent or lawful guardian should provide consent and supervise use."
       }
     ]
   },
@@ -87,6 +95,10 @@ const infoPages = {
         body: "An order is confirmed only after stock verification, valid customer details, successful payment where applicable, and acceptance by the seller or warehouse."
       },
       {
+        heading: "Seller, tax, and invoice details",
+        body: "The seller or warehouse details, tax invoice, product price, discounts, delivery charges, payment status, and order number are shared on the order or invoice where applicable. GST or other tax details should be verified from the generated invoice."
+      },
+      {
         heading: "Customer responsibility",
         body: "You are responsible for entering a correct mobile number, OTP, delivery address, pincode, and part compatibility details. Incorrect details can lead to delay, failed delivery, or non-return eligibility."
       },
@@ -97,6 +109,10 @@ const infoPages = {
       {
         heading: "Limitation",
         body: "Ev Speare is not responsible for delays caused by courier issues, incorrect address, payment gateway downtime, warehouse dependency, natural events, or third-party service interruptions."
+      },
+      {
+        heading: "Grievance redressal",
+        body: "For complaints, contact the Grievance Officer, Ev Speare, at support@evspeare.com or +91 6289498289. We aim to acknowledge complaints within 48 hours and resolve them within one month where possible."
       }
     ]
   },
@@ -115,6 +131,10 @@ const infoPages = {
       {
         heading: "Estimated delivery",
         body: "Estimated delivery is shown in the order tracking section. Delivery to remote, restricted, or service-limited pincodes may take longer than the displayed estimate."
+      },
+      {
+        heading: "Charges before payment",
+        body: "Delivery fee, platform fee, discounts, coupon benefit, and payable total are shown before order placement. Extra courier or location charges, if any, must be communicated before confirmation."
       },
       {
         heading: "Live tracking",
@@ -140,7 +160,7 @@ const infoPages = {
       },
       {
         heading: "Return window",
-        body: "Return or replacement requests should be raised as soon as possible after delivery. The final approval depends on product category, seller policy, and warehouse inspection."
+        body: "Return or replacement requests should be raised within 7 days after delivery unless a product-specific policy gives a different period. The final approval depends on product category, seller policy, and warehouse inspection."
       },
       {
         heading: "Damaged or wrong item",
@@ -156,7 +176,7 @@ const infoPages = {
       },
       {
         heading: "Refund timeline",
-        body: "Approved refunds are processed to the original payment method or eligible refund mode. Bank, wallet, or payment gateway settlement time may vary."
+        body: "Approved refunds are initiated to the original payment method or eligible refund mode, generally within 5-7 working days after approval. Bank, wallet, or payment gateway settlement time may vary."
       }
     ]
   },
@@ -170,7 +190,7 @@ const infoPages = {
       },
       {
         heading: "Online payment security",
-        body: "For online payment, Razorpay secure checkout opens for payment entry. Payment credentials are not stored by Ev Speare."
+        body: "For online payment, Razorpay secure checkout opens for payment entry. Ev Speare does not collect or store full card number, CVV, UPI PIN, net-banking password, or wallet credentials."
       },
       {
         heading: "Payment confirmation",
@@ -187,6 +207,32 @@ const infoPages = {
       {
         heading: "Refund mode",
         body: "Refunds for prepaid orders are generally issued to the original payment method. COD refunds, if approved, may require bank or wallet details for processing."
+      }
+    ]
+  },
+  legal: {
+    title: "Legal and Grievance",
+    subtitle: "Business, consumer, and data support",
+    sections: [
+      {
+        heading: "E-commerce entity",
+        body: "Ev Speare operates this EV spare parts shopping app from Narayanpur, Rajarhat, Gopalpur, Kolkata, 700136. Product supply and fulfilment may depend on connected seller, website, or warehouse systems."
+      },
+      {
+        heading: "Grievance officer",
+        body: "Grievance Officer: Ev Speare Support Lead. Email: support@evspeare.com. Phone: +91 6289498289. Complaints are acknowledged as early as possible, targeted within 48 hours, and resolved within one month where possible."
+      },
+      {
+        heading: "Consumer information",
+        body: "Before checkout, the app shows product price, discounts, cart total, delivery fee, platform fee, payment mode, delivery estimate, cancellation limits, and return policy links so that customers can make an informed choice."
+      },
+      {
+        heading: "No dark patterns",
+        body: "The app should not use false urgency, hidden charges, forced consent, subscription traps, disguised advertisements, or confusing controls that impair customer choice."
+      },
+      {
+        heading: "Data requests",
+        body: "For personal data access, correction, update, withdrawal of consent, or deletion requests, contact support@evspeare.com. Requests may be limited where retention is required for invoices, orders, fraud prevention, disputes, or legal compliance."
       }
     ]
   },
@@ -713,10 +759,36 @@ function isExpressProduct(product) {
 
 function deliveryEtaText(product, pincode = savedLocationDetails()?.pincode || "") {
   if (!isProductAvailable(product)) return "Unavailable";
-  const eligibility = fastDeliveryEligibility(pincode);
-  if (isExpressProduct(product) && eligibility.eligible) return "Tomorrow delivery";
-  if (isExpressProduct(product)) return "Express ready";
-  return product.delivery || "6-7 days delivery";
+  const cleanPincode = String(pincode || "").replace(/\D/g, "").slice(0, 6);
+  if (cleanPincode.length !== 6) return "Add pincode to check delivery";
+  const estimate = deliveryEstimateForPincode(cleanPincode, { fast: isExpressProduct(product) && fastDeliveryEligibility(cleanPincode).eligible });
+  return estimate.label;
+}
+
+function deliveryEstimateForPincode(pincode, { fast = false } = {}) {
+  const cleanPincode = String(pincode || "").replace(/\D/g, "").slice(0, 6);
+  if (cleanPincode.length !== 6) {
+    return {
+      ready: false,
+      mode: "pending",
+      title: "Add delivery location",
+      label: "Add pincode to check delivery",
+      detail: "Products are available to browse before adding location."
+    };
+  }
+  const days = fast ? fastDeliveryEstimateDays : deliveryEstimateDays;
+  const date = addDays(new Date(), days);
+  const dateText = formatOrderDate(date, false);
+  return {
+    ready: true,
+    mode: fast ? "fast" : "standard",
+    days,
+    date,
+    dateText,
+    title: fast ? "Fast delivery" : "Standard delivery",
+    label: fast ? `Delivery by ${dateText}` : `Delivery by ${dateText}`,
+    detail: fast ? `Expected tomorrow for ${cleanPincode}` : `Expected in 6-7 days for ${cleanPincode}`
+  };
 }
 
 function smartScore(product) {
@@ -848,8 +920,9 @@ function renderQuickCommerce() {
   if (nodes.buyAgainCount) nodes.buyAgainCount.textContent = state.orders.length;
   if (nodes.promiseCopy) {
     const eligibility = fastDeliveryEligibility(pincode);
+    const estimate = deliveryEstimateForPincode(pincode, { fast: eligibility.eligible });
     nodes.promiseCopy.textContent = pincode
-      ? eligibility.eligible ? `Express delivery available for ${pincode}` : `Standard delivery for ${pincode}`
+      ? `${eligibility.eligible ? "Express" : "Standard"} ${estimate.label.toLowerCase()} for ${pincode}`
       : "Check pincode for express delivery";
   }
   renderBuyAgain();
@@ -1104,13 +1177,16 @@ function fastDeliveryFee(amount) {
 function deliveryOptionsHtml(totals, eligibility) {
   const fastFee = fastDeliveryFee(totals.subtotal);
   const standardFee = standardDeliveryFee(totals.subtotal, totals.itemCount);
+  const pincode = checkoutBillingDetails().pincode || savedLocationDetails()?.pincode || "";
+  const standardEstimate = deliveryEstimateForPincode(pincode);
+  const fastEstimate = deliveryEstimateForPincode(pincode, { fast: true });
   return `
     <section class="delivery-options" aria-label="Delivery options">
       <label class="${state.deliveryMode === "free" ? "selected" : ""}">
         <input type="radio" name="delivery-mode" value="free" data-delivery-mode ${state.deliveryMode === "free" ? "checked" : ""} />
         <span>
           <strong>Standard delivery</strong>
-          <small>Standard delivery in 6-7 days</small>
+          <small>${escapeHtml(standardEstimate.ready ? standardEstimate.label : "6-7 days after address")}</small>
         </span>
         <b>${standardFee ? formatPrice(standardFee) : "Free"}</b>
       </label>
@@ -1119,7 +1195,7 @@ function deliveryOptionsHtml(totals, eligibility) {
         <input type="radio" name="delivery-mode" value="fast" data-delivery-mode ${state.deliveryMode === "fast" ? "checked" : ""} data-fast-delivery />
         <span>
           <strong>Fast delivery</strong>
-          <small>Delivery by tomorrow</small>
+          <small>${escapeHtml(fastEstimate.ready ? fastEstimate.label : "Available after pincode check")}</small>
         </span>
         <b>${formatPrice(fastFee)}</b>
       </label>
@@ -1447,6 +1523,31 @@ function renderCartPage() {
   `;
 }
 
+function deliveryEstimateCardHtml(pincode) {
+  const eligibility = fastDeliveryEligibility(pincode);
+  const useFast = state.deliveryMode === "fast" && eligibility.eligible;
+  const estimate = deliveryEstimateForPincode(pincode, { fast: useFast });
+  return `
+    <div class="delivery-estimate-card ${estimate.ready ? "ready" : ""}">
+      <span>${escapeHtml(estimate.title)}</span>
+      <strong>${escapeHtml(estimate.label)}</strong>
+      <small>${escapeHtml(estimate.detail)}</small>
+    </div>
+  `;
+}
+
+function policyConsentHtml() {
+  return `
+    <label class="policy-consent-card">
+      <input type="checkbox" data-policy-consent />
+      <span>
+        <strong>I agree before placing this order</strong>
+        <small>I have checked the price, delivery charges, payment terms, return policy, privacy policy, and grievance contact details.</small>
+      </span>
+    </label>
+  `;
+}
+
 function checkoutField(selector, fallbackNode) {
   return document.querySelector(`[data-page-panel="checkout"] ${selector}`) || fallbackNode;
 }
@@ -1662,6 +1763,9 @@ function saveCustomerLocation(details, source = "manual", { silent = false, rere
   if (formatCustomerName(location)) nodes.checkoutName.value = formatCustomerName(location);
   state.locationFormOpen = false;
   renderSavedLocation();
+  renderProducts();
+  renderCart();
+  renderQuickCommerce();
   if (rerender && document.querySelector('[data-page-panel="checkout"]')?.classList.contains("open")) {
     renderCheckoutPage();
   }
@@ -2109,10 +2213,12 @@ function renderCheckoutPage() {
         <b>${state.deliveryMode === "fast" ? "Fast delivery" : "Standard delivery"}</b>
       </div>
       ${deliveryOptionsHtml(totals, deliveryEligibility)}
+      ${deliveryEstimateCardHtml(billing.pincode)}
       ${freeDeliveryPopupHtml(totals)}
       ${smartCartProgressHtml(totals)}
       ${couponBoxHtml(totals)}
       ${checkoutItemsPreview(totals.entries)}
+      ${policyConsentHtml()}
       <div class="checkout-price-panel">
         <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
         ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
@@ -3167,6 +3273,13 @@ function validateCheckout() {
       showToast(addressVerification.reason);
       return null;
     }
+  }
+
+  const policyConsentNode = document.querySelector("[data-page-panel='checkout'] [data-policy-consent]");
+  if (policyConsentNode && !policyConsentNode.checked) {
+    showToast("Please accept policies before placing order");
+    policyConsentNode.focus();
+    return null;
   }
 
   saveCustomerLocation(billing, billing.coordinates ? billing.source || "map" : "manual", { silent: true, rerender: false });

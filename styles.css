@@ -1973,6 +1973,74 @@ svg {
   line-height: 1.35;
 }
 
+.delivery-estimate-card {
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+  background: #f7f9fc;
+}
+
+.delivery-estimate-card.ready {
+  border-color: rgba(40, 116, 240, 0.32);
+  background: #edf5ff;
+}
+
+.delivery-estimate-card span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.delivery-estimate-card strong {
+  color: var(--blue-dark);
+  font-size: 0.92rem;
+}
+
+.delivery-estimate-card small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.policy-consent-card {
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--ink);
+  background: #fff;
+  cursor: pointer;
+}
+
+.policy-consent-card input {
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  accent-color: var(--blue);
+}
+
+.policy-consent-card span {
+  display: grid;
+  gap: 3px;
+}
+
+.policy-consent-card strong {
+  font-size: 0.84rem;
+}
+
+.policy-consent-card small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
 .checkout-item img {
   width: 48px;
   height: 48px;
