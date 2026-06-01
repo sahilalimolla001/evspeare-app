@@ -1805,6 +1805,106 @@ svg {
   margin-top: 10px;
 }
 
+.address-hero-panel {
+  margin-bottom: 12px;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--blue-dark), var(--blue));
+  box-shadow: 0 10px 24px rgba(23, 78, 166, 0.18);
+}
+
+.address-hero-panel div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.address-hero-panel span {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.address-hero-panel h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.15;
+}
+
+.address-hero-panel p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.address-hero-panel strong {
+  flex: 0 0 auto;
+  min-width: 58px;
+  border-radius: 10px;
+  padding: 9px 10px;
+  color: var(--blue-dark);
+  background: #fff;
+  text-align: center;
+  font-size: 0.86rem;
+}
+
+.address-page-tools {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.address-page-tools button {
+  min-height: 48px;
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--blue-dark);
+  background: #edf5ff;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.address-page-tools svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.address-form-title {
+  margin-bottom: 10px;
+  display: grid;
+  gap: 3px;
+}
+
+.address-form-title strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.address-form-title span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
 .delivery-card {
   border: 1px solid #dbe3ef;
   border-radius: 8px;

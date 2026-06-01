@@ -14,7 +14,14 @@ const fallbackCategoryImages = {
   Deals: "https://images.unsplash.com/photo-1607082350899-7e105aa886ae?auto=format&fit=crop&w=160&q=80"
 };
 
-let products = [];
+const defaultProducts = [
+  { id: "default-motor-controller", title: "EV Motor Controller", category: "Motors", price: 3499, mrp: 4299, rating: "4.3", reviews: 128, tags: ["Deals", "Motors"], stock: "available", stockQuantity: 12, delivery: "6-7 days delivery" },
+  { id: "default-brake-shoe", title: "Electric Scooter Brake Shoe Set", category: "Parts", price: 499, mrp: 699, rating: "4.2", reviews: 84, tags: ["Deals", "Parts"], stock: "available", stockQuantity: 24, delivery: "6-7 days delivery" },
+  { id: "default-led-headlight", title: "EV LED Headlight Assembly", category: "Lights", price: 899, mrp: 1199, rating: "4.1", reviews: 63, tags: ["Lights"], stock: "available", stockQuantity: 18, delivery: "6-7 days delivery" },
+  { id: "default-throttle-grip", title: "Scooter Throttle Grip", category: "Parts", price: 349, mrp: 499, rating: "4.0", reviews: 51, tags: ["Parts"], stock: "available", stockQuantity: 30, delivery: "6-7 days delivery" }
+];
+
+let products = [...defaultProducts];
 let categories = buildCategories(products);
 
 const api = window.BazaarGoApi;
@@ -916,7 +923,7 @@ function renderProducts() {
 function renderQuickCommerce() {
   const available = products.filter(isProductAvailable);
   const express = products.filter(isExpressProduct);
-  const pincode = savedLocationDetails().pincode || "";
+  const pincode = savedLocationDetails()?.pincode || "";
   if (nodes.liveStockCount) nodes.liveStockCount.textContent = available.length;
   if (nodes.expressCount) nodes.expressCount.textContent = express.length;
   if (nodes.buyAgainCount) nodes.buyAgainCount.textContent = state.orders.length;
@@ -2124,6 +2131,14 @@ function renderAddressPage() {
       <div><h2>Delivery Address</h2><span>Saved separately from payment</span></div>
       <span></span>
     </div>
+    <section class="address-hero-panel">
+      <div>
+        <span>Step 2</span>
+        <h3>Where should we deliver?</h3>
+        <p>Save your address once, then continue payment from checkout.</p>
+      </div>
+      <strong>${billing.pincode ? escapeHtml(billing.pincode) : "PIN"}</strong>
+    </section>
     <section class="checkout-section checkout-address-section address-page-section">
       <div class="checkout-section-head">
         <div>
@@ -2137,14 +2152,21 @@ function renderAddressPage() {
         </label>
       </div>
       ${addressStatusHtml(billing)}
-      <div class="location-action-row">
+      <div class="address-page-tools">
         <button type="button" data-action="use-live-location">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" /></svg>
-          Verify live location
+          Use live location
         </button>
-        <button type="button" data-action="select-address-map">Select on map</button>
+        <button type="button" data-action="select-address-map">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-5.1 7-12A7 7 0 1 0 5 9c0 6.9 7 12 7 12Z" /><path d="M12 11.5a2.5 2.5 0 0 0 0-5" /></svg>
+          Select on map
+        </button>
       </div>
       <div class="manual-location-panel">
+        <div class="address-form-title">
+          <strong>Contact and address</strong>
+          <span>Fields marked by checkout are required before order placement.</span>
+        </div>
         <div class="checkout-field-grid">
           <label>First Name<input type="text" data-page-checkout-first-name value="${escapeHtml(billing.firstName)}" autocomplete="given-name" /></label>
           <label>Last Name<input type="text" data-page-checkout-last-name value="${escapeHtml(billing.lastName)}" autocomplete="family-name" /></label>
@@ -2956,12 +2978,12 @@ async function syncProducts({ silent = false } = {}) {
       setSyncStatus(`${sourceLabel} synced: ${remoteProducts.length} products`);
       if (!silent) showToast(`Products imported from ${sourceLabel.toLowerCase()}`);
     } else {
-      products = [];
-      categories = [];
+      products = [...defaultProducts];
+      categories = buildCategories(products);
       state.activeFilter = "All";
       const message = catalog.source === "website_not_configured" || catalog.source === "api_not_configured"
-        ? sourceLabel
-        : `No products found from ${sourceLabel.toLowerCase()}`;
+        ? "Default catalog loaded"
+        : `Default catalog loaded: no products found from ${sourceLabel.toLowerCase()}`;
       setSyncStatus(message);
       if (!silent) showToast(message);
     }
@@ -2969,12 +2991,12 @@ async function syncProducts({ silent = false } = {}) {
     openProductFromUrl();
   } catch (error) {
     console.error(error);
-    products = [];
-    categories = [];
+    products = [...defaultProducts];
+    categories = buildCategories(products);
     state.activeFilter = "All";
     renderAll();
-    setSyncStatus("Product sync failed");
-    if (!silent) showToast(error.message || "Product sync failed");
+    setSyncStatus("Default catalog loaded");
+    if (!silent) showToast("Default products shown. Live sync failed.");
   } finally {
     state.syncing = false;
   }
