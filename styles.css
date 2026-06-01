@@ -1888,7 +1888,8 @@ svg {
 }
 
 .address-form-title {
-  margin-bottom: 10px;
+  border-bottom: 1px solid #edf0f5;
+  padding-bottom: 10px;
   display: grid;
   gap: 3px;
 }
@@ -1903,6 +1904,115 @@ svg {
   font-size: 0.72rem;
   font-weight: 760;
   line-height: 1.35;
+}
+
+.address-form-group {
+  border: 1px solid #e4e9f2;
+  border-radius: 12px;
+  padding: 11px;
+  display: grid;
+  gap: 10px;
+  background: #fbfcff;
+}
+
+.address-form-group-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.address-form-group-head span {
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.address-form-group-head small {
+  max-width: 56%;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 760;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.address-page-section .checkout-field-grid {
+  gap: 9px;
+}
+
+.address-page-section .checkout-field-grid label {
+  color: var(--ink);
+  font-size: 0.76rem;
+}
+
+.address-page-section .checkout-field-grid label small {
+  margin-left: 4px;
+  color: var(--blue);
+  font-size: 0.64rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.address-page-section input,
+.address-page-section textarea {
+  border-color: #dbe3ef;
+  background: #fff;
+}
+
+.address-page-section input:focus,
+.address-page-section textarea:focus {
+  border-color: rgba(40, 116, 240, 0.58);
+  outline: 3px solid rgba(40, 116, 240, 0.1);
+}
+
+.address-save-bar {
+  position: sticky;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  z-index: 2;
+  border: 1px solid rgba(216, 222, 232, 0.92);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 28px rgba(23, 32, 51, 0.1);
+  backdrop-filter: blur(12px);
+}
+
+.address-save-bar div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.address-save-bar strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.address-save-bar span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 760;
+  line-height: 1.3;
+}
+
+.address-save-bar .save-location-button {
+  width: auto;
+  min-width: 116px;
+}
+
+@media (max-width: 380px) {
+  .address-save-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .address-save-bar .save-location-button {
+    width: 100%;
+  }
 }
 
 .delivery-card {

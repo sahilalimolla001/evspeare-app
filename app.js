@@ -2165,24 +2165,43 @@ function renderAddressPage() {
       <div class="manual-location-panel">
         <div class="address-form-title">
           <strong>Contact and address</strong>
-          <span>Fields marked by checkout are required before order placement.</span>
+          <span>Required fields help us dispatch without calling again.</span>
         </div>
-        <div class="checkout-field-grid">
-          <label>First Name<input type="text" data-page-checkout-first-name value="${escapeHtml(billing.firstName)}" autocomplete="given-name" /></label>
-          <label>Last Name<input type="text" data-page-checkout-last-name value="${escapeHtml(billing.lastName)}" autocomplete="family-name" /></label>
-          <label>Phone<input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(billing.phone)}" autocomplete="tel" /></label>
-          <label>Email<input type="email" data-page-checkout-email value="${escapeHtml(billing.email)}" autocomplete="email" /></label>
-          <label>Alternate Phone<input type="tel" inputmode="numeric" data-page-checkout-alt-phone value="${escapeHtml(billing.alternatePhone)}" /></label>
-          <label>Country<input type="text" data-page-checkout-country value="${escapeHtml(billing.country || "India")}" autocomplete="country-name" /></label>
-          <label class="wide">Address<textarea data-page-checkout-address1 rows="3" autocomplete="address-line1">${escapeHtml(billing.address1)}</textarea></label>
-          <label class="wide">Address 2<textarea data-page-checkout-address2 rows="2" autocomplete="address-line2">${escapeHtml(billing.address2)}</textarea></label>
-          <label>City<input type="text" data-page-checkout-city value="${escapeHtml(billing.city)}" autocomplete="address-level2" /></label>
-          <label>State<input type="text" data-page-checkout-state value="${escapeHtml(billing.state)}" autocomplete="address-level1" /></label>
-          <label>Pincode<input type="tel" inputmode="numeric" maxlength="6" data-page-checkout-pincode value="${escapeHtml(billing.pincode)}" autocomplete="postal-code" /></label>
+        <div class="address-form-group">
+          <div class="address-form-group-head"><span>Contact</span><small>Who should receive the order?</small></div>
+          <div class="checkout-field-grid">
+            <label>First Name <small>required</small><input type="text" data-page-checkout-first-name value="${escapeHtml(billing.firstName)}" autocomplete="given-name" /></label>
+            <label>Last Name<input type="text" data-page-checkout-last-name value="${escapeHtml(billing.lastName)}" autocomplete="family-name" /></label>
+            <label>Phone <small>required</small><input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(billing.phone)}" autocomplete="tel" /></label>
+            <label>Email<input type="email" data-page-checkout-email value="${escapeHtml(billing.email)}" autocomplete="email" /></label>
+          </div>
+        </div>
+        <div class="address-form-group">
+          <div class="address-form-group-head"><span>Address</span><small>House, street, and nearby landmark</small></div>
+          <div class="checkout-field-grid">
+            <label class="wide">Address <small>required</small><textarea data-page-checkout-address1 rows="3" autocomplete="address-line1">${escapeHtml(billing.address1)}</textarea></label>
+            <label class="wide">Address 2<textarea data-page-checkout-address2 rows="2" autocomplete="address-line2">${escapeHtml(billing.address2)}</textarea></label>
+            <label>Alternate Phone<input type="tel" inputmode="numeric" data-page-checkout-alt-phone value="${escapeHtml(billing.alternatePhone)}" /></label>
+            <label>Country<input type="text" data-page-checkout-country value="${escapeHtml(billing.country || "India")}" autocomplete="country-name" /></label>
+          </div>
+        </div>
+        <div class="address-form-group">
+          <div class="address-form-group-head"><span>Locality</span><small>Used for delivery promise and serviceability</small></div>
+          <div class="checkout-field-grid">
+            <label>City <small>required</small><input type="text" data-page-checkout-city value="${escapeHtml(billing.city)}" autocomplete="address-level2" /></label>
+            <label>State<input type="text" data-page-checkout-state value="${escapeHtml(billing.state)}" autocomplete="address-level1" /></label>
+            <label>Pincode <small>required</small><input type="tel" inputmode="numeric" maxlength="6" data-page-checkout-pincode value="${escapeHtml(billing.pincode)}" autocomplete="postal-code" /></label>
+          </div>
+        </div>
+        <div class="address-save-bar">
+          <div>
+            <strong>Ready to use this address?</strong>
+            <span>You can change it anytime before placing the order.</span>
+          </div>
+          <button class="save-location-button" type="button" data-action="save-location">Save address</button>
           <input type="hidden" data-page-checkout-name value="${escapeHtml(name)}" />
           <input type="hidden" data-page-checkout-address value="${escapeHtml(address)}" />
         </div>
-        <button class="save-location-button" type="button" data-action="save-location">Save address</button>
       </div>
     </section>
   `;
