@@ -40,6 +40,8 @@ const deliveryEstimateDays = 7;
 const fastDeliveryEstimateDays = 1;
 const codMaxOrderAmount = 1000;
 const pendingRazorpayOrders = new Map();
+const rateLimitBuckets = new Map();
+const maxRequestBodyBytes = Number(process.env.MAX_REQUEST_BODY_BYTES || 256 * 1024);
 const defaultFirebaseWebConfig = {
   apiKey: "AIzaSyBHAvF01gxheV53SfnzNxh41ODZHSHNWbI",
   authDomain: "app-evspeare.firebaseapp.com",
@@ -77,12 +79,46 @@ const mimeTypes = {
 };
 
 function send(res, status, body, headers = {}) {
+  applySecurityHeaders(res);
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     ...headers
   });
   res.end(typeof body === "string" ? body : JSON.stringify(body));
+}
+
+function securityHeaders() {
+  const csp = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "script-src 'self' https://www.gstatic.com https://checkout.razorpay.com https://unpkg.com",
+    "style-src 'self' 'unsafe-inline' https://unpkg.com",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://nominatim.openstreetmap.org https://api.razorpay.com",
+    "frame-src 'self' https://accounts.google.com https://checkout.razorpay.com https://api.razorpay.com",
+    "upgrade-insecure-requests"
+  ].join("; ");
+  return {
+    "Content-Security-Policy": csp,
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(self), payment=(self)",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "X-DNS-Prefetch-Control": "off"
+  };
+}
+
+function applySecurityHeaders(res) {
+  Object.entries(securityHeaders()).forEach(([key, value]) => {
+    if (!res.hasHeader(key)) res.setHeader(key, value);
+  });
 }
 
 function currentAppVersion() {
@@ -115,14 +151,20 @@ function currentAppVersion() {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
+    let rejected = false;
     req.on("data", (chunk) => {
+      if (rejected) return;
       body += chunk;
-      if (body.length > 1024 * 1024) {
-        reject(new Error("Request body too large"));
+      if (Buffer.byteLength(body) > maxRequestBodyBytes) {
+        rejected = true;
+        const error = new Error("Request body too large");
+        error.statusCode = 413;
+        reject(error);
         req.destroy();
       }
     });
     req.on("end", () => {
+      if (rejected) return;
       const contentType = req.headers["content-type"] || "";
       try {
         if (contentType.includes("application/json")) {
@@ -133,7 +175,9 @@ function readBody(req) {
           resolve(body ? JSON.parse(body) : {});
         }
       } catch (error) {
-        reject(new Error("Invalid request body"));
+        const invalid = new Error("Invalid request body");
+        invalid.statusCode = 400;
+        reject(invalid);
       }
     });
     req.on("error", reject);
@@ -141,7 +185,7 @@ function readBody(req) {
 }
 
 function getOrigin(req) {
-  const forwardedHost = req.headers["x-forwarded-host"] || req.headers.host || "";
+  const forwardedHost = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
   const forwardedProtocol = req.headers["x-forwarded-proto"];
   const host = forwardedHost;
   if (forwardedProtocol) {
@@ -151,6 +195,71 @@ function getOrigin(req) {
 
   const protocol = req.socket?.encrypted ? "https" : "http";
   return `${protocol}://${host}`;
+}
+
+function clientIp(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || req.socket?.remoteAddress || "unknown";
+}
+
+function sameOriginRequest(req) {
+  const originHeader = req.headers.origin || req.headers.referer || "";
+  if (!originHeader) return true;
+  try {
+    const requestOrigin = new URL(getOrigin(req));
+    const submittedOrigin = new URL(originHeader);
+    return requestOrigin.host === submittedOrigin.host && requestOrigin.protocol === submittedOrigin.protocol;
+  } catch (error) {
+    return false;
+  }
+}
+
+function rateLimitRule(req, pathname) {
+  if (!pathname.startsWith("/api/")) return null;
+  if (pathname.includes("/auth/") || pathname.includes("/payments/")) return { windowMs: 60 * 1000, max: 12, name: "sensitive" };
+  if (pathname.includes("/orders") || pathname.includes("/support") || pathname.includes("/coupons")) return { windowMs: 60 * 1000, max: 30, name: "write" };
+  if (req.method === "GET") return { windowMs: 60 * 1000, max: 180, name: "read" };
+  return { windowMs: 60 * 1000, max: 60, name: "api" };
+}
+
+function enforceRateLimit(req, res, pathname) {
+  const rule = rateLimitRule(req, pathname);
+  if (!rule) return false;
+  const now = Date.now();
+  const key = `${rule.name}:${clientIp(req)}:${pathname}`;
+  const current = rateLimitBuckets.get(key);
+  const bucket = current && current.resetAt > now
+    ? current
+    : { count: 0, resetAt: now + rule.windowMs };
+  bucket.count += 1;
+  rateLimitBuckets.set(key, bucket);
+
+  if (rateLimitBuckets.size > 2000) {
+    for (const [bucketKey, value] of rateLimitBuckets.entries()) {
+      if (value.resetAt <= now) rateLimitBuckets.delete(bucketKey);
+    }
+  }
+
+  if (bucket.count <= rule.max) return false;
+  const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+  send(res, 429, { message: "Too many requests. Please try again shortly." }, { "Retry-After": String(retryAfter) });
+  return true;
+}
+
+function enforceRequestSecurity(req, res, pathname) {
+  if (!["GET", "POST", "HEAD", "OPTIONS"].includes(req.method)) {
+    send(res, 405, { message: "Method not allowed" });
+    return true;
+  }
+  if (req.method === "OPTIONS") {
+    send(res, 204, "");
+    return true;
+  }
+  if (req.method !== "GET" && pathname.startsWith("/api/") && !sameOriginRequest(req)) {
+    send(res, 403, { message: "Cross-origin request blocked" });
+    return true;
+  }
+  return enforceRateLimit(req, res, pathname);
 }
 
 function localFrontendConfig(req) {
@@ -3386,6 +3495,7 @@ async function handlePaymentVerify(req, res) {
 function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (url.pathname === "/config.js") {
+    applySecurityHeaders(res);
     res.writeHead(200, {
       "Content-Type": "text/javascript; charset=utf-8",
       "Cache-Control": "no-store"
@@ -3396,9 +3506,19 @@ function serveStatic(req, res) {
   }
 
   const requestedPath = url.pathname === "/" ? "index.html" : url.pathname.replace(/^\/+/, "");
-  const safePath = path.normalize(decodeURIComponent(requestedPath)).replace(/^(\.\.[/\\])+/, "");
-  const filePath = path.join(rootDir, safePath);
-  if (!filePath.startsWith(rootDir)) {
+  let decodedPath = "";
+  try {
+    decodedPath = decodeURIComponent(requestedPath);
+  } catch (error) {
+    send(res, 400, { message: "Invalid path" });
+    return;
+  }
+  const safePath = path.normalize(decodedPath).replace(/^(\.\.[/\\])+/, "");
+  const filePath = path.resolve(rootDir, safePath);
+  const relativePath = path.relative(rootDir, filePath);
+  const ext = path.extname(filePath).toLowerCase();
+  const baseName = path.basename(filePath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath) || baseName.startsWith(".") || (ext && !mimeTypes[ext])) {
     send(res, 403, { message: "Forbidden" });
     return;
   }
@@ -3408,15 +3528,16 @@ function serveStatic(req, res) {
       fs.readFile(path.join(rootDir, "index.html"), (indexError, indexData) => {
         if (indexError) send(res, 404, { message: "Not found" });
         else {
-          res.writeHead(200, { "Content-Type": mimeTypes[".html"] });
+          applySecurityHeaders(res);
+          res.writeHead(200, { "Content-Type": mimeTypes[".html"], "Cache-Control": "no-store" });
           res.end(indexData);
         }
       });
       return;
     }
 
-    const ext = path.extname(filePath).toLowerCase();
     const isServiceWorker = path.basename(filePath).toLowerCase() === "sw.js";
+    applySecurityHeaders(res);
     res.writeHead(200, {
       "Content-Type": mimeTypes[ext] || "application/octet-stream",
       "Cache-Control": ext === ".html" || isServiceWorker ? "no-store" : "public, max-age=300",
@@ -3428,7 +3549,9 @@ function serveStatic(req, res) {
 
 async function router(req, res) {
   try {
+    applySecurityHeaders(res);
     const url = new URL(req.url, `http://${req.headers.host}`);
+    if (enforceRequestSecurity(req, res, url.pathname)) return;
 
     if (req.method === "GET" && url.pathname === "/health") {
       return send(res, 200, {
@@ -3454,6 +3577,9 @@ async function router(req, res) {
     }
 
     if (req.method === "GET" && url.pathname === "/api/mobile/inventory-diagnostics") {
+      if (!envFlag("ENABLE_PUBLIC_DIAGNOSTICS")) {
+        return send(res, 404, { message: "Not found" });
+      }
       const [db, warehouse] = await Promise.all([
         appDatabaseEnabled()
           ? database.inventoryDiagnostics().catch((error) => ({ error: error.message }))
@@ -3482,7 +3608,7 @@ async function router(req, res) {
     send(res, 405, { message: "Method not allowed" });
   } catch (error) {
     console.error(error);
-    send(res, 500, { message: error.message || "Server error" });
+    send(res, error.statusCode || 500, { message: error.message || "Server error" });
   }
 }
 
