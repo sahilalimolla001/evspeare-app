@@ -555,6 +555,34 @@ function configuredWarehouseCouponUrl(req) {
   }
 }
 
+function configuredSupportQueryUrl(req) {
+  const explicitUrl = validHttpEndpoint(process.env.SUPPORT_QUERY_URL || "");
+  if (explicitUrl) return explicitUrl;
+  const baseUrl =
+    process.env.WAREHOUSE_ORDERS_URL ||
+    process.env.WAREHOUSE_PRODUCTS_URL ||
+    process.env.WAREHOUSE_INVENTORY_URL ||
+    configuredWebsiteOrdersUrl(req) ||
+    configuredWebsiteProductsUrl(req);
+  if (!baseUrl) return "";
+  try {
+    return new URL("/api/support-queries", new URL(baseUrl).origin).toString();
+  } catch (error) {
+    return "";
+  }
+}
+
+function supportQueryToken() {
+  return process.env.SUPPORT_QUERY_TOKEN || process.env.WAREHOUSE_API_TOKEN || "";
+}
+
+function supportQueryAuthHeaders() {
+  const token = supportQueryToken().trim();
+  if (!token) return {};
+  if (token.toLowerCase().startsWith("bearer ")) return { Authorization: token };
+  return { "X-Integration-Key": token };
+}
+
 function publicConfig(req) {
   const websiteProductsUrl = configuredWebsiteProductsUrl(req);
   const websiteOrdersUrl = configuredWebsiteOrdersUrl(req);
@@ -1752,24 +1780,35 @@ async function handleSupportQuery(req, res) {
   fs.mkdirSync(dataDir, { recursive: true });
   fs.appendFileSync(path.join(dataDir, "support-queries.jsonl"), `${JSON.stringify(query)}\n`);
 
-  if (process.env.SUPPORT_QUERY_URL) {
-    const response = await fetchWithTimeout(process.env.SUPPORT_QUERY_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...(process.env.SUPPORT_QUERY_TOKEN ? { Authorization: process.env.SUPPORT_QUERY_TOKEN } : {})
-      },
-      body: JSON.stringify(query)
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || `Support query forward failed with ${response.status}`);
+  let forwarded = false;
+  let forwardError = "";
+  const supportUrl = configuredSupportQueryUrl(req);
+  if (supportUrl) {
+    try {
+      const response = await fetchWithTimeout(supportUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...supportQueryAuthHeaders()
+        },
+        body: JSON.stringify(query)
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `Support query forward failed with ${response.status}`);
+      }
+      forwarded = true;
+    } catch (error) {
+      forwardError = error.message || "Support query forward failed";
+      console.warn("Support query saved locally but panel forward failed:", forwardError);
     }
   }
 
   send(res, 200, {
     submitted: true,
+    forwarded,
+    forwardPending: Boolean(supportUrl && !forwarded),
     id: query.id
   });
 }
