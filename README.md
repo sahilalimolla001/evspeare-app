@@ -59,6 +59,8 @@ WAREHOUSE_RETURN_ORDER_URL=https://yourwarehouse.com/api/integrations/returns
 WAREHOUSE_PRODUCTS_URL=https://yourwarehouse.com/api/products
 WAREHOUSE_INVENTORY_URL=https://yourwarehouse.com/api/inventory
 WAREHOUSE_API_TOKEN=Bearer your_warehouse_token
+SUPPORT_QUERY_URL=https://yourwarehouse.com/api/support-queries
+SUPPORT_QUERY_TOKEN=Bearer your_warehouse_token
 GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 IMAGE_PROXY_ALLOWED_HOSTS=yourwarehouse.com,cdn.yourwarehouse.com
 
@@ -101,6 +103,7 @@ Use Razorpay Test Mode keys during testing and replace them with Live Mode keys 
 - `GET /api/mobile/diagnostics` checks whether Twilio, Firebase Auth, Razorpay, and website env vars are set without exposing secrets.
 - `POST /api/mobile/orders` validates live catalog inventory and pushes COD/paid orders to `WEBSITE_ORDERS_URL`.
 - If `WAREHOUSE_ORDERS_URL` is set, every placed order is also pushed to the warehouse system.
+- `POST /api/mobile/support` stores customer support queries locally and forwards them to `SUPPORT_QUERY_URL` when configured. Use the same bearer value as the warehouse `INTEGRATION_API_KEY` in `SUPPORT_QUERY_TOKEN`.
 - `GET /api/mobile/orders` returns customer orders from `WEBSITE_CUSTOMER_ORDERS_URL` or `WEBSITE_ORDERS_URL`, then merges live website tracking from `WEBSITE_TRACKING_URL` and warehouse tracking from `WAREHOUSE_TRACKING_URL`.
 - `POST /api/mobile/orders/cancel` accepts customer cancel requests until the order is in transit; set `WEBSITE_CANCEL_ORDER_URL` or `WAREHOUSE_CANCEL_ORDER_URL` to forward full order details. Warehouse cancellation first uses `WAREHOUSE_API_TOKEN` and can fall back to configured server-side warehouse login credentials when the warehouse supports authenticated staff-session cancellation.
 - `POST /api/mobile/orders/return` accepts return requests for 7 days after delivered status; set `WEBSITE_RETURN_ORDER_URL` or `WAREHOUSE_RETURN_ORDER_URL` to forward order id, AWB, items, EAN/SKU, customer, address, phone, amount, reason, and tracking details.

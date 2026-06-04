@@ -225,10 +225,11 @@
     <aside class="side-drawer" data-drawer aria-hidden="true">
       <div class="drawer-panel">
         <div class="drawer-head">
+          <div class="drawer-avatar" data-drawer-avatar>EV</div>
           <div>
             <small>EV Speare</small>
-            <strong>Hello, Shopper</strong>
-            <span>Shop parts, manage orders, get support</span>
+            <strong data-drawer-name>Hello, Shopper</strong>
+            <span data-drawer-status>Shop parts, manage orders, get support</span>
           </div>
           <button class="icon-button" type="button" aria-label="Close menu" data-action="close-menu">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -236,30 +237,73 @@
             </svg>
           </button>
         </div>
+        <section class="drawer-metrics" aria-label="Account summary">
+          <article><span>Cart</span><strong data-drawer-cart-count>0</strong></article>
+          <article><span>Wishlist</span><strong data-drawer-wishlist-count>0</strong></article>
+          <article><span>Orders</span><strong data-drawer-order-count>0</strong></article>
+          <article><span>Stock</span><strong data-drawer-stock-count>--</strong></article>
+        </section>
         <section class="drawer-section drawer-shortcuts" aria-label="Shopping shortcuts">
           <span>Shop</span>
-          <button type="button" data-filter-chip="Deals">Deals</button>
-          <button type="button" data-filter-chip="Motors">Motors</button>
-          <button type="button" data-filter-chip="Lights">Lights</button>
+          <button type="button" data-filter-chip="Deals">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 12v8H4v-8M22 7H2v5h20V7ZM12 20V7M12 7H7.5A2.5 2.5 0 1 1 10 4.5C10 7 12 7 12 7Zm0 0h4.5A2.5 2.5 0 1 0 14 4.5C14 7 12 7 12 7Z" />
+            </svg>
+            <span>Deals</span>
+          </button>
+          <button type="button" data-filter-chip="Motors">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 2h12l1 7H5l1-7ZM5 9h14l-1.2 13H6.2L5 9Z" />
+              <path d="M9 13h6M10 17h4" />
+            </svg>
+            <span>Motors</span>
+          </button>
+          <button type="button" data-filter-chip="Lights">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 4h8l4 5-3 3-2-2v10H9V10l-2 2-3-3 4-5Z" />
+            </svg>
+            <span>Lights</span>
+          </button>
         </section>
         <section class="drawer-section drawer-account-links" aria-label="Account shortcuts">
           <span>Account</span>
-          <button type="button" data-action="open-account">Login and profile</button>
-          <button type="button" data-action="show-wishlist">Wishlist</button>
-          <button type="button" data-action="open-cart">Cart and checkout</button>
-          <button type="button" data-action="open-orders">Orders and tracking</button>
+          <button type="button" data-action="open-account">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" />
+            </svg>
+            <span>Login and profile</span>
+          </button>
+          <button type="button" data-action="show-wishlist">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" />
+            </svg>
+            <span>Wishlist</span>
+          </button>
+          <button type="button" data-action="open-cart">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6h15l-1.5 8.5H8L6 3H3" />
+              <path d="M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM18 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
+            </svg>
+            <span>Cart and checkout</span>
+          </button>
+          <button type="button" data-action="open-orders">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16v13H4V7ZM7 7a5 5 0 0 1 10 0M9 12h6" />
+            </svg>
+            <span>Orders and tracking</span>
+          </button>
         </section>
         <section class="drawer-commerce-page" aria-label="Quick commerce tools" data-drawer-commerce-page>
           <span>Quick commerce</span>
         </section>
         <section class="drawer-section drawer-about-section" aria-label="About and policies">
           <span>About</span>
-          <button type="button" data-info-page="privacy">Privacy policy</button>
-          <button type="button" data-info-page="terms">Terms and conditions</button>
-          <button type="button" data-info-page="shipping">Shipping policy</button>
-          <button type="button" data-info-page="returns">Return policy</button>
-          <button type="button" data-info-page="payments">Payment policy</button>
-          <button type="button" data-info-page="legal">Legal and grievance</button>
+          <button type="button" data-info-page="privacy"><span>Privacy policy</span></button>
+          <button type="button" data-info-page="terms"><span>Terms and conditions</span></button>
+          <button type="button" data-info-page="shipping"><span>Shipping policy</span></button>
+          <button type="button" data-info-page="returns"><span>Return policy</span></button>
+          <button type="button" data-info-page="payments"><span>Payment policy</span></button>
+          <button type="button" data-info-page="legal"><span>Legal and grievance</span></button>
           <span>Help</span>
           <form class="support-card drawer-support-card" aria-label="Support query" data-support-form>
             <div>
@@ -275,9 +319,7 @@
             <textarea name="message" rows="2" placeholder="Type your query"></textarea>
             <button type="submit">Submit query</button>
           </form>
-          <button type="button" data-info-page="returns">Return policy</button>
-          <button type="button" data-info-page="payments">Payment policy</button>
-          <button type="button" data-info-page="about">About Ev Speare</button>
+          <button type="button" data-info-page="about"><span>About Ev Speare</span></button>
         </section>
       </div>
     </aside>

@@ -408,7 +408,14 @@ const nodes = {
   expressCount: document.querySelector("[data-express-count]"),
   buyAgainCount: document.querySelector("[data-buy-again-count]"),
   buyAgainSection: document.querySelector("[data-buy-again-section]"),
-  buyAgainGrid: document.querySelector("[data-buy-again-grid]")
+  buyAgainGrid: document.querySelector("[data-buy-again-grid]"),
+  drawerAvatar: document.querySelector("[data-drawer-avatar]"),
+  drawerName: document.querySelector("[data-drawer-name]"),
+  drawerStatus: document.querySelector("[data-drawer-status]"),
+  drawerCartCount: document.querySelector("[data-drawer-cart-count]"),
+  drawerWishlistCount: document.querySelector("[data-drawer-wishlist-count]"),
+  drawerOrderCount: document.querySelector("[data-drawer-order-count]"),
+  drawerStockCount: document.querySelector("[data-drawer-stock-count]")
 };
 
 function loadJson(key, fallback) {
@@ -935,6 +942,7 @@ function renderQuickCommerce() {
       : "Check pincode for express delivery";
   }
   renderBuyAgain();
+  renderDrawerSummary();
 }
 
 function renderBuyAgain() {
@@ -1223,6 +1231,7 @@ function renderCart() {
   const { entries, itemCount, subtotal, total } = totals;
 
   nodes.cartCount.textContent = itemCount;
+  if (nodes.drawerCartCount) nodes.drawerCartCount.textContent = itemCount;
   nodes.cartSummary.textContent = `${itemCount} ${itemCount === 1 ? "item" : "items"}`;
   nodes.priceBox.hidden = itemCount === 0;
   nodes.checkoutForm.hidden = itemCount === 0;
@@ -1265,10 +1274,40 @@ function renderCart() {
           .join("") + cartAddOnsHtml();
 
   if (nodes.cartPage) renderCartPage();
+  renderDrawerSummary();
+}
+
+function renderDrawerSummary() {
+  const loggedIn = isLoggedIn();
+  const name = customerNameFallback(state.session?.user?.name);
+  const cartCount = cartTotals().itemCount;
+  const readyStock = products.filter(isProductAvailable).length;
+  const pincode = savedLocationDetails()?.pincode || "";
+
+  if (nodes.drawerAvatar) {
+    const source = loggedIn ? name : "EV";
+    nodes.drawerAvatar.textContent = source
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase())
+      .join("") || "EV";
+  }
+  if (nodes.drawerName) nodes.drawerName.textContent = loggedIn ? name : "Hello, Shopper";
+  if (nodes.drawerStatus) {
+    nodes.drawerStatus.textContent = loggedIn
+      ? pincode ? `Delivering to ${pincode}` : "Profile active. Add delivery pincode."
+      : "Login for faster checkout and tracking.";
+  }
+  if (nodes.drawerCartCount) nodes.drawerCartCount.textContent = cartCount;
+  if (nodes.drawerWishlistCount) nodes.drawerWishlistCount.textContent = state.wishlist.size;
+  if (nodes.drawerOrderCount) nodes.drawerOrderCount.textContent = state.orders.length;
+  if (nodes.drawerStockCount) nodes.drawerStockCount.textContent = readyStock;
 }
 
 function renderBadges() {
   nodes.wishlistCount.textContent = state.wishlist.size;
+  renderDrawerSummary();
 }
 
 function renderSession() {
@@ -1307,6 +1346,7 @@ function renderSession() {
   if (loggedIn && !nodes.checkoutName.value) {
     nodes.checkoutName.value = name;
   }
+  renderDrawerSummary();
 }
 
 function renderGatewayNote() {
