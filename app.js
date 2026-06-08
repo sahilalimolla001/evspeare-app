@@ -891,7 +891,6 @@ function productCard(product) {
   const wished = state.wishlist.has(product.id);
   const off = discount(product);
   const available = isProductAvailable(product);
-  const inCart = state.cart.get(product.id) || 0;
 
   return `
     <article class="product-card ${available ? "" : "out-of-stock"}" data-open-product="${escapeHtml(product.id)}">
@@ -904,7 +903,6 @@ function productCard(product) {
             <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" />
           </svg>
         </button>
-        <button class="add-button floating-add" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? inCart ? `Add ${inCart}` : "Add" : "Out"}</button>
       </div>
       <div class="product-body">
         <p class="product-meta-line">${escapeHtml(product.category || "EV Parts")}</p>
@@ -919,14 +917,6 @@ function productCard(product) {
           ${off ? `<span>${off}% off</span>` : ""}
         </div>
         <p class="delivery-line">${escapeHtml(deliveryEtaText(product))}</p>
-        <div class="card-actions">
-          <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? inCart ? `Add again (${inCart})` : "Add to cart" : "Out of stock"}</button>
-          <button class="buy-button" type="button" aria-label="Buy ${escapeHtml(product.title)}" data-buy-now="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 12h14M13 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
       </div>
     </article>
   `;
@@ -1490,6 +1480,13 @@ function renderProductPage(productId) {
   state.selectedProductId = product.id;
   const off = discount(product);
   const available = isProductAvailable(product);
+  const inCart = state.cart.get(product.id) || 0;
+  const highlights = [
+    product.category ? `${product.category} spare part` : "EV spare part",
+    stockLabel(product),
+    deliveryEtaText(product),
+    "COD and online payment supported"
+  ];
   const related = products
     .filter((item) => item.id !== product.id && (item.category === product.category || (item.tags || []).some((tag) => (product.tags || []).includes(tag))))
     .slice(0, 8);
@@ -1510,7 +1507,8 @@ function renderProductPage(productId) {
         ${[0, 1, 2].map((index) => `<button class="${index === 0 ? "active" : ""}" type="button" aria-label="Product image ${index + 1}"><img ${imageAttrs(product)} alt="" loading="lazy" /></button>`).join("")}
       </div>
     </section>
-    <div class="detail-body">
+    <div class="detail-body flipkart-detail-body">
+      <p class="detail-assured">EV Speare Assured</p>
       <h1>${escapeHtml(product.title)}</h1>
       <div class="rating-row"><span class="rating-pill">${escapeHtml(product.rating || "4.1")}</span><span>${currency.format(product.reviews || 0)} ratings</span></div>
       <div class="price-row detail-price">
@@ -1518,10 +1516,25 @@ function renderProductPage(productId) {
         ${product.mrp > product.price ? `<del>${formatPrice(product.mrp)}</del>` : ""}
         ${off ? `<span>${off}% off</span>` : ""}
       </div>
-      <div class="detail-service">
-        <span>Warehouse inventory: ${escapeHtml(stockLabel(product))}</span>
-        <span>${escapeHtml(product.delivery || "Delivery available")}</span>
-        <span>Secure checkout with COD and Razorpay</span>
+      <div class="flipkart-offers">
+        <strong>Available offers</strong>
+        <span>Special price applied on this EV spare part</span>
+        <span>Free delivery eligible on cart value offers</span>
+        <span>Secure COD verification before order placement</span>
+      </div>
+      <div class="flipkart-delivery-box">
+        <div>
+          <span>Delivery</span>
+          <strong>${escapeHtml(deliveryEtaText(product))}</strong>
+          <small>${escapeHtml(available ? stockLabel(product) : "Currently unavailable")}</small>
+        </div>
+        <button type="button" data-action="select-address">${savedLocationDetails()?.pincode ? escapeHtml(savedLocationDetails().pincode) : "Check"}</button>
+      </div>
+      <div class="flipkart-highlights">
+        <strong>Highlights</strong>
+        <ul>
+          ${highlights.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
       </div>
       <button class="product-share-button" type="button" data-share-product="${escapeHtml(product.id)}">
         <span>Product link</span>
@@ -1553,7 +1566,7 @@ function renderProductPage(productId) {
         <span>${available ? escapeHtml(stockLabel(product)) : "Unavailable"}</span>
         <strong>${formatPrice(product.price)}</strong>
       </div>
-      <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? "Add" : "Out"}</button>
+      <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? inCart ? `Added ${inCart}` : "Add" : "Out"}</button>
       <button class="checkout-button" type="button" data-buy-now="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>Buy now</button>
     </div>
   `;
@@ -2281,6 +2294,63 @@ function checkoutAddressCardHtml(billing) {
   `;
 }
 
+function checkoutAddressFormHtml(billing, name, address) {
+  return `
+    <div class="checkout-inline-address">
+      <div class="checkout-section-head">
+        <div>
+          <span>Delivery address</span>
+          <h3>${addressExists(billing) ? "Update selected address" : "Add delivery address"}</h3>
+          <p>Use this address for delivery and order updates.</p>
+        </div>
+        <label class="shipping-toggle">
+          <input type="checkbox" data-page-shipping-same ${billing.shippingSame === false ? "" : "checked"} />
+          <span>Shipping same</span>
+        </label>
+      </div>
+      ${savedAddressCardsHtml()}
+      <div class="address-page-tools">
+        <button type="button" data-action="use-live-location">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /><path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" /></svg>
+          Use live location
+        </button>
+        <button type="button" data-action="select-address-map">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-5.1 7-12A7 7 0 1 0 5 9c0 6.9 7 12 7 12Z" /><path d="M12 11.5a2.5 2.5 0 0 0 0-5" /></svg>
+          Select on map
+        </button>
+      </div>
+      <div class="address-form-group">
+        <div class="address-form-group-head"><span>Contact</span><small>Order receiver details</small></div>
+        <div class="checkout-field-grid">
+          <label>First Name <small>required</small><input type="text" data-page-checkout-first-name value="${escapeHtml(billing.firstName)}" autocomplete="given-name" /></label>
+          <label>Last Name<input type="text" data-page-checkout-last-name value="${escapeHtml(billing.lastName)}" autocomplete="family-name" /></label>
+          <label>Phone <small>required</small><input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(billing.phone)}" autocomplete="tel" /></label>
+          <label>Email<input type="email" data-page-checkout-email value="${escapeHtml(billing.email)}" autocomplete="email" /></label>
+        </div>
+      </div>
+      <div class="address-form-group">
+        <div class="address-form-group-head"><span>Address</span><small>House, street, landmark</small></div>
+        <div class="checkout-field-grid">
+          <label class="wide">Address <small>required</small><textarea data-page-checkout-address1 rows="3" autocomplete="address-line1">${escapeHtml(billing.address1)}</textarea></label>
+          <label class="wide">Address 2<textarea data-page-checkout-address2 rows="2" autocomplete="address-line2">${escapeHtml(billing.address2)}</textarea></label>
+          <label>Alternate Phone<input type="tel" inputmode="numeric" data-page-checkout-alt-phone value="${escapeHtml(billing.alternatePhone)}" /></label>
+          <label>Country<input type="text" data-page-checkout-country value="${escapeHtml(billing.country || "India")}" autocomplete="country-name" /></label>
+        </div>
+      </div>
+      <div class="address-form-group">
+        <div class="address-form-group-head"><span>Locality</span><small>Delivery serviceability</small></div>
+        <div class="checkout-field-grid">
+          <label>City <small>required</small><input type="text" data-page-checkout-city value="${escapeHtml(billing.city)}" autocomplete="address-level2" /></label>
+          <label>State<input type="text" data-page-checkout-state value="${escapeHtml(billing.state)}" autocomplete="address-level1" /></label>
+          <label>Pincode <small>required</small><input type="tel" inputmode="numeric" maxlength="6" data-page-checkout-pincode value="${escapeHtml(billing.pincode)}" autocomplete="postal-code" /></label>
+        </div>
+      </div>
+      <input type="hidden" data-page-checkout-name value="${escapeHtml(name)}" />
+      <input type="hidden" data-page-checkout-address value="${escapeHtml(address)}" />
+    </div>
+  `;
+}
+
 function renderAddressPage() {
   if (!nodes.addressPage) return;
   const saved = savedLocationDetails();
@@ -2471,6 +2541,7 @@ function renderCheckoutPage() {
 
       <section class="checkout-section checkout-address-summary">
         ${checkoutAddressCardHtml(billing)}
+        ${showLocationForm ? checkoutAddressFormHtml(billing, name, address) : ""}
         ${addressStatusHtml(billing)}
       </section>
     </form>
@@ -2507,6 +2578,15 @@ function renderCheckoutPage() {
   `;
   renderGatewayNote();
   setCheckoutActionState();
+}
+
+function openCheckoutAddressForm(focusSelector = "") {
+  state.locationFormOpen = true;
+  renderCheckoutPage();
+  openPage("checkout");
+  if (focusSelector) {
+    requestAnimationFrame(() => checkoutField(focusSelector, nodes.checkoutAddress)?.focus());
+  }
 }
 
 function trackingIconSvg(icon) {
@@ -3285,6 +3365,24 @@ async function completeNewCustomerLogin(event) {
     mapLocation: pendingOtpLogin?.mapLocation || mapLocationUrl(pendingOtpLogin?.coordinates)
   };
 
+  if (!profile.address1) {
+    showToast("Enter delivery address before OTP");
+    nodes.loginAddress1.focus();
+    return;
+  }
+
+  if (!profile.city) {
+    showToast("Enter city before OTP");
+    nodes.loginCity.focus();
+    return;
+  }
+
+  if (profile.pincode.length !== 6) {
+    showToast("Enter valid 6 digit pincode before OTP");
+    nodes.loginPincode.focus();
+    return;
+  }
+
   const otp = String(nodes.loginOtp?.value || "").trim();
   const otpReady = pendingOtpLogin?.phone === phone && otp.length >= 4;
   try {
@@ -3509,73 +3607,51 @@ function validateCheckout() {
 
   if (!name) {
     showToast("Enter customer name");
-    state.addressReturnPage = "checkout";
-    renderAddressPage();
-    openPage("address");
-    requestAnimationFrame(() => checkoutField("[data-page-checkout-first-name]", firstNameNode)?.focus());
+    openCheckoutAddressForm("[data-page-checkout-first-name]");
     return null;
   }
 
   if (phone.length !== 10) {
     showToast("Enter valid mobile number");
-    state.addressReturnPage = "checkout";
-    renderAddressPage();
-    openPage("address");
-    requestAnimationFrame(() => checkoutField("[data-page-checkout-phone]", phoneNode)?.focus());
+    openCheckoutAddressForm("[data-page-checkout-phone]");
     return null;
   }
 
   if (state.paymentMethod === "cod" && phone !== phoneDigits(state.session.user.phone)) {
     showToast("COD mobile number must match your login mobile");
-    state.addressReturnPage = "checkout";
-    renderAddressPage();
-    openPage("address");
-    requestAnimationFrame(() => checkoutField("[data-page-checkout-phone]", phoneNode)?.focus());
+    openCheckoutAddressForm("[data-page-checkout-phone]");
     return null;
   }
 
   if (!billing.address1) {
     showToast("Enter delivery address");
-    state.addressReturnPage = "checkout";
-    renderAddressPage();
-    openPage("address");
-    requestAnimationFrame(() => checkoutField("[data-page-checkout-address1]", address1Node)?.focus());
+    openCheckoutAddressForm("[data-page-checkout-address1]");
     return null;
   }
 
   if (!billing.city) {
     showToast("Enter city");
-    state.addressReturnPage = "checkout";
-    renderAddressPage();
-    openPage("address");
-    requestAnimationFrame(() => checkoutField("[data-page-checkout-city]", cityNode)?.focus());
+    openCheckoutAddressForm("[data-page-checkout-city]");
     return null;
   }
 
   if (billing.pincode.length !== 6) {
     showToast("Enter valid 6 digit pincode");
-    state.addressReturnPage = "checkout";
-    renderAddressPage();
-    openPage("address");
-    requestAnimationFrame(() => checkoutField("[data-page-checkout-pincode]", pincodeNode)?.focus());
+    openCheckoutAddressForm("[data-page-checkout-pincode]");
     return null;
   }
 
   if (state.deliveryMode === "fast") {
     if (!billing.coordinates) {
       showToast("Verify address with live location for fast delivery");
-      state.addressReturnPage = "checkout";
-      renderAddressPage();
-      openPage("address");
+      openCheckoutAddressForm();
       return null;
     }
 
     const addressVerification = addressMatchesVerifiedLocation(billing);
     if (!addressVerification.valid) {
       showToast(addressVerification.reason);
-      state.addressReturnPage = "checkout";
-      renderAddressPage();
-      openPage("address");
+      openCheckoutAddressForm();
       return null;
     }
   }
@@ -4229,29 +4305,22 @@ document.addEventListener("click", async (event) => {
       }
       break;
     case "select-address":
-      state.addressReturnPage = activePageName();
-      state.locationFormOpen = true;
-      renderAddressPage();
-      openPage("address");
-      closeAccount();
+      if (!isLoggedIn()) {
+        openAccount();
+        closeDrawer();
+      } else {
+        openCheckoutAddressForm("[data-page-checkout-address1]");
+        closeAccount();
+        closeDrawer();
+      }
       break;
     case "edit-location":
-      state.addressReturnPage = activePageName() || "checkout";
-      state.locationFormOpen = true;
-      renderAddressPage();
-      openPage("address");
-      requestAnimationFrame(() => checkoutField("[data-page-checkout-address1]", nodes.checkoutAddress)?.focus());
+      openCheckoutAddressForm("[data-page-checkout-address1]");
       break;
     case "save-location":
       saveLocationFromForm();
       renderCheckoutPage();
-      if (state.addressReturnPage === "checkout") {
-        openPage("checkout");
-      } else if (state.addressReturnPage && state.addressReturnPage !== "address") {
-        openPage(state.addressReturnPage);
-      } else {
-        closePages();
-      }
+      openPage("checkout");
       state.addressReturnPage = "";
       break;
     case "apply-coupon":

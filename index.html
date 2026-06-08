@@ -452,11 +452,11 @@
             <label>Customer name<input type="text" data-login-name placeholder="Enter your name" autocomplete="name" /></label>
             <label>Mobile number<input type="tel" inputmode="numeric" maxlength="10" data-login-phone placeholder="Enter 10 digit mobile" autocomplete="tel" /></label>
             <label data-login-otp-row hidden>OTP<input type="tel" inputmode="numeric" maxlength="6" data-login-otp placeholder="Enter OTP" autocomplete="one-time-code" /></label>
-            <label>Address <small>optional before checkout</small><textarea data-login-address1 placeholder="House no, street" autocomplete="address-line1" rows="2"></textarea></label>
+            <label>Address <small>required for delivery</small><textarea data-login-address1 placeholder="House no, street" autocomplete="address-line1" rows="2"></textarea></label>
             <label>Area<input type="text" data-login-area placeholder="Area" /></label>
-            <label>City<input type="text" data-login-city placeholder="City" autocomplete="address-level2" /></label>
+            <label>City<input type="text" data-login-city placeholder="City" autocomplete="address-level2" required /></label>
             <label>State<input type="text" data-login-state placeholder="State" autocomplete="address-level1" /></label>
-            <label>Pincode<input type="tel" inputmode="numeric" maxlength="6" data-login-pincode placeholder="6 digit pincode" autocomplete="postal-code" /></label>
+            <label>Pincode<input type="tel" inputmode="numeric" maxlength="6" data-login-pincode placeholder="6 digit pincode" autocomplete="postal-code" required /></label>
             <button class="map-select-button" type="button" data-action="select-address-map">Select on map</button>
             <button class="primary-button" type="submit" data-login-submit>Send OTP</button>
           </form>
@@ -509,7 +509,7 @@
             </button>
             <button type="button" data-action="select-address">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-5.1 7-12A7 7 0 1 0 5 9c0 6.9 7 12 7 12Z" /><path d="M12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /></svg>
-              Address
+              Delivery
             </button>
           </div>
 

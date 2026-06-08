@@ -4479,6 +4479,7 @@ body {
   padding: 9px 9px 10px;
   display: grid;
   align-content: start;
+  gap: 4px;
 }
 
 .product-meta-line {
@@ -4668,6 +4669,120 @@ body {
 .related-section {
   border: 1px solid #e4e9f2;
   box-shadow: 0 10px 26px rgba(23, 32, 51, 0.06);
+}
+
+.flipkart-detail-body {
+  display: grid;
+  gap: 12px;
+}
+
+.detail-assured {
+  width: fit-content;
+  margin: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #ffffff;
+  background: var(--blue);
+  font-size: 0.68rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.flipkart-offers,
+.flipkart-highlights,
+.flipkart-delivery-box {
+  border-top: 1px solid #edf0f5;
+  padding-top: 12px;
+}
+
+.flipkart-offers,
+.flipkart-highlights {
+  display: grid;
+  gap: 8px;
+}
+
+.flipkart-offers strong,
+.flipkart-highlights strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
+.flipkart-offers span {
+  position: relative;
+  padding-left: 22px;
+  color: #344256;
+  font-size: 0.8rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.flipkart-offers span::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 5px;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  background: #108934;
+  box-shadow: inset 0 0 0 3px #dff7e7;
+}
+
+.flipkart-delivery-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.flipkart-delivery-box div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.flipkart-delivery-box span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.flipkart-delivery-box strong {
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.flipkart-delivery-box small {
+  color: var(--green);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.flipkart-delivery-box button {
+  min-width: 70px;
+  border: 1px solid #d4e3f8;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--blue-dark);
+  background: #edf5ff;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.flipkart-highlights ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #344256;
+  font-size: 0.82rem;
+  font-weight: 720;
+  line-height: 1.5;
+}
+
+.checkout-inline-address {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
 }
 
 .detail-accordions {
