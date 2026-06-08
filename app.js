@@ -1522,6 +1522,17 @@ function renderProductPage(productId) {
         <span>Free delivery eligible on cart value offers</span>
         <span>Secure COD verification before order placement</span>
       </div>
+      <div class="flipkart-payment-options">
+        <strong>Payment options</strong>
+        <button type="button" data-buy-now="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>
+          <span>Razorpay</span>
+          <small>UPI, cards, netbanking and wallets</small>
+        </button>
+        <button type="button" data-buy-now="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>
+          <span>Cash on Delivery</span>
+          <small>OTP verified COD where eligible</small>
+        </button>
+      </div>
       <div class="flipkart-delivery-box">
         <div>
           <span>Delivery</span>
@@ -1529,12 +1540,6 @@ function renderProductPage(productId) {
           <small>${escapeHtml(available ? stockLabel(product) : "Currently unavailable")}</small>
         </div>
         <button type="button" data-action="select-address">${savedLocationDetails()?.pincode ? escapeHtml(savedLocationDetails().pincode) : "Check"}</button>
-      </div>
-      <div class="flipkart-highlights">
-        <strong>Highlights</strong>
-        <ul>
-          ${highlights.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-        </ul>
       </div>
       <button class="product-share-button" type="button" data-share-product="${escapeHtml(product.id)}">
         <span>Product link</span>
@@ -1553,6 +1558,12 @@ function renderProductPage(productId) {
           <summary>Returns and support</summary>
           <p>Return eligibility depends on product condition and order policy. Support is available from your orders page.</p>
         </details>
+      </div>
+      <div class="flipkart-highlights">
+        <strong>Highlights</strong>
+        <ul>
+          ${highlights.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+        </ul>
       </div>
     </div>
     ${related.length ? `
