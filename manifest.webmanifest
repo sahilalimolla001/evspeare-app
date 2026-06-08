@@ -1,8 +1,11 @@
 {
   "name": "Ev Speare",
   "short_name": "Ev Speare",
-  "start_url": "./index.html",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#f2f5f9",
   "theme_color": "#2874f0",
   "description": "EV spare parts shopping app.",

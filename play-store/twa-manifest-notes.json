@@ -1,0 +1,16 @@
+{
+  "appName": "Ev Speare",
+  "launcherName": "Ev Speare",
+  "packageId": "com.evspeare.shop",
+  "host": "www.evspeare.shop",
+  "startUrl": "/",
+  "themeColor": "#2874f0",
+  "backgroundColor": "#f2f5f9",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "fallbackType": "customtabs",
+  "signingKey": {
+    "storeFile": "release.keystore",
+    "alias": "evspeare"
+  }
+}

@@ -883,6 +883,7 @@ function productCard(product) {
   const wished = state.wishlist.has(product.id);
   const off = discount(product);
   const available = isProductAvailable(product);
+  const inCart = state.cart.get(product.id) || 0;
 
   return `
     <article class="product-card ${available ? "" : "out-of-stock"}" data-open-product="${escapeHtml(product.id)}">
@@ -895,8 +896,10 @@ function productCard(product) {
             <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" />
           </svg>
         </button>
+        <button class="add-button floating-add" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? inCart ? `Add ${inCart}` : "Add" : "Out"}</button>
       </div>
       <div class="product-body">
+        <p class="product-meta-line">${escapeHtml(product.category || "EV Parts")}</p>
         <h3 class="product-title">${escapeHtml(product.title)}</h3>
         <div class="rating-row">
           <span class="rating-pill">${escapeHtml(product.rating || "4.1")}</span>
@@ -909,7 +912,7 @@ function productCard(product) {
         </div>
         <p class="delivery-line">${escapeHtml(deliveryEtaText(product))}</p>
         <div class="card-actions">
-          <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? "Add to cart" : "Out of stock"}</button>
+          <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? inCart ? `Add again (${inCart})` : "Add to cart" : "Out of stock"}</button>
           <button class="buy-button" type="button" aria-label="Buy ${escapeHtml(product.title)}" data-buy-now="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 12h14M13 5l7 7-7 7" />
@@ -1479,6 +1482,9 @@ function renderProductPage(productId) {
   state.selectedProductId = product.id;
   const off = discount(product);
   const available = isProductAvailable(product);
+  const related = products
+    .filter((item) => item.id !== product.id && (item.category === product.category || (item.tags || []).some((tag) => (product.tags || []).includes(tag))))
+    .slice(0, 8);
 
   nodes.productPage.innerHTML = `
     <div class="page-header">
@@ -1490,7 +1496,12 @@ function renderProductPage(productId) {
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" /></svg>
       </button>
     </div>
-    <div class="detail-media"><img ${imageAttrs(product)} alt="${escapeHtml(product.title)}" /></div>
+    <section class="detail-gallery" aria-label="Product gallery">
+      <div class="detail-media"><img ${imageAttrs(product)} alt="${escapeHtml(product.title)}" /></div>
+      <div class="detail-thumbs">
+        ${[0, 1, 2].map((index) => `<button class="${index === 0 ? "active" : ""}" type="button" aria-label="Product image ${index + 1}"><img ${imageAttrs(product)} alt="" loading="lazy" /></button>`).join("")}
+      </div>
+    </section>
     <div class="detail-body">
       <h1>${escapeHtml(product.title)}</h1>
       <div class="rating-row"><span class="rating-pill">${escapeHtml(product.rating || "4.1")}</span><span>${currency.format(product.reviews || 0)} ratings</span></div>
@@ -1508,10 +1519,34 @@ function renderProductPage(productId) {
         <span>Product link</span>
         <strong>Copy / Share</strong>
       </button>
-      <div class="detail-actions">
-        <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? "Add to cart" : "Out of stock"}</button>
-        <button class="checkout-button" type="button" data-buy-now="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>Buy now</button>
+      <div class="detail-accordions">
+        <details open>
+          <summary>Product details</summary>
+          <p>${escapeHtml(product.category || "EV spare part")} with live warehouse pricing and stock visibility.</p>
+        </details>
+        <details>
+          <summary>Delivery and payment</summary>
+          <p>${escapeHtml(deliveryEtaText(product))}. Checkout supports COD and Razorpay where available.</p>
+        </details>
+        <details>
+          <summary>Returns and support</summary>
+          <p>Return eligibility depends on product condition and order policy. Support is available from your orders page.</p>
+        </details>
       </div>
+    </div>
+    ${related.length ? `
+      <section class="related-section" aria-label="Related products">
+        <div class="section-heading"><h2>Related products</h2><button type="button" data-action="close-page">View all</button></div>
+        <div class="related-rail">${related.map(productCard).join("")}</div>
+      </section>
+    ` : ""}
+    <div class="detail-sticky-actions">
+      <div>
+        <span>${available ? escapeHtml(stockLabel(product)) : "Unavailable"}</span>
+        <strong>${formatPrice(product.price)}</strong>
+      </div>
+      <button class="add-button" type="button" data-add-cart="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>${available ? "Add" : "Out"}</button>
+      <button class="checkout-button" type="button" data-buy-now="${escapeHtml(product.id)}" ${available ? "" : "disabled"}>Buy now</button>
     </div>
   `;
   openPage("product");
