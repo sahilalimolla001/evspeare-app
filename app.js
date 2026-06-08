@@ -740,37 +740,84 @@ function clearCustomerDeviceState() {
   });
 }
 
-function syncCustomerState() {
-  if (!isLoggedIn() || !api.saveCustomerState) return;
-  api.saveCustomerState({
+function customerPhone() {
+  return phoneDigits(state.session?.user?.phone || "");
+}
+
+function customerScopedStateKey(phone = customerPhone()) {
+  return phone ? `evspeare.customerState.${phone}` : "";
+}
+
+function customerSnapshot() {
+  return {
     cart: Array.from(state.cart.entries()),
     wishlist: Array.from(state.wishlist),
     location: state.savedLocation,
     addresses: state.savedAddresses,
-    orders: state.orders
-  }).catch((error) => console.warn("Unable to sync customer state", error));
+    orders: state.orders,
+    updatedAt: indiaIso()
+  };
+}
+
+function hasCustomerSnapshot(snapshot) {
+  return Boolean(
+    snapshot &&
+    (
+      (Array.isArray(snapshot.cart) && snapshot.cart.length) ||
+      (Array.isArray(snapshot.wishlist) && snapshot.wishlist.length) ||
+      (snapshot.location && typeof snapshot.location === "object") ||
+      (Array.isArray(snapshot.addresses) && snapshot.addresses.length) ||
+      (Array.isArray(snapshot.orders) && snapshot.orders.length)
+    )
+  );
+}
+
+function saveCustomerSnapshot(snapshot = customerSnapshot()) {
+  const key = customerScopedStateKey();
+  if (!key) return;
+  saveJson(key, snapshot);
+}
+
+function applyCustomerSnapshot(snapshot) {
+  if (!snapshot) return;
+  if (Array.isArray(snapshot.cart)) state.cart = new Map(snapshot.cart);
+  if (Array.isArray(snapshot.wishlist)) state.wishlist = new Set(snapshot.wishlist);
+  if (snapshot.location && typeof snapshot.location === "object") state.savedLocation = snapshot.location;
+  if (Array.isArray(snapshot.addresses)) state.savedAddresses = snapshot.addresses;
+  if (Array.isArray(snapshot.orders)) state.orders = snapshot.orders;
+  saveJson(storageKeys.cart, Array.from(state.cart.entries()));
+  saveJson(storageKeys.wishlist, Array.from(state.wishlist));
+  saveJson(storageKeys.location, state.savedLocation);
+  saveJson(storageKeys.addresses, state.savedAddresses);
+  saveJson(storageKeys.orders, state.orders);
+  saveCustomerSnapshot();
+}
+
+function syncCustomerState() {
+  if (!isLoggedIn() || !api.saveCustomerState) return;
+  const snapshot = customerSnapshot();
+  saveCustomerSnapshot(snapshot);
+  api.saveCustomerState(snapshot).catch((error) => console.warn("Unable to sync customer state", error));
 }
 
 async function restoreCustomerState() {
   if (!isLoggedIn() || !api.fetchCustomerState) return;
+  const local = loadJson(customerScopedStateKey(), null);
   try {
     const response = await api.fetchCustomerState();
     const remote = response?.state;
     if (!remote) {
+      if (hasCustomerSnapshot(local)) {
+        applyCustomerSnapshot(local);
+      }
       syncCustomerState();
       return;
     }
-    if (Array.isArray(remote.cart)) state.cart = new Map(remote.cart);
-    if (Array.isArray(remote.wishlist)) state.wishlist = new Set(remote.wishlist);
-    if (remote.location && typeof remote.location === "object") state.savedLocation = remote.location;
-    if (Array.isArray(remote.addresses)) state.savedAddresses = remote.addresses;
-    if (Array.isArray(remote.orders)) state.orders = remote.orders;
-    saveJson(storageKeys.cart, Array.from(state.cart.entries()));
-    saveJson(storageKeys.wishlist, Array.from(state.wishlist));
-    saveJson(storageKeys.location, state.savedLocation);
-    saveJson(storageKeys.addresses, state.savedAddresses);
-    saveJson(storageKeys.orders, state.orders);
+    applyCustomerSnapshot(remote);
   } catch (error) {
+    if (hasCustomerSnapshot(local)) {
+      applyCustomerSnapshot(local);
+    }
     console.warn("Unable to restore customer state", error);
   }
 }
@@ -2638,14 +2685,29 @@ function renderPaymentPage() {
     state.paymentMode = "online";
   }
   nodes.paymentPage.innerHTML = `
-    <div class="page-header">
-      <button class="icon-button" type="button" data-action="back-to-checkout" aria-label="Back">
+    <div class="payment-page-header flipkart-payment-header">
+      <button class="payment-back-button" type="button" data-action="back-to-checkout" aria-label="Back">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
       </button>
-      <div><h2>Payment</h2><span>Select payment method</span></div>
-      <strong class="secure-badge compact-secure">
+      <div>
+        <span>Final step</span>
+        <h2>Payments</h2>
+      </div>
+      <strong class="secure-badge">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2" /><path d="M5 10h14v10H5V10Z" /></svg>
+        Secure
       </strong>
+    </div>
+    <div class="payment-total-card flipkart-payment-total">
+      <button type="button" aria-label="Total amount">
+        <span>Total Amount</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+      </button>
+      <strong>${formatRupeeAmount(totals.total)}</strong>
+    </div>
+    <div class="payment-offer-strip flipkart-payment-offer">
+      <span>Claim payment offers and secure checkout benefits</span>
+      <div aria-hidden="true"><i></i><i></i><i></i></div>
     </div>
     <section class="checkout-section payment-final-summary">
       <div class="checkout-section-head">
@@ -2657,7 +2719,7 @@ function renderPaymentPage() {
         <button type="button" data-action="back-to-checkout">Change</button>
       </div>
     </section>
-    <section class="checkout-section simple-payment-section">
+    <section class="checkout-section simple-payment-section flipkart-payment-methods">
       <div class="checkout-section-head">
         <div>
           <span>Payment options</span>
@@ -2670,8 +2732,8 @@ function renderPaymentPage() {
           mode: "online",
           method: "online",
           icon: "online",
-          title: "Razorpay online payment",
-          subtitle: "UPI, cards, netbanking and wallets"
+          title: "Razorpay",
+          subtitle: "Pay by UPI, cards, netbanking, wallets"
         })}
         ${paymentOptionRow({
           mode: "cod",
@@ -2685,7 +2747,13 @@ function renderPaymentPage() {
       </div>
       <p class="gateway-note payment-gateway-note" data-page-gateway-note></p>
     </section>
-    <section class="checkout-section simple-bill-section">
+    <section class="checkout-section simple-bill-section flipkart-bill-section">
+      <div class="checkout-section-head">
+        <div>
+          <span>Price details</span>
+          <h3>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"}</h3>
+        </div>
+      </div>
       <div class="checkout-price-panel">
         <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
         ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
@@ -4668,6 +4736,7 @@ function applySavedProfile(profile) {
     saveJson(storageKeys.location, location);
     saveJson(storageKeys.addresses, state.savedAddresses);
     nodes.checkoutAddress.value = formatAddress(location);
+    syncCustomerState();
   }
 }
 
