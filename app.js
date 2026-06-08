@@ -4,6 +4,7 @@ const storageKeys = {
   wishlist: "bazaarGo.wishlist",
   orders: "bazaarGo.orders",
   location: "bazaarGo.location",
+  addresses: "evspeare.addresses",
   appVersion: "evspeare.appVersion"
 };
 
@@ -315,6 +316,7 @@ const state = {
   syncing: false,
   selectedProductId: "",
   savedLocation: loadJson(storageKeys.location, null),
+  savedAddresses: loadJson(storageKeys.addresses, []),
   locationFormOpen: false,
   addressReturnPage: "",
   orders: loadJson(storageKeys.orders, []),
@@ -664,6 +666,7 @@ function clearCustomerDeviceState() {
     storageKeys.cart,
     storageKeys.wishlist,
     storageKeys.location,
+    storageKeys.addresses,
     storageKeys.orders
   ].forEach((key) => localStorage.removeItem(key));
 
@@ -698,6 +701,7 @@ function syncCustomerState() {
     cart: Array.from(state.cart.entries()),
     wishlist: Array.from(state.wishlist),
     location: state.savedLocation,
+    addresses: state.savedAddresses,
     orders: state.orders
   }).catch((error) => console.warn("Unable to sync customer state", error));
 }
@@ -714,10 +718,12 @@ async function restoreCustomerState() {
     if (Array.isArray(remote.cart)) state.cart = new Map(remote.cart);
     if (Array.isArray(remote.wishlist)) state.wishlist = new Set(remote.wishlist);
     if (remote.location && typeof remote.location === "object") state.savedLocation = remote.location;
+    if (Array.isArray(remote.addresses)) state.savedAddresses = remote.addresses;
     if (Array.isArray(remote.orders)) state.orders = remote.orders;
     saveJson(storageKeys.cart, Array.from(state.cart.entries()));
     saveJson(storageKeys.wishlist, Array.from(state.wishlist));
     saveJson(storageKeys.location, state.savedLocation);
+    saveJson(storageKeys.addresses, state.savedAddresses);
     saveJson(storageKeys.orders, state.orders);
   } catch (error) {
     console.warn("Unable to restore customer state", error);
@@ -1711,6 +1717,41 @@ function savedLocationDetails() {
   return state.savedLocation ? normalizeBillingDetails(state.savedLocation, state.savedLocation.source || "manual") : null;
 }
 
+function addressKey(details = {}) {
+  return [
+    details.address1,
+    details.city,
+    details.pincode,
+    details.phone
+  ].map((value) => String(value || "").trim().toLowerCase()).join("|");
+}
+
+function normalizedSavedAddresses() {
+  const selected = savedLocationDetails();
+  const list = Array.isArray(state.savedAddresses) ? state.savedAddresses : [];
+  const merged = [selected, ...list]
+    .filter(hasLocationDetails)
+    .map((item) => normalizeBillingDetails(item, item.source || "manual"));
+  const seen = new Set();
+  return merged.filter((item) => {
+    const key = addressKey(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 6);
+}
+
+function addressTypeLabel(details = {}) {
+  const text = [details.address1, details.address2, details.area, details.city].join(" ").toLowerCase();
+  if (/office|shop|warehouse|work/.test(text)) return "Work";
+  return "Home";
+}
+
+function addressExists(details = {}) {
+  const key = addressKey(normalizeBillingDetails(details));
+  return normalizedSavedAddresses().some((item) => addressKey(item) === key);
+}
+
 function hasLocationDetails(details) {
   return Boolean(details?.address1 || details?.coordinates);
 }
@@ -1845,7 +1886,12 @@ function saveCustomerLocation(details, source = "manual", { silent = false, rere
     ...location,
     address: address || ""
   };
+  state.savedAddresses = [
+    state.savedLocation,
+    ...normalizedSavedAddresses().filter((item) => addressKey(item) !== addressKey(state.savedLocation))
+  ].slice(0, 6);
   saveJson(storageKeys.location, state.savedLocation);
+  saveJson(storageKeys.addresses, state.savedAddresses);
   syncCustomerState();
   nodes.checkoutAddress.value = address;
   if (location.phone) nodes.checkoutPhone.value = location.phone;
@@ -2187,10 +2233,58 @@ function addressStatusHtml(billing) {
   `;
 }
 
+function savedAddressCardsHtml() {
+  const addresses = normalizedSavedAddresses();
+  if (!addresses.length) {
+    return `
+      <div class="blinkit-address-empty">
+        <strong>No saved address</strong>
+        <span>Add one address and it will appear here next time.</span>
+      </div>
+    `;
+  }
+  const selectedKey = addressKey(savedLocationDetails() || {});
+  return `
+    <div class="blinkit-address-list" aria-label="Saved addresses">
+      ${addresses.map((address, index) => {
+        const key = addressKey(address);
+        const selected = key === selectedKey;
+        return `
+          <button class="blinkit-address-card ${selected ? "selected" : ""}" type="button" data-select-address="${index}">
+            <span class="blinkit-address-radio" aria-hidden="true"></span>
+            <div>
+              <strong>${escapeHtml(addressTypeLabel(address))} ${selected ? "<small>Selected</small>" : ""}</strong>
+              <p>${escapeHtml(locationSummary(address))}</p>
+              <em>${escapeHtml(address.phone ? `+91 ${address.phone}` : "Phone will be added at checkout")}</em>
+            </div>
+          </button>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function checkoutAddressCardHtml(billing) {
+  const ready = Boolean(billing.address1 && billing.city && billing.pincode.length === 6);
+  return `
+    <div class="blinkit-checkout-address ${ready ? "ready" : ""}">
+      <span class="blinkit-delivery-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 10-13h-7l1-7Z" /></svg>
+      </span>
+      <div>
+        <small>${ready ? "Delivering to" : "Delivery address needed"}</small>
+        <strong>${ready ? escapeHtml(addressTypeLabel(billing)) : "Add address"}</strong>
+        <p>${ready ? escapeHtml(locationSummary(billing)) : "Choose an existing address or add a new one."}</p>
+      </div>
+      <button type="button" data-action="edit-location">${ready ? "Change" : "Add"}</button>
+    </div>
+  `;
+}
+
 function renderAddressPage() {
   if (!nodes.addressPage) return;
   const saved = savedLocationDetails();
-  const currentBilling = checkoutBillingDetails();
+  const currentBilling = state.locationFormOpen ? checkoutBillingDetails() : (saved || checkoutBillingDetails());
   const existingName = nodes.checkoutName.value || state.session?.user?.name || formatCustomerName(saved || {});
   const billing = {
     ...currentBilling,
@@ -2219,15 +2313,16 @@ function renderAddressPage() {
     <section class="checkout-section checkout-address-section address-page-section">
       <div class="checkout-section-head">
         <div>
-          <span>Delivery details</span>
-          <h3>Address</h3>
-          <p>These details are sent to warehouse after order placement.</p>
+          <span>Saved addresses</span>
+          <h3>Select delivery address</h3>
+          <p>Existing addresses stay available like Blinkit checkout.</p>
         </div>
         <label class="shipping-toggle">
           <input type="checkbox" data-page-shipping-same ${billing.shippingSame === false ? "" : "checked"} />
           <span>Shipping same</span>
         </label>
       </div>
+      ${savedAddressCardsHtml()}
       ${addressStatusHtml(billing)}
       <div class="address-page-tools">
         <button type="button" data-action="use-live-location">
@@ -2241,8 +2336,8 @@ function renderAddressPage() {
       </div>
       <div class="manual-location-panel">
         <div class="address-form-title">
-          <strong>Contact and address</strong>
-          <span>Required fields help us dispatch without calling again.</span>
+          <strong>Add or edit address</strong>
+          <span>${addressExists(billing) ? "This address already exists. Save to update selected details." : "Required fields help us dispatch without calling again."}</span>
         </div>
         <div class="address-form-group">
           <div class="address-form-group-head"><span>Contact</span><small>Who should receive the order?</small></div>
@@ -2375,14 +2470,7 @@ function renderCheckoutPage() {
       <p class="gateway-note payment-gateway-note" data-page-gateway-note></p>
 
       <section class="checkout-section checkout-address-summary">
-        <div class="checkout-section-head">
-          <div>
-            <span>Delivery address</span>
-            <h3>${address ? "Saved address" : "Add address"}</h3>
-            <p>${address ? escapeHtml(locationSummary(billing)) : "Add delivery address on the address page before placing order."}</p>
-          </div>
-          <button type="button" data-action="edit-location">${address ? "Change" : "Add"}</button>
-        </div>
+        ${checkoutAddressCardHtml(billing)}
         ${addressStatusHtml(billing)}
       </section>
     </form>
@@ -3942,6 +4030,7 @@ document.addEventListener("click", async (event) => {
   const shareProductId = target.dataset.shareProduct;
   const infoPageKey = target.dataset.infoPage;
   const orderDetailsId = target.dataset.orderDetails;
+  const selectAddressIndex = target.dataset.selectAddress;
 
   if (filter) {
     setFilter(filter);
@@ -4008,6 +4097,16 @@ document.addEventListener("click", async (event) => {
   if (orderDetailsId) {
     state.expandedOrderId = state.expandedOrderId === orderDetailsId ? "" : orderDetailsId;
     renderOrdersPage();
+  }
+
+  if (selectAddressIndex !== undefined) {
+    const address = normalizedSavedAddresses()[Number(selectAddressIndex)];
+    if (address) {
+      saveCustomerLocation(address, address.source || "manual", { silent: true });
+      renderAddressPage();
+      renderCheckoutPage();
+      showToast("Address selected");
+    }
   }
 
   if (infoPageKey) {
@@ -4301,7 +4400,12 @@ function applySavedProfile(profile) {
   };
   if (profile.address1 || profile.pincode || profile.city) {
     state.savedLocation = location;
+    state.savedAddresses = [
+      location,
+      ...normalizedSavedAddresses().filter((item) => addressKey(item) !== addressKey(location))
+    ].slice(0, 6);
     saveJson(storageKeys.location, location);
+    saveJson(storageKeys.addresses, state.savedAddresses);
     nodes.checkoutAddress.value = formatAddress(location);
   }
 }

@@ -1657,11 +1657,13 @@ async function handleCustomerState(req, res) {
   const cart = Array.isArray(body.cart) ? body.cart.slice(0, 100) : [];
   const wishlist = Array.isArray(body.wishlist) ? body.wishlist.slice(0, 200) : [];
   const location = body.location && typeof body.location === "object" ? body.location : null;
+  const addresses = Array.isArray(body.addresses) ? body.addresses.slice(0, 10) : [];
   const orders = Array.isArray(body.orders) ? body.orders.slice(0, 50) : [];
   states[phone] = {
     cart,
     wishlist,
     location,
+    addresses,
     orders,
     updatedAt: indiaIso()
   };
