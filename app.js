@@ -4038,7 +4038,40 @@ async function runRazorpay(order, gatewayOrder) {
       order_id: gatewayOrderId,
       prefill: {
         name: order.customer.name,
-        contact: order.customer.phone
+        contact: order.customer.phone,
+        email: order.customer.email || ""
+      },
+      method: {
+        upi: true,
+        card: true,
+        netbanking: true,
+        wallet: true,
+        paylater: true
+      },
+      config: {
+        display: {
+          blocks: {
+            upi: {
+              name: "Pay by UPI",
+              instruments: [
+                { method: "upi" }
+              ]
+            },
+            other: {
+              name: "Other payment options",
+              instruments: [
+                { method: "card" },
+                { method: "netbanking" },
+                { method: "wallet" },
+                { method: "paylater" }
+              ]
+            }
+          },
+          sequence: ["block.upi", "block.other"],
+          preferences: {
+            show_default_blocks: true
+          }
+        }
       },
       theme: { color: "#2874f0" },
       handler: async (response) => {
