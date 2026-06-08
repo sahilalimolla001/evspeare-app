@@ -2304,8 +2304,42 @@ function paymentOptionIcon(name) {
   const icons = {
     online: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v12H3V6Z" /><path d="M3 10h18M7 15h4" /></svg>`,
     cod: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v11H4V7Z" /><path d="M8 11h7M8 14h4M16 7V5H8v2" /></svg>`,
+    upi: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4 8 8-8 8V4Z" /><path d="m13 4 5 8-5 8" /></svg>`,
+    card: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v12H3V6Z" /><path d="M3 10h18M7 15h4" /></svg>`,
+    wallet: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v12H4V7Z" /><path d="M16 11h4v5h-4a2.5 2.5 0 0 1 0-5Z" /></svg>`,
+    bank: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10h18L12 4 3 10Z" /><path d="M5 10v8M9 10v8M15 10v8M19 10v8M4 18h16" /></svg>`,
+    plus: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>`,
   };
   return icons[name] || icons.online;
+}
+
+function paymentChoiceCard({ mode, method, icon, title, subtitle, disabled = false, badge = "", tone = "" }) {
+  const selected = state.paymentMode === mode || (!state.paymentMode && state.paymentMethod === method);
+  return `
+    <label class="payment-choice-card ${selected ? "selected" : ""} ${disabled ? "unavailable" : ""} ${tone ? `tone-${escapeHtml(tone)}` : ""}">
+      <input class="payment-choice-input" type="radio" name="page-payment" value="${escapeHtml(method)}" data-payment-method data-payment-mode="${escapeHtml(mode)}" ${selected ? "checked" : ""} ${disabled ? "disabled" : ""} />
+      <span class="payment-choice-icon">${paymentOptionIcon(icon)}</span>
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
+      </div>
+      ${badge ? `<b>${escapeHtml(badge)}</b>` : ""}
+      <i aria-hidden="true"></i>
+    </label>
+  `;
+}
+
+function paymentNavRow({ icon, title, subtitle }) {
+  return `
+    <button class="payment-nav-row" type="button">
+      <span class="payment-choice-icon">${paymentOptionIcon(icon)}</span>
+      <div>
+        <strong>${escapeHtml(title)}</strong>
+        ${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ""}
+      </div>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+    </button>
+  `;
 }
 
 function paymentOptionRow({ mode, method, icon, title, subtitle, disabled = false, badge = "" }) {
@@ -2679,92 +2713,105 @@ function renderPaymentPage() {
   if (!nodes.paymentPage) return;
   const billing = checkoutBillingDetails();
   const totals = cartTotals();
+  const savings = Number(totals.autoDiscount || 0) + Number(totals.couponDiscount || 0) + Math.max(0, Number(totals.deliverySaved || 0));
   const codUnavailable = totals.total > codMaxOrderAmount;
   if (codUnavailable && state.paymentMethod === "cod") {
     state.paymentMethod = "online";
     state.paymentMode = "online";
   }
   nodes.paymentPage.innerHTML = `
-    <div class="payment-page-header flipkart-payment-header">
+    <div class="payment-page-titlebar">
       <button class="payment-back-button" type="button" data-action="back-to-checkout" aria-label="Back">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
       </button>
       <div>
-        <span>Final step</span>
-        <h2>Payments</h2>
+        <h2>Payment Options</h2>
+        <span>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"} • Total: ${formatRupeeAmount(totals.total)}${savings ? ` • <b>Savings of ${formatRupeeAmount(savings)}</b>` : ""}</span>
       </div>
-      <strong class="secure-badge">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2" /><path d="M5 10h14v10H5V10Z" /></svg>
-        Secure
-      </strong>
     </div>
-    <div class="payment-total-card flipkart-payment-total">
-      <button type="button" aria-label="Total amount">
-        <span>Total Amount</span>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-      </button>
-      <strong>${formatRupeeAmount(totals.total)}</strong>
-    </div>
-    <div class="payment-offer-strip flipkart-payment-offer">
-      <span>Claim payment offers and secure checkout benefits</span>
-      <div aria-hidden="true"><i></i><i></i><i></i></div>
-    </div>
-    <section class="checkout-section payment-final-summary">
-      <div class="checkout-section-head">
+    <div class="payment-options-page">
+      <section class="payment-options-card upi-card">
+        <div class="payment-mini-row">
+          <span class="payment-choice-icon">${paymentOptionIcon("upi")}</span>
+          <div>
+            <strong>Activate fastest UPI in 10 seconds</strong>
+            <small>Recommended for instant payment confirmation</small>
+          </div>
+        </div>
+        ${paymentChoiceCard({
+          mode: "upi",
+          method: "online",
+          icon: "upi",
+          title: "UPI",
+          subtitle: "Google Pay, PhonePe, Paytm, BHIM and more"
+        })}
+      </section>
+
+      <section class="payment-section-block">
+        <h3>Credit & Debit Cards</h3>
+        <div class="payment-options-card">
+          ${paymentChoiceCard({
+            mode: "card",
+            method: "online",
+            icon: "plus",
+            title: "Add New Card",
+            subtitle: "Save and pay via cards.",
+            tone: "orange"
+          })}
+        </div>
+      </section>
+
+      <section class="payment-section-block">
+        <h3>More Payment Options</h3>
+        <div class="payment-options-card grouped-options">
+          ${paymentNavRow({ icon: "card", title: "Pluxee", subtitle: "Pluxee card valid only on eligible orders" })}
+          ${paymentChoiceCard({
+            mode: "wallet",
+            method: "online",
+            icon: "wallet",
+            title: "Wallets",
+            subtitle: "PhonePe, Amazon Pay and more"
+          })}
+          ${paymentChoiceCard({
+            mode: "netbanking",
+            method: "online",
+            icon: "bank",
+            title: "Netbanking",
+            subtitle: "Select from a list of banks"
+          })}
+          ${paymentNavRow({ icon: "card", title: "CRED pay", subtitle: "" })}
+          ${paymentChoiceCard({
+            mode: "cod",
+            method: "cod",
+            icon: "cod",
+            title: "Pay on Delivery",
+            subtitle: codUnavailable ? "Pay online to place this order" : "Pay in cash when order arrives",
+            disabled: codUnavailable,
+            badge: codUnavailable ? "Not available" : ""
+          })}
+        </div>
+      </section>
+
+      <section class="payment-delivery-summary">
         <div>
-          <span>Delivering to</span>
-          <h3>${escapeHtml(addressTypeLabel(billing))}</h3>
+          <span>Delivering to ${escapeHtml(addressTypeLabel(billing))}</span>
           <p>${escapeHtml(locationSummary(billing))}</p>
         </div>
         <button type="button" data-action="back-to-checkout">Change</button>
-      </div>
-    </section>
-    <section class="checkout-section simple-payment-section flipkart-payment-methods">
-      <div class="checkout-section-head">
-        <div>
-          <span>Payment options</span>
-          <h3>${formatRupeeAmount(totals.total)}</h3>
-          <p>Choose online payment or COD.</p>
-        </div>
-      </div>
-      <div class="payment-list" aria-label="Payment options">
-        ${paymentOptionRow({
-          mode: "online",
-          method: "online",
-          icon: "online",
-          title: "Razorpay",
-          subtitle: "Pay by UPI, cards, netbanking, wallets"
-        })}
-        ${paymentOptionRow({
-          mode: "cod",
-          method: "cod",
-          icon: "cod",
-          title: "Cash on Delivery",
-          subtitle: codUnavailable ? "Pay online to place this order" : "OTP verified COD where eligible",
-          disabled: codUnavailable,
-          badge: codUnavailable ? "Not available" : ""
-        })}
-      </div>
-      <p class="gateway-note payment-gateway-note" data-page-gateway-note></p>
-    </section>
-    <section class="checkout-section simple-bill-section flipkart-bill-section">
-      <div class="checkout-section-head">
-        <div>
-          <span>Price details</span>
-          <h3>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"}</h3>
-        </div>
-      </div>
-      <div class="checkout-price-panel">
+      </section>
+
+      <section class="payment-options-card price-details-compact">
         <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
         ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
         ${totals.couponDiscount ? `<div><span>Coupon</span><strong>- ${formatPrice(totals.couponDiscount)}</strong></div>` : ""}
         <div><span>Delivery</span><strong>${totals.delivery ? formatPrice(totals.delivery) : "Free"}</strong></div>
         <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
         <div class="total"><span>Total</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
-      </div>
-    </section>
+      </section>
+      <p class="gateway-note payment-gateway-note" data-page-gateway-note></p>
+    </div>
     <div class="checkout-sticky-bar payment-sticky-bar">
-      <div><span>${state.paymentMode === "online" ? "Pay online" : "Pay on delivery"}</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
+      <div><span>${state.paymentMethod === "online" ? "Pay online" : "Pay on delivery"}</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
       <button class="checkout-button" type="button" data-action="checkout" ${totals.itemCount ? "" : "disabled"}>Place order</button>
     </div>
   `;
