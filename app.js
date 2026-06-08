@@ -31,8 +31,7 @@ const deliveryEstimateDays = 7;
 const fastDeliveryEstimateDays = 1;
 const returnWindowDays = 7;
 const codMaxOrderAmount = 1000;
-let firebaseAuthInstance = null;
-let pendingGoogleLogin = null;
+let pendingOtpLogin = null;
 let mapPicker = {
   map: null,
   marker: null,
@@ -53,7 +52,7 @@ const infoPages = {
     sections: [
       {
         heading: "Information we collect",
-        body: "We collect only the details needed to run your shopping experience, including your Google login identity, mobile number, COD OTP verification status, name, delivery address, cart items, order details, payment status, and live location only when you choose to share it."
+        body: "We collect only the details needed to run your shopping experience, including your OTP verified mobile number, COD OTP verification status, name, delivery address, cart items, order details, payment status, and live location only when you choose to share it."
       },
       {
         heading: "Notice and consent",
@@ -356,9 +355,11 @@ const nodes = {
   authProfile: document.querySelector("[data-auth-profile]"),
   authTitle: document.querySelector("[data-auth-title]"),
   authSubtitle: document.querySelector("[data-auth-subtitle]"),
-  googleLoginButton: document.querySelector("[data-action='google-login']"),
   loginName: document.querySelector("[data-login-name]"),
   loginPhone: document.querySelector("[data-login-phone]"),
+  loginOtp: document.querySelector("[data-login-otp]"),
+  loginOtpRow: document.querySelector("[data-login-otp-row]"),
+  loginSubmit: document.querySelector("[data-login-submit]"),
   newCustomerForm: document.querySelector("[data-new-customer-form]"),
   loginAddress1: document.querySelector("[data-login-address1]"),
   loginArea: document.querySelector("[data-login-area]"),
@@ -1994,7 +1995,7 @@ async function selectMapPoint(latitude, longitude, accuracy = null) {
 }
 
 async function selectAddressOnMap() {
-  mapPicker.target = pendingGoogleLogin || nodes.authModal?.classList.contains("open") ? "login" : "checkout";
+  mapPicker.target = nodes.authModal?.classList.contains("open") ? "login" : "checkout";
   mapPicker.selected = null;
   nodes.mapPickerSummary.textContent = "Tap on the map to select location.";
   nodes.mapPickerConfirm.disabled = true;
@@ -2056,8 +2057,8 @@ function applyMapPickerSelection() {
     return;
   }
   if (mapPicker.target === "login") {
-    pendingGoogleLogin = {
-      ...(pendingGoogleLogin || {}),
+    pendingOtpLogin = {
+      ...(pendingOtpLogin || {}),
       coordinates: details.coordinates,
       mapLocation: details.mapLocation
     };
@@ -2946,7 +2947,7 @@ function openAccount() {
   nodes.authModal.setAttribute("aria-hidden", "false");
   setTimeout(() => {
     if (isLoggedIn()) return;
-    (pendingGoogleLogin ? nodes.loginPhone : nodes.googleLoginButton)?.focus();
+    (pendingOtpLogin ? nodes.loginOtp : nodes.loginPhone)?.focus();
   }, 80);
 }
 
@@ -3135,25 +3136,7 @@ async function syncProducts({ silent = false } = {}) {
   }
 }
 
-async function googleLogin() {
-  try {
-    const auth = await firebaseAuthClient();
-    const provider = new window.firebase.auth.GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: "select_account" });
-    const result = await auth.signInWithPopup(provider);
-    const idToken = await result.user.getIdToken(true);
-    const name = customerNameFallback(result.user?.displayName || nodes.loginName?.value);
-    pendingGoogleLogin = { idToken, name };
-    if (nodes.loginName && !nodes.loginName.value) nodes.loginName.value = name;
-    nodes.newCustomerForm.hidden = false;
-    nodes.loginPhone.focus();
-    showToast("Google verified. Mobile number add karein, address baad mein checkout par de sakte hain.", 5000);
-  } catch (error) {
-    showToast(googleLoginErrorMessage(error), 7000);
-  }
-}
-
-async function completeGoogleSession(response, phone, name) {
+async function completeOtpSession(response, phone, name) {
   state.session = {
     token: response.token || response.access_token || `session-${Date.now()}`,
     user: {
@@ -3165,8 +3148,10 @@ async function completeGoogleSession(response, phone, name) {
     expiresAt: Date.now() + 24 * 60 * 60 * 1000,
     loggedInAt: indiaIso()
   };
-  pendingGoogleLogin = null;
-  nodes.newCustomerForm.hidden = true;
+  pendingOtpLogin = null;
+  if (nodes.loginOtpRow) nodes.loginOtpRow.hidden = true;
+  if (nodes.loginOtp) nodes.loginOtp.value = "";
+  if (nodes.loginSubmit) nodes.loginSubmit.textContent = "Send OTP";
   saveJson(storageKeys.session, state.session);
   await restoreCustomerState();
   applySavedProfile(response.profile);
@@ -3178,17 +3163,13 @@ async function completeGoogleSession(response, phone, name) {
 
 async function completeNewCustomerLogin(event) {
   event.preventDefault();
-  if (!pendingGoogleLogin) {
-    showToast("Continue with Google first");
-    return;
-  }
   const phone = phoneDigits(nodes.loginPhone.value);
   if (phone.length !== 10) {
     showToast("Enter valid 10 digit mobile number");
     nodes.loginPhone.focus();
     return;
   }
-  const name = customerNameFallback(nodes.loginName?.value || pendingGoogleLogin.name);
+  const name = customerNameFallback(nodes.loginName?.value);
   const profile = {
     name,
     address1: String(nodes.loginAddress1.value || "").trim(),
@@ -3196,51 +3177,27 @@ async function completeNewCustomerLogin(event) {
     city: String(nodes.loginCity.value || "").trim(),
     state: String(nodes.loginState.value || "").trim(),
     pincode: String(nodes.loginPincode.value || "").replace(/\D/g, "").slice(0, 6),
-    coordinates: pendingGoogleLogin.coordinates || null,
-    mapLocation: pendingGoogleLogin.mapLocation || mapLocationUrl(pendingGoogleLogin.coordinates)
+    coordinates: pendingOtpLogin?.coordinates || null,
+    mapLocation: pendingOtpLogin?.mapLocation || mapLocationUrl(pendingOtpLogin?.coordinates)
   };
+
+  const otp = String(nodes.loginOtp?.value || "").trim();
+  const otpReady = pendingOtpLogin?.phone === phone && otp.length >= 4;
   try {
-    const { idToken } = pendingGoogleLogin;
-    const response = await api.verifyFirebaseLogin(idToken, name, phone, profile);
-    await completeGoogleSession(response, phone, name);
+    if (!otpReady) {
+      await api.requestCodOtp(phone);
+      pendingOtpLogin = { ...(pendingOtpLogin || {}), phone, name, profile };
+      if (nodes.loginOtpRow) nodes.loginOtpRow.hidden = false;
+      if (nodes.loginSubmit) nodes.loginSubmit.textContent = "Verify OTP";
+      nodes.loginOtp?.focus();
+      showToast("OTP sent to mobile number");
+      return;
+    }
+    const response = await api.verifyCodOtp(phone, otp, { name, ...profile });
+    await completeOtpSession(response, phone, name);
   } catch (error) {
     showToast(error.message || "Login failed", 7000);
   }
-}
-
-async function firebaseAuthClient() {
-  if (firebaseAuthInstance) return firebaseAuthInstance;
-  const settings = appConfig.firebaseAuth || {};
-  if (!settings.enabled) throw new Error("Google login is not configured");
-  await loadScript(settings.sdkAppScript || "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
-  await loadScript(settings.sdkAuthScript || "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js");
-  if (!window.firebase?.auth) throw new Error("Firebase Authentication is unavailable");
-  const firebaseApp = window.firebase.apps.length
-    ? window.firebase.app()
-    : window.firebase.initializeApp({
-        apiKey: settings.apiKey,
-        authDomain: settings.authDomain,
-        projectId: settings.projectId,
-        storageBucket: settings.storageBucket,
-        appId: settings.appId,
-        messagingSenderId: settings.messagingSenderId,
-        measurementId: settings.measurementId
-      });
-  firebaseAuthInstance = firebaseApp.auth();
-  return firebaseAuthInstance;
-}
-
-function googleLoginErrorMessage(error) {
-  const messages = {
-    "auth/operation-not-allowed": "Google login Firebase Console me enable karein.",
-    "auth/popup-blocked": "Google login popup allow karke dobara try karein.",
-    "auth/popup-closed-by-user": "Google login complete nahi hua.",
-    "auth/unauthorized-domain": "Website domain Firebase me authorized nahi hai.",
-    "auth/network-request-failed": "Firebase request block ho raha hai. Page refresh karke dobara try karein.",
-    "auth/invalid-api-key": "Firebase API key galat hai. Railway/Firebase config check karein.",
-    "auth/app-deleted": "Firebase app config invalid hai."
-  };
-  return messages[String(error?.code || "")] || error.message || "Unable to login with Google";
 }
 
 function openCodOtpModal() {
@@ -3388,10 +3345,11 @@ function logout() {
   state.session = null;
   state.profileEditOpen = false;
   closeCodOtpModal();
-  pendingGoogleLogin = null;
-  if (firebaseAuthInstance) firebaseAuthInstance.signOut().catch(() => undefined);
+  pendingOtpLogin = null;
   clearCustomerDeviceState();
-  if (nodes.newCustomerForm) nodes.newCustomerForm.hidden = true;
+  if (nodes.loginOtpRow) nodes.loginOtpRow.hidden = true;
+  if (nodes.loginOtp) nodes.loginOtp.value = "";
+  if (nodes.loginSubmit) nodes.loginSubmit.textContent = "Send OTP";
   renderAll();
   closeAccount();
   showToast("Logged out");
@@ -3413,7 +3371,7 @@ function validateCheckout() {
 
   if (!isLoggedIn()) {
     openAccount();
-    showToast("Google login required before placing order");
+    showToast("OTP login required before placing order");
     return null;
   }
 
@@ -4100,9 +4058,6 @@ document.addEventListener("click", async (event) => {
       break;
     case "close-account":
       closeAccount();
-      break;
-    case "google-login":
-      await googleLogin();
       break;
     case "verify-cod-otp":
       await verifyCodOtp();

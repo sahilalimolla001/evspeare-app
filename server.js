@@ -43,19 +43,9 @@ const pendingRazorpayOrders = new Map();
 const rateLimitBuckets = new Map();
 const maxRequestBodyBytes = Number(process.env.MAX_REQUEST_BODY_BYTES || 256 * 1024);
 const playStorePackageName = process.env.PLAY_STORE_PACKAGE_NAME || "com.evspeare.shop";
-const defaultFirebaseWebConfig = {
-  apiKey: "AIzaSyBHAvF01gxheV53SfnzNxh41ODZHSHNWbI",
-  authDomain: "app-evspeare.firebaseapp.com",
-  projectId: "app-evspeare",
-  storageBucket: "app-evspeare.firebasestorage.app",
-  messagingSenderId: "723482884028",
-  appId: "1:723482884028:web:74cc6cdc873ad2c4f25db9",
-  measurementId: "G-E5C6PWX5KV"
-};
 let googleAccessTokenCache = null;
 let websiteLoginCache = null;
 let appVersionCache = null;
-let firebaseAdminAuthClient = null;
 
 function envFlag(name) {
   return ["1", "true", "yes", "on"].includes(String(process.env[name] || "").toLowerCase());
@@ -147,12 +137,12 @@ function securityHeaders() {
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    "script-src 'self' https://www.gstatic.com https://apis.google.com https://checkout.razorpay.com https://unpkg.com",
+    "script-src 'self' https://checkout.razorpay.com https://unpkg.com",
     "style-src 'self' 'unsafe-inline' https://unpkg.com",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
-    "connect-src 'self' https://*.googleapis.com https://www.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.firebaseinstallations.googleapis.com https://nominatim.openstreetmap.org https://api.razorpay.com",
-    "frame-src 'self' https://accounts.google.com https://*.google.com https://*.firebaseapp.com https://checkout.razorpay.com https://api.razorpay.com",
+    "connect-src 'self' https://nominatim.openstreetmap.org https://api.razorpay.com",
+    "frame-src 'self' https://checkout.razorpay.com https://api.razorpay.com",
     "upgrade-insecure-requests"
   ].join("; ");
   return {
@@ -670,14 +660,12 @@ function publicConfig(req) {
     supportEndpoint: "/api/mobile/support",
     otpRequestEndpoint: "/api/mobile/auth/request-otp",
     otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
-    firebaseVerifyEndpoint: "/api/mobile/auth/firebase",
     profileEndpoint: "/api/mobile/profile",
     customerStateEndpoint: "/api/mobile/customer-state",
     couponEndpoint: "/api/mobile/coupons/apply",
     paymentCreateEndpoint: "/api/mobile/payments/create",
     paymentVerifyEndpoint: "/api/mobile/payments/verify",
     authHeader: "",
-    firebaseAuth: publicFirebaseAuthConfig(),
     paymentGateway: {
       provider: "razorpay",
       keyId: process.env.RAZORPAY_KEY_ID || "",
@@ -860,92 +848,6 @@ function twilioConfigStatus() {
     serviceSidLooksValid: serviceSid.startsWith("VA"),
     channel
   };
-}
-
-function firebaseServiceAccountJson() {
-  const raw = String(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
-  if (!raw) return null;
-  try {
-    const json = raw.startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf8");
-    const credentials = JSON.parse(json);
-    if (credentials.private_key) credentials.private_key = String(credentials.private_key).replace(/\\n/g, "\n");
-    return credentials;
-  } catch (error) {
-    console.error("Invalid FIREBASE_SERVICE_ACCOUNT_JSON", error.message);
-    return null;
-  }
-}
-
-function firebaseAuthServerConfigured() {
-  return Boolean(firebaseProjectId() && firebaseServiceAccountJson());
-}
-
-function firebaseProjectId() {
-  return process.env.FIREBASE_PROJECT_ID || defaultFirebaseWebConfig.projectId;
-}
-
-function firebaseWebConfig() {
-  return {
-    apiKey: process.env.FIREBASE_API_KEY || defaultFirebaseWebConfig.apiKey,
-    authDomain: process.env.FIREBASE_AUTH_DOMAIN || defaultFirebaseWebConfig.authDomain,
-    projectId: firebaseProjectId(),
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || defaultFirebaseWebConfig.storageBucket,
-    appId: process.env.FIREBASE_APP_ID || defaultFirebaseWebConfig.appId,
-    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || defaultFirebaseWebConfig.messagingSenderId,
-    measurementId: process.env.FIREBASE_MEASUREMENT_ID || defaultFirebaseWebConfig.measurementId
-  };
-}
-
-function publicFirebaseAuthConfig() {
-  const webConfig = firebaseWebConfig();
-  const clientConfigured = Boolean(
-    webConfig.apiKey &&
-    webConfig.authDomain &&
-    webConfig.projectId &&
-    webConfig.appId
-  );
-  const enabled = envFlag("FIREBASE_AUTH_ENABLED") && clientConfigured && firebaseAuthServerConfigured();
-  return {
-    provider: "firebase",
-    enabled,
-    apiKey: enabled ? webConfig.apiKey : "",
-    authDomain: enabled ? webConfig.authDomain : "",
-    projectId: enabled ? webConfig.projectId : "",
-    storageBucket: enabled ? webConfig.storageBucket : "",
-    appId: enabled ? webConfig.appId : "",
-    messagingSenderId: enabled ? webConfig.messagingSenderId : "",
-    measurementId: enabled ? webConfig.measurementId : "",
-    sdkAppScript: "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js",
-    sdkAuthScript: "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"
-  };
-}
-
-function firebaseAuthStatus() {
-  const publicConfig = publicFirebaseAuthConfig();
-  const webConfig = firebaseWebConfig();
-  return {
-    enabled: publicConfig.enabled,
-    requested: envFlag("FIREBASE_AUTH_ENABLED"),
-    clientConfigSet: Boolean(webConfig.apiKey && webConfig.authDomain && webConfig.appId),
-    projectIdSet: Boolean(webConfig.projectId),
-    serviceAccountSet: Boolean(firebaseServiceAccountJson())
-  };
-}
-
-function getFirebaseAdminAuth() {
-  if (firebaseAdminAuthClient) return firebaseAdminAuthClient;
-  const credentials = firebaseServiceAccountJson();
-  if (!firebaseProjectId() || !credentials) {
-    throw new Error("Firebase Admin credentials are missing");
-  }
-  const { cert, initializeApp } = require("firebase-admin/app");
-  const { getAuth } = require("firebase-admin/auth");
-  const firebaseAdminApp = initializeApp({
-    credential: cert(credentials),
-    projectId: firebaseProjectId()
-  }, "evspeare-customer-auth");
-  firebaseAdminAuthClient = getAuth(firebaseAdminApp);
-  return firebaseAdminAuthClient;
 }
 
 function safeUrlSummary(value) {
@@ -1513,7 +1415,6 @@ function publicDiagnostics(req) {
     ok: true,
     service: "ev-speare",
     twilio: twilioConfigStatus(),
-    firebaseAuth: firebaseAuthStatus(),
     razorpay: {
       configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
       keyIdSet: Boolean(process.env.RAZORPAY_KEY_ID),
@@ -1627,12 +1528,11 @@ async function twilioRequest(pathname, body) {
 }
 
 async function handleRequestOtp(req, res) {
-  const user = verifyToken(req);
-  if (!user) return send(res, 401, { message: "Google login required" });
   const body = await readBody(req);
+  const user = verifyToken(req);
   const to = phoneE164(body.phone);
   if (!to) return send(res, 400, { message: "Enter a valid 10 digit mobile number" });
-  if (phoneDigits(body.phone) !== phoneDigits(user.phone)) {
+  if (user && phoneDigits(body.phone) !== phoneDigits(user.phone)) {
     return send(res, 403, { message: "COD mobile must match login mobile" });
   }
 
@@ -1653,13 +1553,12 @@ async function handleRequestOtp(req, res) {
 }
 
 async function handleVerifyOtp(req, res) {
-  const user = verifyToken(req);
-  if (!user) return send(res, 401, { message: "Google login required" });
   const body = await readBody(req);
+  const existingUser = verifyToken(req);
   const to = phoneE164(body.phone);
   const code = String(body.otp || "").trim();
   if (!to || code.length < 4) return send(res, 400, { message: "Phone and OTP are required" });
-  if (phoneDigits(body.phone) !== phoneDigits(user.phone)) {
+  if (existingUser && phoneDigits(body.phone) !== phoneDigits(existingUser.phone)) {
     return send(res, 403, { message: "COD mobile must match login mobile" });
   }
 
@@ -1676,80 +1575,43 @@ async function handleVerifyOtp(req, res) {
 
   if (check.status !== "approved") return send(res, 401, { message: "Invalid OTP" });
 
+  const phone = phoneDigits(body.phone);
+  const inputProfile = body.profile && typeof body.profile === "object" ? body.profile : {};
+  const profiles = readCustomerProfiles();
+  const currentProfile = profiles[phone] || {};
+  const profileName = String(inputProfile.name || body.name || existingUser?.name || currentProfile.name || "").trim() || "Customer";
+  const pincode = String(inputProfile.pincode || currentProfile.pincode || "").replace(/\D/g, "").slice(0, 6);
+  const profile = {
+    ...currentProfile,
+    phone,
+    mobile: phone,
+    name: profileName,
+    address1: String(inputProfile.address1 || inputProfile.address || currentProfile.address1 || "").trim(),
+    address2: String(inputProfile.address2 || currentProfile.address2 || "").trim(),
+    area: String(inputProfile.area || currentProfile.area || "").trim(),
+    city: String(inputProfile.city || currentProfile.city || "").trim(),
+    state: String(inputProfile.state || currentProfile.state || "").trim(),
+    region: String(inputProfile.region || currentProfile.region || "").trim(),
+    pincode: pincode.length === 6 ? pincode : "",
+    coordinates: inputProfile.coordinates && typeof inputProfile.coordinates === "object" ? {
+      latitude: Number(inputProfile.coordinates.latitude),
+      longitude: Number(inputProfile.coordinates.longitude),
+      accuracy: Number(inputProfile.coordinates.accuracy) || null
+    } : currentProfile.coordinates || null,
+    mapLocation: String(inputProfile.mapLocation || inputProfile.map_location || currentProfile.mapLocation || "").trim(),
+    updatedAt: indiaIso()
+  };
+  profiles[phone] = profile;
+  writeCustomerProfiles(profiles);
+
+  const user = { id: phone, phone, name: profile.name || profileName };
   return send(res, 200, {
     verified: true,
+    token: signToken(user),
+    user,
+    profile,
     codVerificationToken: signCodVerification(user)
   });
-}
-
-async function handleFirebaseLogin(req, res) {
-  if (!publicFirebaseAuthConfig().enabled) {
-    return send(res, 503, { message: "Firebase Authentication is not configured" });
-  }
-  const body = await readBody(req);
-  const idToken = String(body.idToken || "").trim();
-  if (!idToken) return send(res, 400, { message: "Firebase ID token is required" });
-
-  try {
-    const decodedToken = await getFirebaseAdminAuth().verifyIdToken(idToken);
-    const provider = decodedToken.firebase?.sign_in_provider || "";
-    if (provider !== "google.com") return send(res, 400, { message: "Google login is required" });
-    const phone = phoneDigits(body.phone);
-    if (phone.length !== 10) return send(res, 400, { message: "Mobile number is required for Google login" });
-    const name = String(body.name || decodedToken.name || "").trim() || "Customer";
-    const profiles = readCustomerProfiles();
-    const profileKey = phone;
-    const legacyKeys = Object.keys(profiles).filter((key) => (
-      key.startsWith("auth:") &&
-      phoneDigits(profiles[key]?.phone || profiles[key]?.mobile) === phone
-    ));
-    let profile = profiles[profileKey] || legacyKeys.map((key) => profiles[key]).find(Boolean) || null;
-    if (profile && legacyKeys.length) {
-      profiles[profileKey] = legacyKeys.reduce(
-        (merged, key) => ({ ...profiles[key], ...merged }),
-        { ...(profiles[profileKey] || profile), phone, mobile: phone }
-      );
-      profile = profiles[profileKey];
-      legacyKeys.forEach((key) => delete profiles[key]);
-      writeCustomerProfiles(profiles);
-    }
-    if (!profile) {
-      const address = body.profile || {};
-      const address1 = String(address.address1 || address.address || "").trim();
-      const city = String(address.city || "").trim();
-      const pincode = String(address.pincode || "").replace(/\D/g, "").slice(0, 6);
-      profile = {
-        phone,
-        mobile: phone,
-        name,
-        address1,
-        address2: String(address.address2 || "").trim(),
-        area: String(address.area || "").trim(),
-        city,
-        state: String(address.state || "").trim(),
-        region: String(address.region || "").trim(),
-        pincode: pincode.length === 6 ? pincode : "",
-        coordinates: address.coordinates && typeof address.coordinates === "object" ? {
-          latitude: Number(address.coordinates.latitude),
-          longitude: Number(address.coordinates.longitude),
-          accuracy: Number(address.coordinates.accuracy) || null
-        } : null,
-        mapLocation: String(address.mapLocation || address.map_location || "").trim(),
-        updatedAt: indiaIso()
-      };
-      profiles[profileKey] = profile;
-      writeCustomerProfiles(profiles);
-    }
-    const user = { id: decodedToken.uid || phone, phone, name: profile.name || name };
-    return send(res, 200, {
-      token: signToken(user),
-      user,
-      profile
-    });
-  } catch (error) {
-    console.error("Firebase ID token verification failed", error.message);
-    return send(res, 401, { message: "Firebase login verification failed" });
-  }
 }
 
 async function handleCustomerProfile(req, res) {
@@ -3684,7 +3546,6 @@ async function router(req, res) {
 
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/request-otp") return handleRequestOtp(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/auth/verify-otp") return handleVerifyOtp(req, res);
-    if (req.method === "POST" && url.pathname === "/api/mobile/auth/firebase") return handleFirebaseLogin(req, res);
     if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/mobile/profile") return handleCustomerProfile(req, res);
     if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/mobile/customer-state") return handleCustomerState(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/support") return handleSupportQuery(req, res);

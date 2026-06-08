@@ -36,7 +36,6 @@ window.EVSPEARE_CONFIG = {
    * POST orderReturnEndpoint    -> create return request
    * POST otpRequestEndpoint     -> send COD confirmation OTP
    * POST otpVerifyEndpoint      -> verify COD confirmation OTP
-   * POST firebaseVerifyEndpoint -> exchange verified Google login for app session
    * POST paymentCreateEndpoint  -> create gateway order on server
    * POST paymentVerifyEndpoint  -> verify gateway payment signature on server
    */
@@ -47,7 +46,6 @@ window.EVSPEARE_CONFIG = {
   supportEndpoint: "/api/mobile/support",
   otpRequestEndpoint: "/api/mobile/auth/request-otp",
   otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
-  firebaseVerifyEndpoint: "/api/mobile/auth/firebase",
   profileEndpoint: "/api/mobile/profile",
   customerStateEndpoint: "/api/mobile/customer-state",
   couponEndpoint: "/api/mobile/coupons/apply",
@@ -60,19 +58,6 @@ window.EVSPEARE_CONFIG = {
    */
   authHeader: "",
 
-  firebaseAuth: {
-    provider: "firebase",
-    enabled: false,
-    apiKey: "AIzaSyBHAvF01gxheV53SfnzNxh41ODZHSHNWbI",
-    authDomain: "app-evspeare.firebaseapp.com",
-    projectId: "app-evspeare",
-    storageBucket: "app-evspeare.firebasestorage.app",
-    appId: "1:723482884028:web:74cc6cdc873ad2c4f25db9",
-    messagingSenderId: "723482884028",
-    measurementId: "G-E5C6PWX5KV",
-    sdkAppScript: "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js",
-    sdkAuthScript: "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"
-  },
 
   paymentGateway: {
     provider: "razorpay",

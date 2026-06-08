@@ -448,20 +448,17 @@
         </div>
 
         <div class="auth-panel" data-auth-login>
-          <button class="google-login-button" type="button" data-action="google-login">
-            <span aria-hidden="true">G</span>
-            Continue with Google
-          </button>
-          <form class="profile-edit-form" data-new-customer-form hidden>
+          <form class="profile-edit-form" data-new-customer-form>
             <label>Customer name<input type="text" data-login-name placeholder="Enter your name" autocomplete="name" /></label>
             <label>Mobile number<input type="tel" inputmode="numeric" maxlength="10" data-login-phone placeholder="Enter 10 digit mobile" autocomplete="tel" /></label>
+            <label data-login-otp-row hidden>OTP<input type="tel" inputmode="numeric" maxlength="6" data-login-otp placeholder="Enter OTP" autocomplete="one-time-code" /></label>
             <label>Address <small>optional before checkout</small><textarea data-login-address1 placeholder="House no, street" autocomplete="address-line1" rows="2"></textarea></label>
             <label>Area<input type="text" data-login-area placeholder="Area" /></label>
             <label>City<input type="text" data-login-city placeholder="City" autocomplete="address-level2" /></label>
             <label>State<input type="text" data-login-state placeholder="State" autocomplete="address-level1" /></label>
             <label>Pincode<input type="tel" inputmode="numeric" maxlength="6" data-login-pincode placeholder="6 digit pincode" autocomplete="postal-code" /></label>
             <button class="map-select-button" type="button" data-action="select-address-map">Select on map</button>
-            <button class="primary-button" type="submit">Continue to app</button>
+            <button class="primary-button" type="submit" data-login-submit>Send OTP</button>
           </form>
         </div>
 
@@ -474,7 +471,7 @@
               <span data-profile-phone>Customer</span>
             </div>
             <div class="profile-status">
-              <b>Google Login</b>
+              <b>OTP Login</b>
               <button type="button" data-action="edit-profile" data-profile-edit-toggle>Edit</button>
             </div>
           </div>
