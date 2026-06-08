@@ -415,7 +415,8 @@ const nodes = {
   drawerCartCount: document.querySelector("[data-drawer-cart-count]"),
   drawerWishlistCount: document.querySelector("[data-drawer-wishlist-count]"),
   drawerOrderCount: document.querySelector("[data-drawer-order-count]"),
-  drawerStockCount: document.querySelector("[data-drawer-stock-count]")
+  drawerStockCount: document.querySelector("[data-drawer-stock-count]"),
+  orderSuccessBurst: document.querySelector("[data-order-success-burst]")
 };
 
 function loadJson(key, fallback) {
@@ -2644,13 +2645,21 @@ function trackingTimelineHtml(order) {
   `;
 }
 
+function orderTrackingEtaText(order, activeIndex) {
+  if (orderIsDelivered(order)) return "Delivered";
+  if (activeIndex >= 2) return "Arriving soon";
+  if (isFastDeliveryOrder(order)) return "ETA 24 hrs";
+  return `${orderDeliveryEstimateDays(order)} day delivery`;
+}
+
 function customerTrackingHtml(order) {
   if (orderIsCancelled(order)) return "";
   const activeIndex = trackingActiveIndex(order);
-  const progress = Math.round((activeIndex / (customerTrackingStages.length - 1)) * 75);
+  const progress = Math.round((activeIndex / (customerTrackingStages.length - 1)) * 100);
   const createdAt = orderCreatedDate(order);
   const estimatedAt = orderEstimatedDeliveryDate(order);
   const status = orderIsDelivered(order) ? "Delivered" : order.tracking?.label || order.tracking?.status || order.status || "Order placed";
+  const etaText = orderTrackingEtaText(order, activeIndex);
 
   return `
     <section class="customer-tracking" aria-label="Track your order">
@@ -2661,9 +2670,18 @@ function customerTrackingHtml(order) {
         </div>
         <time datetime="${escapeHtml(estimatedAt.toISOString())}">Delivery by ${escapeHtml(formatOrderDate(estimatedAt, false))}</time>
       </div>
+      <div class="blinkit-track-card">
+        <div>
+          <small>Live order tracking</small>
+          <strong>${escapeHtml(etaText)}</strong>
+        </div>
+        <span class="blinkit-rider" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 17h4l4-8h3l-2 4h3l2 4h-3" /><path d="M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" /><path d="M12 5h3l2 3" /></svg>
+        </span>
+      </div>
       <div class="tracking-date-summary">
         <span>Order: ${escapeHtml(formatOrderDate(createdAt))}</span>
-        <strong>Estimate: ${deliveryEstimateDays} days</strong>
+        <strong>Estimate: ${escapeHtml(deliveryPromiseText(order))}</strong>
       </div>
       <div class="customer-track-line" style="--tracking-progress: ${progress}%">
         ${customerTrackingStages.map((stage, index) => {
@@ -2943,6 +2961,27 @@ function showToast(message, duration = 2200) {
   nodes.toast.classList.add("show");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => nodes.toast.classList.remove("show"), duration);
+}
+
+function showOrderPlacedAnimation() {
+  if (!nodes.orderSuccessBurst) return;
+  nodes.orderSuccessBurst.classList.remove("show");
+  void nodes.orderSuccessBurst.offsetWidth;
+  nodes.orderSuccessBurst.classList.add("show");
+  clearTimeout(showOrderPlacedAnimation.timer);
+  showOrderPlacedAnimation.timer = setTimeout(() => {
+    nodes.orderSuccessBurst.classList.remove("show");
+  }, 2100);
+}
+
+function notifyNativeOrderUpdate(title, message) {
+  try {
+    if (window.EvSpeareAndroid?.orderUpdate) {
+      window.EvSpeareAndroid.orderUpdate(title, message);
+    }
+  } catch (error) {
+    console.warn("Native order notification failed", error);
+  }
 }
 
 function showUpdatePrompt() {
@@ -3761,6 +3800,8 @@ async function placeOrder() {
     await loadOrders({ silent: true });
     renderOrdersPage();
     openPage("orders");
+    showOrderPlacedAnimation();
+    notifyNativeOrderUpdate("Order placed", pushedToWarehouse ? "Your order was sent to warehouse tracking." : "Your EV Speare order is ready to track.");
     showToast(pushedToWarehouse ? "Order sent to warehouse" : "Order placed successfully");
   } catch (error) {
     showToast(error.message || "Order failed");

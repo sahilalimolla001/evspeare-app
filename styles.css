@@ -3933,6 +3933,181 @@ svg {
   }
 }
 
+.order-success-burst {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.order-success-burst.show {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.order-success-card {
+  width: min(78vw, 280px);
+  min-height: 210px;
+  padding: 26px 20px 22px;
+  border-radius: 18px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 8px;
+  color: white;
+  background: linear-gradient(145deg, #0b8f3a, #16b85d);
+  box-shadow: 0 24px 58px rgba(16, 137, 52, 0.34);
+  position: relative;
+  overflow: hidden;
+}
+
+.order-success-card::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 14px;
+}
+
+.order-success-check {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #108934;
+  background: white;
+  box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.18);
+  animation: orderCheckPop 760ms cubic-bezier(.2, .9, .2, 1.2) both;
+  position: relative;
+  z-index: 1;
+}
+
+.order-success-check svg {
+  width: 38px;
+  height: 38px;
+  stroke-width: 3;
+}
+
+.order-success-card strong,
+.order-success-card small {
+  position: relative;
+  z-index: 1;
+}
+
+.order-success-card strong {
+  font-size: 1.35rem;
+  font-weight: 950;
+}
+
+.order-success-card small {
+  opacity: 0.86;
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
+.order-success-sparkles i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  position: absolute;
+  background: #ffd814;
+  animation: orderSpark 980ms ease-out both;
+}
+
+.order-success-sparkles i:nth-child(1) { left: 22%; top: 28%; animation-delay: 80ms; }
+.order-success-sparkles i:nth-child(2) { left: 72%; top: 24%; animation-delay: 140ms; }
+.order-success-sparkles i:nth-child(3) { left: 18%; top: 70%; animation-delay: 180ms; }
+.order-success-sparkles i:nth-child(4) { left: 80%; top: 68%; animation-delay: 220ms; }
+.order-success-sparkles i:nth-child(5) { left: 50%; top: 16%; animation-delay: 260ms; }
+
+.blinkit-track-card {
+  min-height: 64px;
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #0b4f25;
+  background:
+    linear-gradient(90deg, rgba(255, 216, 20, 0.92), rgba(255, 244, 194, 0.88)),
+    repeating-linear-gradient(90deg, transparent 0 24px, rgba(16, 137, 52, 0.12) 24px 28px);
+  overflow: hidden;
+  position: relative;
+}
+
+.blinkit-track-card::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 10px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(11, 79, 37, 0.2);
+}
+
+.blinkit-track-card small,
+.blinkit-track-card strong {
+  display: block;
+  position: relative;
+  z-index: 1;
+}
+
+.blinkit-track-card small {
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.blinkit-track-card strong {
+  margin-top: 2px;
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.blinkit-rider {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: #108934;
+  box-shadow: 0 10px 22px rgba(16, 137, 52, 0.22);
+  animation: riderFloat 1.35s ease-in-out infinite;
+  position: relative;
+  z-index: 1;
+}
+
+.blinkit-rider svg {
+  width: 27px;
+  height: 27px;
+}
+
+@keyframes orderCheckPop {
+  0% { opacity: 0; transform: scale(0.42) rotate(-16deg); }
+  65% { opacity: 1; transform: scale(1.1) rotate(4deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes orderSpark {
+  0% { opacity: 0; transform: translateY(8px) scale(0.4); }
+  35% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-34px) scale(1.3); }
+}
+
+@keyframes riderFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
 /* Blinkit-inspired storefront refresh: UI-only overrides. */
 html {
   scroll-behavior: smooth;
@@ -4696,4 +4871,44 @@ body {
   .detail-sticky-actions {
     grid-template-columns: minmax(0, 1fr) 72px 94px;
   }
+}
+
+.top-app-bar {
+  color: white;
+  background: linear-gradient(135deg, #2874f0 0%, #185abc 58%, #0f3f91 100%);
+  border-bottom: 0;
+  box-shadow: 0 12px 30px rgba(24, 90, 188, 0.24);
+}
+
+.brand-lockup strong,
+.brand-lockup span,
+.location-strip,
+.location-strip strong,
+.top-app-bar .icon-button {
+  color: white;
+}
+
+.top-app-bar .icon-button {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.top-app-bar .icon-button:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.location-strip,
+.instant-promise {
+  color: white;
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.instant-promise span {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.search-form {
+  border-color: rgba(255, 255, 255, 0.34);
+  box-shadow: 0 10px 24px rgba(15, 63, 145, 0.2);
 }
