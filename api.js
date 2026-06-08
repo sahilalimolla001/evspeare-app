@@ -308,6 +308,16 @@
     });
   }
 
+  async function registerPushToken(token, payload = {}) {
+    if (!hasEndpoint(config.pushRegisterEndpoint)) {
+      throw new Error("Push registration endpoint is not configured");
+    }
+    return request(config.pushRegisterEndpoint, {
+      method: "POST",
+      body: { token, ...payload }
+    });
+  }
+
   async function fetchProfile() {
     if (!hasEndpoint(config.profileEndpoint)) return { profile: null };
     return request(config.profileEndpoint);
@@ -439,6 +449,7 @@
     fetchCatalog,
     requestCodOtp,
     verifyCodOtp,
+    registerPushToken,
     fetchProfile,
     saveProfile,
     fetchCustomerState,

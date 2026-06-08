@@ -3073,6 +3073,22 @@ function notifyNativeOrderUpdate(title, message) {
   }
 }
 
+async function registerNativePushToken(token) {
+  const cleanToken = String(token || "").trim();
+  if (!cleanToken || !api.registerPushToken) return;
+  try {
+    await api.registerPushToken(cleanToken, {
+      platform: "android",
+      phone: state.session?.user?.phone || "",
+      appVersion: appConfig.appVersion || ""
+    });
+  } catch (error) {
+    console.warn("Push token registration failed", error);
+  }
+}
+
+window.EvSpeareRegisterPushToken = registerNativePushToken;
+
 function showUpdatePrompt() {
   applyAppUpdate();
 }

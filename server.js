@@ -658,6 +658,7 @@ function publicConfig(req) {
     orderCancelEndpoint: "/api/mobile/orders/cancel",
     orderReturnEndpoint: "/api/mobile/orders/return",
     supportEndpoint: "/api/mobile/support",
+    pushRegisterEndpoint: "/api/mobile/push/register",
     otpRequestEndpoint: "/api/mobile/auth/request-otp",
     otpVerifyEndpoint: "/api/mobile/auth/verify-otp",
     profileEndpoint: "/api/mobile/profile",
@@ -792,6 +793,25 @@ function readCustomerState() {
 
 function writeCustomerState(state) {
   fs.writeFileSync(customerStatePath(), JSON.stringify(state, null, 2));
+}
+
+function pushTokensPath() {
+  const dataDir = path.join(rootDir, "data");
+  fs.mkdirSync(dataDir, { recursive: true });
+  return path.join(dataDir, "push-tokens.json");
+}
+
+function readPushTokens() {
+  try {
+    const data = JSON.parse(fs.readFileSync(pushTokensPath(), "utf8"));
+    return Array.isArray(data.tokens) ? data.tokens : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePushTokens(tokens) {
+  fs.writeFileSync(pushTokensPath(), JSON.stringify({ tokens }, null, 2));
 }
 
 function pendingRazorpayDir() {
@@ -1727,6 +1747,107 @@ async function handleSupportQuery(req, res) {
     forwardPending: Boolean(supportUrl && !forwarded),
     id: query.id
   });
+}
+
+async function handlePushRegister(req, res) {
+  const body = await readBody(req);
+  const token = String(body.token || "").trim();
+  if (token.length < 20) return send(res, 400, { message: "Push token is required" });
+
+  const user = verifyToken(req);
+  const tokens = readPushTokens();
+  const record = {
+    token,
+    platform: String(body.platform || "android").trim(),
+    phone: phoneDigits(body.phone || user?.phone || ""),
+    appVersion: String(body.appVersion || "").trim(),
+    updatedAt: indiaIso()
+  };
+  writePushTokens([record, ...tokens.filter((item) => item.token !== token)].slice(0, 5000));
+  return send(res, 200, { ok: true, registered: true });
+}
+
+function pushAdminAuthorized(req) {
+  const configured = String(process.env.PUSH_ADMIN_TOKEN || "").trim();
+  if (!configured) return false;
+  const header = String(req.headers.authorization || "");
+  const supplied = header.toLowerCase().startsWith("bearer ")
+    ? header.slice(7).trim()
+    : String(req.headers["x-push-admin-token"] || "").trim();
+  return Boolean(supplied && supplied === configured);
+}
+
+function notificationTargets(audience, pincode) {
+  const tokens = readPushTokens();
+  if (audience === "pincode" && pincode) {
+    const states = readCustomerState();
+    const phones = new Set(Object.entries(states)
+      .filter(([, value]) => String(value?.location?.pincode || "") === pincode)
+      .map(([phone]) => phoneDigits(phone)));
+    return tokens.filter((item) => phones.has(phoneDigits(item.phone)));
+  }
+  return tokens;
+}
+
+async function sendFcmNotification(tokens, notification) {
+  const serverKey = String(process.env.FCM_SERVER_KEY || "").trim();
+  if (!serverKey) return { configured: false, sent: 0, failed: tokens.length, message: "FCM_SERVER_KEY is not configured" };
+  if (!tokens.length) return { configured: true, sent: 0, failed: 0, message: "No registered devices" };
+
+  const response = await fetch("https://fcm.googleapis.com/fcm/send", {
+    method: "POST",
+    headers: {
+      Authorization: `key=${serverKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      registration_ids: tokens.map((item) => item.token),
+      priority: notification.priority === "high" ? "high" : "normal",
+      notification: {
+        title: notification.title,
+        body: notification.message
+      },
+      data: {
+        target: notification.target || "orders",
+        audience: notification.audience || "all",
+        pincode: notification.pincode || ""
+      }
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || data.message || "FCM send failed");
+  return { configured: true, sent: Number(data.success || 0), failed: Number(data.failure || 0), response: data };
+}
+
+async function handlePushSend(req, res) {
+  if (!pushAdminAuthorized(req)) return send(res, 401, { message: "Push admin token required" });
+  const body = await readBody(req);
+  const title = String(body.title || "").trim();
+  const message = String(body.message || "").trim();
+  if (!title || !message) return send(res, 400, { message: "Title and message are required" });
+
+  const notification = {
+    id: body.id || `PUSH-${Date.now()}`,
+    title,
+    message,
+    audience: String(body.audience || "all").trim(),
+    pincode: String(body.pincode || "").replace(/\D/g, "").slice(0, 6),
+    target: String(body.target || "orders").trim(),
+    priority: String(body.priority || "normal").trim(),
+    createdAt: indiaIso()
+  };
+  const targets = notificationTargets(notification.audience, notification.pincode);
+  const result = await sendFcmNotification(targets, notification).catch((error) => ({
+    configured: Boolean(process.env.FCM_SERVER_KEY),
+    sent: 0,
+    failed: targets.length,
+    message: error.message
+  }));
+
+  const dataDir = path.join(rootDir, "data");
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.appendFileSync(path.join(dataDir, "push-notifications.jsonl"), `${JSON.stringify({ ...notification, result })}\n`);
+  return send(res, result.configured ? 200 : 503, { ok: result.configured, notification, targets: targets.length, result });
 }
 
 async function handleCouponApply(req, res) {
@@ -3551,6 +3672,8 @@ async function router(req, res) {
     if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/mobile/profile") return handleCustomerProfile(req, res);
     if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/mobile/customer-state") return handleCustomerState(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/support") return handleSupportQuery(req, res);
+    if (req.method === "POST" && url.pathname === "/api/mobile/push/register") return handlePushRegister(req, res);
+    if (req.method === "POST" && url.pathname === "/api/mobile/push/send") return handlePushSend(req, res);
     if (req.method === "POST" && url.pathname === "/api/mobile/coupons/apply") return handleCouponApply(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/products") return handleProducts(req, res);
     if (req.method === "GET" && url.pathname === "/api/mobile/images") return handleProductImage(req, res);
