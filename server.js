@@ -2858,18 +2858,31 @@ function orderItemsForRequest(order = {}) {
     : arrayFromPayload(order, ["items", "products", "lineItems", "line_items", "orderItems", "order_items"]);
 
   return rows.map((item, index) => {
+    const product = item.product && typeof item.product === "object" ? item.product : {};
     const price = numericValue(firstPresent(item, ["price", "sellingPrice", "selling_price", "amount", "unitPrice", "unit_price", "rate"])) || 0;
     const quantity = numericValue(firstPresent(item, ["quantity", "qty", "count"])) || 1;
-    const ean = firstPresent(item, ["ean", "EAN", "barcode", "barCode", "bar_code", "upc", "isbn", "sku", "productSku", "product_sku"]);
+    const ean = firstPresent(item, ["ean", "EAN", "barcode", "barCode", "bar_code", "upc", "isbn", "sku", "productSku", "product_sku"]) ||
+      firstPresent(product, ["ean", "EAN", "barcode", "sku"]);
+    const productId = firstPresent(item, ["productId", "product_id", "sourceId", "source_id", "appProductId", "app_product_id", "id", "sku"]) || "";
+    const sku = firstPresent(item, ["sku", "productSku", "product_sku"]) || firstPresent(product, ["sku"]) || "";
+    const title = firstPresent(item, ["title", "name", "productName", "product_name"]) || firstPresent(product, ["title", "name", "productName", "product_name"]) || `Item ${index + 1}`;
 
     return {
-      productId: firstPresent(item, ["productId", "product_id", "sourceId", "source_id", "appProductId", "app_product_id", "id", "sku"]) || "",
+      productId,
+      product_id: productId,
+      sourceId: productId,
       appProductId: firstPresent(item, ["appProductId", "app_product_id", "id"]) || "",
-      title: firstPresent(item, ["title", "name", "productName", "product_name"]) || `Item ${index + 1}`,
-      sku: firstPresent(item, ["sku", "productSku", "product_sku"]) || "",
+      title,
+      name: title,
+      productName: title,
+      product: title,
+      sku,
+      product_sku: sku,
       ean: ean ? String(ean) : "",
+      barcode: ean ? String(ean) : "",
       price,
       quantity,
+      expected_quantity: quantity,
       total: numericValue(firstPresent(item, ["total", "lineTotal", "line_total", "amountTotal", "amount_total"])) || price * quantity
     };
   });
@@ -2971,14 +2984,20 @@ function buildOrderActionRequest(type, order, user, details = {}, tracking = {})
 
   return {
     requestId: `${type.toUpperCase()}-${Date.now()}`,
+    return_id: type === "return" ? `${orderId}-${Date.now()}` : undefined,
+    return_number: type === "return" ? `RET-${orderId}-${Date.now()}` : undefined,
     requestType: type,
     orderId,
     order_id: orderId,
+    website_order_id: orderId,
+    external_order_id: orderId,
     awbNumber,
     awb: awbNumber,
     status: `${type}_requested`,
     reason: details.reason || "",
     note: details.note || details.details || "",
+    notes: details.note || details.details || "",
+    return_reason: type === "return" ? details.reason || "" : undefined,
     source: "mobile_app",
     requestedAt: indiaIso(),
     deliveredAt: deliveredAt ? indiaIso(deliveredAt) : "",
