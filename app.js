@@ -359,6 +359,7 @@ const nodes = {
   authSubtitle: document.querySelector("[data-auth-subtitle]"),
   loginName: document.querySelector("[data-login-name]"),
   loginPhone: document.querySelector("[data-login-phone]"),
+  loginPhoneRow: document.querySelector("[data-login-phone-row]"),
   loginOtp: document.querySelector("[data-login-otp]"),
   loginOtpRow: document.querySelector("[data-login-otp-row]"),
   loginSubmit: document.querySelector("[data-login-submit]"),
@@ -371,6 +372,7 @@ const nodes = {
   apkOtpGate: document.querySelector("[data-apk-otp-gate]"),
   apkOtpForm: document.querySelector("[data-apk-otp-form]"),
   apkLoginPhone: document.querySelector("[data-apk-login-phone]"),
+  apkLoginPhoneRow: document.querySelector("[data-apk-login-phone-row]"),
   apkLoginOtp: document.querySelector("[data-apk-login-otp]"),
   apkLoginOtpRow: document.querySelector("[data-apk-login-otp-row]"),
   apkLoginSubmit: document.querySelector("[data-apk-login-submit]"),
@@ -668,6 +670,20 @@ function setApkOtpGate(open) {
 
 function refreshApkOtpGate() {
   setApkOtpGate(isApkRuntime() && !isLoggedIn() && !apkOtpDone());
+}
+
+function resetOtpEntryForms({ keepPhone = false } = {}) {
+  if (nodes.loginPhoneRow) nodes.loginPhoneRow.hidden = false;
+  if (nodes.loginOtpRow) nodes.loginOtpRow.hidden = true;
+  if (nodes.loginOtp) nodes.loginOtp.value = "";
+  if (nodes.loginSubmit) nodes.loginSubmit.textContent = "Send OTP";
+  if (!keepPhone && nodes.loginPhone) nodes.loginPhone.value = "";
+
+  if (nodes.apkLoginPhoneRow) nodes.apkLoginPhoneRow.hidden = false;
+  if (nodes.apkLoginOtpRow) nodes.apkLoginOtpRow.hidden = true;
+  if (nodes.apkLoginOtp) nodes.apkLoginOtp.value = "";
+  if (nodes.apkLoginSubmit) nodes.apkLoginSubmit.textContent = "Continue";
+  if (!keepPhone && nodes.apkLoginPhone) nodes.apkLoginPhone.value = "";
 }
 
 function persistShoppingState() {
@@ -2530,89 +2546,98 @@ function renderCheckoutPage() {
         : "Live or map verification is optional for free delivery.";
 
   nodes.checkoutPage.innerHTML = `
-    <div class="payment-page-header">
-      <button class="payment-back-button" type="button" data-action="open-cart" aria-label="Back">
+    <div class="page-header">
+      <button class="icon-button" type="button" data-action="open-cart" aria-label="Back">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
       </button>
-      <div>
-        <span>Step 3 of 3</span>
-        <h2>Payments</h2>
-      </div>
-      <strong class="secure-badge">
+      <div><h2>Checkout</h2><span>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"} in cart</span></div>
+      <strong class="secure-badge compact-secure">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2" /><path d="M5 10h14v10H5V10Z" /></svg>
-        100% Secure
       </strong>
     </div>
 
-    <div class="payment-total-card">
-      <button type="button">
-        <span>Total Amount</span>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-      </button>
-      <strong>${formatRupeeAmount(totals.total)}</strong>
+    <div class="simple-checkout">
+      <form class="checkout-form checkout-page-form simple-checkout-form" data-page-checkout-form>
+        <section class="checkout-section checkout-address-summary">
+          <div class="checkout-section-head">
+            <div>
+              <span>Step 1</span>
+              <h3>Delivery address</h3>
+              <p>${addressReady ? "Confirm address before placing order." : "Add address to continue."}</p>
+            </div>
+            ${addressReady ? `<button type="button" data-action="edit-location">Change</button>` : ""}
+          </div>
+          ${checkoutAddressCardHtml(billing)}
+          ${showLocationForm ? checkoutAddressFormHtml(billing, name, address) : ""}
+          ${addressStatusHtml(billing)}
+        </section>
+
+        <section class="checkout-section simple-items-section">
+          <div class="checkout-section-head">
+            <div>
+              <span>Step 2</span>
+              <h3>Review items</h3>
+              <p>${state.deliveryMode === "fast" ? "Fast delivery selected" : "Standard delivery selected"}</p>
+            </div>
+          </div>
+          ${deliveryOptionsHtml(totals, deliveryEligibility)}
+          ${deliveryEstimateCardHtml(billing.pincode)}
+          ${checkoutItemsPreview(totals.entries)}
+        </section>
+
+        <section class="checkout-section simple-payment-section">
+          <div class="checkout-section-head">
+            <div>
+              <span>Step 3</span>
+              <h3>Payment</h3>
+              <p>Choose how you want to pay.</p>
+            </div>
+          </div>
+          <div class="payment-list" aria-label="Payment options">
+            ${paymentOptionRow({
+              mode: "online",
+              method: "online",
+              icon: "online",
+              title: "Razorpay online payment",
+              subtitle: "UPI, cards, netbanking and wallets"
+            })}
+            ${paymentOptionRow({
+              mode: "cod",
+              method: "cod",
+              icon: "cod",
+              title: "Cash on Delivery",
+              subtitle: codUnavailable ? "Pay online to place this order" : "OTP verified COD where eligible",
+              disabled: codUnavailable,
+              badge: codUnavailable ? "Not available" : ""
+            })}
+          </div>
+          <p class="gateway-note payment-gateway-note" data-page-gateway-note></p>
+        </section>
+
+        <section class="checkout-section simple-bill-section">
+          <div class="checkout-section-head">
+            <div>
+              <span>Bill details</span>
+              <h3>${formatRupeeAmount(totals.total)}</h3>
+            </div>
+          </div>
+          ${freeDeliveryPopupHtml(totals)}
+          ${smartCartProgressHtml(totals)}
+          ${couponBoxHtml(totals)}
+          <div class="checkout-price-panel">
+            <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
+            ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
+            ${totals.couponDiscount ? `<div><span>Coupon</span><strong>- ${formatPrice(totals.couponDiscount)}</strong></div>` : ""}
+            <div><span>Delivery</span><strong>${totals.delivery ? formatPrice(totals.delivery) : "Free"}</strong></div>
+            <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
+            <div class="total"><span>Total</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
+          </div>
+        </section>
+      </form>
     </div>
-
-    <div class="payment-offer-strip">
-      <span>Claim now with payment offers</span>
-      <div aria-hidden="true"><i></i><i></i><i></i></div>
-    </div>
-
-    <form class="checkout-form checkout-page-form payment-checkout-form" data-page-checkout-form>
-      <section class="payment-list" aria-label="Payment options">
-        ${paymentOptionRow({
-          mode: "cod",
-          method: "cod",
-          icon: "cod",
-          title: "Cash on Delivery",
-          subtitle: codUnavailable ? "Pay online to place order" : "",
-          disabled: codUnavailable,
-          badge: codUnavailable ? "Not available" : ""
-        })}
-        ${paymentOptionRow({
-          mode: "online",
-          method: "online",
-          icon: "online",
-          title: "Pay Online",
-          subtitle: "Opens Razorpay secure checkout"
-        })}
-      </section>
-
-      <p class="gateway-note payment-gateway-note" data-page-gateway-note></p>
-
-      <section class="checkout-section checkout-address-summary">
-        ${checkoutAddressCardHtml(billing)}
-        ${showLocationForm ? checkoutAddressFormHtml(billing, name, address) : ""}
-        ${addressStatusHtml(billing)}
-      </section>
-    </form>
-
-    <section class="checkout-section checkout-summary payment-summary-section">
-      <div class="checkout-section-head">
-        <div>
-          <span>Order summary</span>
-          <h3>${totals.itemCount} ${totals.itemCount === 1 ? "item" : "items"}</h3>
-        </div>
-        <b>${state.deliveryMode === "fast" ? "Fast delivery" : "Standard delivery"}</b>
-      </div>
-      ${deliveryOptionsHtml(totals, deliveryEligibility)}
-      ${deliveryEstimateCardHtml(billing.pincode)}
-      ${freeDeliveryPopupHtml(totals)}
-      ${smartCartProgressHtml(totals)}
-      ${couponBoxHtml(totals)}
-      ${checkoutItemsPreview(totals.entries)}
-      ${policyConsentHtml()}
-      <div class="checkout-price-panel">
-        <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
-        ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
-        ${totals.couponDiscount ? `<div><span>Coupon</span><strong>- ${formatPrice(totals.couponDiscount)}</strong></div>` : ""}
-        <div><span>Delivery</span><strong>${totals.delivery ? formatPrice(totals.delivery) : "Free"}</strong></div>
-        <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
-        <div class="total"><span>Total</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
-      </div>
-    </section>
 
     <div class="checkout-sticky-bar payment-sticky-bar">
-      <div><span>Total Amount</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
+      <div><span>${state.paymentMode === "online" ? "Pay online" : "Pay on delivery"}</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
       <button class="checkout-button" type="button" data-action="checkout" ${totals.itemCount ? "" : "disabled"}>${checkoutLabel}</button>
     </div>
   `;
@@ -3161,6 +3186,10 @@ function openAccount() {
 
 function closeAccount() {
   state.profileEditOpen = false;
+  if (!isLoggedIn() && pendingOtpLogin?.source !== "apk") {
+    pendingOtpLogin = null;
+    resetOtpEntryForms();
+  }
   nodes.authModal.classList.remove("open");
   nodes.authModal.setAttribute("aria-hidden", "true");
 }
@@ -3374,9 +3403,7 @@ async function completeOtpSession(response, phone, name) {
     loggedInAt: indiaIso()
   };
   pendingOtpLogin = null;
-  if (nodes.loginOtpRow) nodes.loginOtpRow.hidden = true;
-  if (nodes.loginOtp) nodes.loginOtp.value = "";
-  if (nodes.loginSubmit) nodes.loginSubmit.textContent = "Send OTP";
+  resetOtpEntryForms();
   saveJson(storageKeys.session, state.session);
   await restoreCustomerState();
   applySavedProfile(response.profile);
@@ -3403,6 +3430,7 @@ async function completeApkOtpLogin(event) {
     if (!otpReady) {
       await api.requestCodOtp(phone);
       pendingOtpLogin = { source: "apk", phone, name: "EV Speare Customer", profile: { name: "EV Speare Customer" } };
+      if (nodes.apkLoginPhoneRow) nodes.apkLoginPhoneRow.hidden = true;
       if (nodes.apkLoginOtpRow) nodes.apkLoginOtpRow.hidden = false;
       if (nodes.apkLoginSubmit) nodes.apkLoginSubmit.textContent = "Verify OTP";
       nodes.apkLoginOtp?.focus();
@@ -3460,6 +3488,7 @@ async function completeNewCustomerLogin(event) {
     if (!otpReady) {
       await api.requestCodOtp(phone);
       pendingOtpLogin = { ...(pendingOtpLogin || {}), phone, name, profile };
+      if (nodes.loginPhoneRow) nodes.loginPhoneRow.hidden = true;
       if (nodes.loginOtpRow) nodes.loginOtpRow.hidden = false;
       if (nodes.loginSubmit) nodes.loginSubmit.textContent = "Verify OTP";
       nodes.loginOtp?.focus();
@@ -3620,10 +3649,10 @@ function logout() {
   closeCodOtpModal();
   pendingOtpLogin = null;
   clearCustomerDeviceState();
-  if (nodes.loginOtpRow) nodes.loginOtpRow.hidden = true;
-  if (nodes.loginOtp) nodes.loginOtp.value = "";
-  if (nodes.loginSubmit) nodes.loginSubmit.textContent = "Send OTP";
+  localStorage.removeItem("evspeare.apkOtpDone");
+  resetOtpEntryForms();
   renderAll();
+  refreshApkOtpGate();
   closeAccount();
   showToast("Logged out");
 }

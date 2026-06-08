@@ -450,7 +450,7 @@
         <div class="auth-panel" data-auth-login>
           <form class="profile-edit-form" data-new-customer-form>
             <label>Customer name<input type="text" data-login-name placeholder="Enter your name" autocomplete="name" /></label>
-            <label>Mobile number<input type="tel" inputmode="numeric" maxlength="10" data-login-phone placeholder="Enter 10 digit mobile" autocomplete="tel" /></label>
+            <label data-login-phone-row>Mobile number<input type="tel" inputmode="numeric" maxlength="10" data-login-phone placeholder="Enter 10 digit mobile" autocomplete="tel" /></label>
             <label data-login-otp-row hidden>OTP<input type="tel" inputmode="numeric" maxlength="6" data-login-otp placeholder="Enter OTP" autocomplete="one-time-code" /></label>
             <label>Address <small>required for delivery</small><textarea data-login-address1 placeholder="House no, street" autocomplete="address-line1" rows="2"></textarea></label>
             <label>Area<input type="text" data-login-area placeholder="Area" /></label>
@@ -547,7 +547,7 @@
           <span>Lowest EV spare prices everyday</span>
         </div>
         <form class="apk-otp-form" data-apk-otp-form>
-          <label>
+          <label data-apk-login-phone-row>
             <span>+91</span>
             <input type="tel" inputmode="numeric" maxlength="10" data-apk-login-phone placeholder="Enter Phone Number" autocomplete="tel" />
           </label>
