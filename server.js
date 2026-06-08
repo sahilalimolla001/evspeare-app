@@ -42,6 +42,7 @@ const codMaxOrderAmount = 1000;
 const pendingRazorpayOrders = new Map();
 const rateLimitBuckets = new Map();
 const maxRequestBodyBytes = Number(process.env.MAX_REQUEST_BODY_BYTES || 256 * 1024);
+const playStorePackageName = process.env.PLAY_STORE_PACKAGE_NAME || "com.evspeare.shop";
 const defaultFirebaseWebConfig = {
   apiKey: "AIzaSyBHAvF01gxheV53SfnzNxh41ODZHSHNWbI",
   authDomain: "app-evspeare.firebaseapp.com",
@@ -86,6 +87,57 @@ function send(res, status, body, headers = {}) {
     ...headers
   });
   res.end(typeof body === "string" ? body : JSON.stringify(body));
+}
+
+function playStoreCertificateFingerprints() {
+  return String(process.env.PLAY_STORE_SHA256_CERT_FINGERPRINT || "")
+    .split(",")
+    .map((fingerprint) => fingerprint.trim())
+    .filter(Boolean);
+}
+
+function sendAssetLinks(req, res) {
+  if (req.method !== "GET") {
+    send(res, 405, { message: "Method not allowed" });
+    return;
+  }
+
+  const fingerprints = playStoreCertificateFingerprints();
+  if (fingerprints.length) {
+    send(
+      res,
+      200,
+      [
+        {
+          relation: ["delegate_permission/common.handle_all_urls"],
+          target: {
+            namespace: "android_app",
+            package_name: playStorePackageName,
+            sha256_cert_fingerprints: fingerprints
+          }
+        }
+      ],
+      { "Cache-Control": "public, max-age=3600" }
+    );
+    return;
+  }
+
+  const filePath = path.join(rootDir, ".well-known", "assetlinks.json");
+  fs.readFile(filePath, (error, data) => {
+    if (error) {
+      send(res, 404, {
+        message: "Set PLAY_STORE_SHA256_CERT_FINGERPRINT or add .well-known/assetlinks.json"
+      });
+      return;
+    }
+
+    applySecurityHeaders(res);
+    res.writeHead(200, {
+      "Content-Type": mimeTypes[".json"],
+      "Cache-Control": "public, max-age=3600"
+    });
+    res.end(data);
+  });
 }
 
 function securityHeaders() {
@@ -3606,6 +3658,8 @@ async function router(req, res) {
         checkedAt: indiaIso()
       });
     }
+
+    if (url.pathname === "/.well-known/assetlinks.json") return sendAssetLinks(req, res);
 
     if (req.method === "GET" && url.pathname === "/api/mobile/diagnostics") {
       return send(res, 200, publicDiagnostics(req));

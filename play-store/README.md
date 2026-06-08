@@ -52,15 +52,28 @@ Upload the generated `.aab` file to Play Console.
 
 ## Digital Asset Links
 
-After Bubblewrap creates the signing key, get the SHA-256 fingerprint and replace the placeholder in `assetlinks.template.json`.
+After Bubblewrap creates the signing key, get the SHA-256 fingerprint. For production with Play App Signing, use the App signing key certificate SHA-256 shown in Play Console.
 
-Upload the final JSON file to:
+The web server can now serve Digital Asset Links automatically. Set these environment variables in production:
+
+```text
+PLAY_STORE_PACKAGE_NAME=com.evspeare.shop
+PLAY_STORE_SHA256_CERT_FINGERPRINT=PASTE_RELEASE_KEY_SHA256_HERE
+```
+
+Then verify this URL:
 
 ```text
 https://www.evspeare.shop/.well-known/assetlinks.json
 ```
 
 The file must be reachable publicly over HTTPS before the Play Store app is tested.
+
+If you prefer a static file instead of environment variables, copy `assetlinks.template.json`, replace the placeholder fingerprint, and deploy the final file as `.well-known/assetlinks.json`.
+
+## Release Checklist
+
+Use `release-checklist.md` before submitting the app to Play Console.
 
 ## Important
 
