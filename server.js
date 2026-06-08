@@ -1792,7 +1792,14 @@ function notificationTargets(audience, pincode) {
 async function sendFcmNotification(tokens, notification) {
   const serverKey = String(process.env.FCM_SERVER_KEY || "").trim();
   if (!serverKey) return { configured: false, sent: 0, failed: tokens.length, message: "FCM_SERVER_KEY is not configured" };
-  if (!tokens.length) return { configured: true, sent: 0, failed: 0, message: "No registered devices" };
+  if (!tokens.length) {
+    return {
+      configured: true,
+      sent: 0,
+      failed: 0,
+      message: "No registered mobile devices. Install the Firebase Messaging APK and login once so the phone can register its push token."
+    };
+  }
 
   const response = await fetch("https://fcm.googleapis.com/fcm/send", {
     method: "POST",
@@ -1847,7 +1854,12 @@ async function handlePushSend(req, res) {
   const dataDir = path.join(rootDir, "data");
   fs.mkdirSync(dataDir, { recursive: true });
   fs.appendFileSync(path.join(dataDir, "push-notifications.jsonl"), `${JSON.stringify({ ...notification, result })}\n`);
-  return send(res, result.configured ? 200 : 503, { ok: result.configured, notification, targets: targets.length, result });
+  return send(res, result.configured ? 200 : 503, {
+    ok: result.configured && result.sent > 0,
+    notification,
+    targets: targets.length,
+    result
+  });
 }
 
 async function handleCouponApply(req, res) {
