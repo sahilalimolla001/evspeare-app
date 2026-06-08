@@ -405,6 +405,7 @@ const nodes = {
   productPage: document.querySelector("[data-product-page]"),
   cartPage: document.querySelector("[data-cart-page]"),
   checkoutPage: document.querySelector("[data-checkout-page]"),
+  paymentPage: document.querySelector("[data-payment-page]"),
   addressPage: document.querySelector("[data-address-page]"),
   ordersPage: document.querySelector("[data-orders-page]"),
   infoPage: document.querySelector("[data-info-page-content]"),
@@ -1836,6 +1837,18 @@ function checkoutBillingDetails() {
   const pagePanel = document.querySelector('[data-page-panel="address"].open') ||
     document.querySelector('[data-page-panel="checkout"].open');
   const saved = savedLocationDetails();
+  if (saved && hasLocationDetails(saved) && (!pagePanel || (!state.locationFormOpen && !document.querySelector('[data-page-panel="address"].open')))) {
+    const nameParts = splitName(nodes.checkoutName.value || state.session?.user?.name || formatCustomerName(saved));
+    return {
+      ...emptyBillingDetails(),
+      ...saved,
+      ...(!saved.firstName && !saved.lastName ? nameParts : {}),
+      phone: phoneDigits(state.session?.user?.phone || saved.phone || nodes.checkoutPhone.value || ""),
+      email: saved.email || "",
+      alternatePhone: saved.alternatePhone || "",
+      shippingSame: saved.shippingSame !== false
+    };
+  }
   if (!pagePanel) {
     const nameParts = splitName(nodes.checkoutName.value || state.session?.user?.name || formatCustomerName(saved || {}));
     return {
@@ -2528,7 +2541,7 @@ function renderCheckoutPage() {
     state.paymentMethod = "online";
     state.paymentMode = "online";
   }
-  const checkoutLabel = isLoggedIn() ? "Place order" : "Login to place order";
+  const checkoutLabel = isLoggedIn() ? "Continue to payment" : "Login to continue";
   const savedLocation = savedLocationDetails();
   const hasSavedLocation = hasLocationDetails(savedLocation);
   const showLocationForm = state.locationFormOpen || !hasSavedLocation;
@@ -2585,35 +2598,6 @@ function renderCheckoutPage() {
           ${checkoutItemsPreview(totals.entries)}
         </section>
 
-        <section class="checkout-section simple-payment-section">
-          <div class="checkout-section-head">
-            <div>
-              <span>Step 3</span>
-              <h3>Payment</h3>
-              <p>Choose how you want to pay.</p>
-            </div>
-          </div>
-          <div class="payment-list" aria-label="Payment options">
-            ${paymentOptionRow({
-              mode: "online",
-              method: "online",
-              icon: "online",
-              title: "Razorpay online payment",
-              subtitle: "UPI, cards, netbanking and wallets"
-            })}
-            ${paymentOptionRow({
-              mode: "cod",
-              method: "cod",
-              icon: "cod",
-              title: "Cash on Delivery",
-              subtitle: codUnavailable ? "Pay online to place this order" : "OTP verified COD where eligible",
-              disabled: codUnavailable,
-              badge: codUnavailable ? "Not available" : ""
-            })}
-          </div>
-          <p class="gateway-note payment-gateway-note" data-page-gateway-note></p>
-        </section>
-
         <section class="checkout-section simple-bill-section">
           <div class="checkout-section-head">
             <div>
@@ -2637,8 +2621,83 @@ function renderCheckoutPage() {
     </div>
 
     <div class="checkout-sticky-bar payment-sticky-bar">
+      <div><span>Total amount</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
+      <button class="checkout-button" type="button" data-action="continue-payment" ${totals.itemCount ? "" : "disabled"}>${checkoutLabel}</button>
+    </div>
+  `;
+  renderGatewayNote();
+}
+
+function renderPaymentPage() {
+  if (!nodes.paymentPage) return;
+  const billing = checkoutBillingDetails();
+  const totals = cartTotals();
+  const codUnavailable = totals.total > codMaxOrderAmount;
+  if (codUnavailable && state.paymentMethod === "cod") {
+    state.paymentMethod = "online";
+    state.paymentMode = "online";
+  }
+  nodes.paymentPage.innerHTML = `
+    <div class="page-header">
+      <button class="icon-button" type="button" data-action="back-to-checkout" aria-label="Back">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+      </button>
+      <div><h2>Payment</h2><span>Select payment method</span></div>
+      <strong class="secure-badge compact-secure">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2" /><path d="M5 10h14v10H5V10Z" /></svg>
+      </strong>
+    </div>
+    <section class="checkout-section payment-final-summary">
+      <div class="checkout-section-head">
+        <div>
+          <span>Delivering to</span>
+          <h3>${escapeHtml(addressTypeLabel(billing))}</h3>
+          <p>${escapeHtml(locationSummary(billing))}</p>
+        </div>
+        <button type="button" data-action="back-to-checkout">Change</button>
+      </div>
+    </section>
+    <section class="checkout-section simple-payment-section">
+      <div class="checkout-section-head">
+        <div>
+          <span>Payment options</span>
+          <h3>${formatRupeeAmount(totals.total)}</h3>
+          <p>Choose online payment or COD.</p>
+        </div>
+      </div>
+      <div class="payment-list" aria-label="Payment options">
+        ${paymentOptionRow({
+          mode: "online",
+          method: "online",
+          icon: "online",
+          title: "Razorpay online payment",
+          subtitle: "UPI, cards, netbanking and wallets"
+        })}
+        ${paymentOptionRow({
+          mode: "cod",
+          method: "cod",
+          icon: "cod",
+          title: "Cash on Delivery",
+          subtitle: codUnavailable ? "Pay online to place this order" : "OTP verified COD where eligible",
+          disabled: codUnavailable,
+          badge: codUnavailable ? "Not available" : ""
+        })}
+      </div>
+      <p class="gateway-note payment-gateway-note" data-page-gateway-note></p>
+    </section>
+    <section class="checkout-section simple-bill-section">
+      <div class="checkout-price-panel">
+        <div><span>Subtotal</span><strong>${formatPrice(totals.subtotal)}</strong></div>
+        ${totals.autoDiscount ? `<div><span>Auto saving</span><strong>- ${formatPrice(totals.autoDiscount)}</strong></div>` : ""}
+        ${totals.couponDiscount ? `<div><span>Coupon</span><strong>- ${formatPrice(totals.couponDiscount)}</strong></div>` : ""}
+        <div><span>Delivery</span><strong>${totals.delivery ? formatPrice(totals.delivery) : "Free"}</strong></div>
+        <div><span>Platform fee</span><strong>${formatPrice(totals.platformFee)}</strong></div>
+        <div class="total"><span>Total</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
+      </div>
+    </section>
+    <div class="checkout-sticky-bar payment-sticky-bar">
       <div><span>${state.paymentMode === "online" ? "Pay online" : "Pay on delivery"}</span><strong>${formatRupeeAmount(totals.total)}</strong></div>
-      <button class="checkout-button" type="button" data-action="checkout" ${totals.itemCount ? "" : "disabled"}>${checkoutLabel}</button>
+      <button class="checkout-button" type="button" data-action="checkout" ${totals.itemCount ? "" : "disabled"}>Place order</button>
     </div>
   `;
   renderGatewayNote();
@@ -3123,6 +3182,7 @@ function renderAll() {
   renderCartPage();
   renderAddressPage();
   renderCheckoutPage();
+  renderPaymentPage();
   renderOrdersPage();
   renderInfoPage("about");
   renderQuickCommerce();
@@ -4322,6 +4382,19 @@ document.addEventListener("click", async (event) => {
         renderCheckoutPage();
         openPage("checkout");
       }
+      break;
+    case "continue-payment": {
+      const customer = validateCheckout();
+      if (customer) {
+        state.locationFormOpen = false;
+        renderPaymentPage();
+        openPage("payment");
+      }
+      break;
+    }
+    case "back-to-checkout":
+      renderCheckoutPage();
+      openPage("checkout");
       break;
     case "open-orders":
       renderOrdersPage();

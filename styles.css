@@ -4930,7 +4930,8 @@ body {
   gap: 10px;
 }
 
-[data-page-panel="checkout"] .page-card {
+[data-page-panel="checkout"] .page-card,
+[data-page-panel="payment"] .page-card {
   display: block;
 }
 
