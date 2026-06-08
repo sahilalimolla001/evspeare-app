@@ -3588,6 +3588,116 @@ svg {
   background: #eef2f7;
 }
 
+.apk-otp-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: none;
+  color: #ffffff;
+  background: #0755d8;
+}
+
+.apk-otp-gate.open {
+  display: block;
+}
+
+body.apk-otp-locked {
+  overflow: hidden;
+}
+
+.apk-otp-card {
+  width: min(100%, 480px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: max(58px, env(safe-area-inset-top)) 28px calc(28px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  align-content: start;
+  gap: 38px;
+  background: linear-gradient(180deg, #0b5eee 0%, #0645b8 100%);
+}
+
+.apk-otp-brand {
+  margin-top: 74px;
+  display: grid;
+  gap: 24px;
+}
+
+.apk-otp-brand strong {
+  color: #ffffff;
+  font-size: clamp(3.2rem, 14vw, 5.8rem);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 0.9;
+}
+
+.apk-otp-brand span {
+  max-width: 370px;
+  color: #ffffff;
+  font-size: clamp(2rem, 8vw, 3.1rem);
+  font-weight: 950;
+  line-height: 1.14;
+}
+
+.apk-otp-form {
+  display: grid;
+  gap: 18px;
+}
+
+.apk-otp-form label {
+  min-height: 72px;
+  border-radius: 999px;
+  padding: 0 26px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #111827;
+  background: #ffffff;
+  font-size: 1.16rem;
+  font-weight: 800;
+}
+
+.apk-otp-form input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  color: #172033;
+  background: transparent;
+  font-size: 1.16rem;
+  outline: 0;
+}
+
+.apk-otp-form input::placeholder {
+  color: #8d92a0;
+}
+
+.apk-otp-form button {
+  min-height: 72px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #ff5b93;
+  font-size: 1.12rem;
+  font-weight: 950;
+}
+
+.apk-otp-card p {
+  align-self: end;
+  margin: 0 0 18px;
+  color: rgba(255, 255, 255, 0.86);
+  text-align: center;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.apk-otp-card p button {
+  padding: 0;
+  color: #ff8fb1;
+  background: transparent;
+  font: inherit;
+  font-weight: 900;
+}
+
 .auth-panel,
 .profile-panel {
   display: grid;
@@ -3939,6 +4049,8 @@ svg {
 }
 
 .update-prompt-card {
+  position: relative;
+  z-index: 1;
   width: min(100%, 420px);
   padding: 14px;
   border-radius: 8px;
@@ -3976,13 +4088,13 @@ svg {
 }
 
 .update-prompt-actions button:first-child {
-  color: var(--ink);
-  background: #edf1f7;
+  color: white;
+  background: var(--blue);
 }
 
 .update-prompt-actions button:last-child {
-  color: white;
-  background: var(--blue);
+  color: var(--ink);
+  background: #edf1f7;
 }
 
 @media (min-width: 700px) {

@@ -540,6 +540,27 @@
       </section>
     </aside>
 
+    <aside class="apk-otp-gate" data-apk-otp-gate aria-hidden="true">
+      <section class="apk-otp-card" aria-label="EV Speare mobile login">
+        <div class="apk-otp-brand">
+          <strong>EVSPEARE</strong>
+          <span>Lowest EV spare prices everyday</span>
+        </div>
+        <form class="apk-otp-form" data-apk-otp-form>
+          <label>
+            <span>+91</span>
+            <input type="tel" inputmode="numeric" maxlength="10" data-apk-login-phone placeholder="Enter Phone Number" autocomplete="tel" />
+          </label>
+          <label data-apk-login-otp-row hidden>
+            <span>OTP</span>
+            <input type="tel" inputmode="numeric" maxlength="6" data-apk-login-otp placeholder="Enter OTP" autocomplete="one-time-code" />
+          </label>
+          <button type="submit" data-apk-login-submit>Continue</button>
+        </form>
+        <p>By continuing, you agree to our<br /><button type="button" data-info-page="terms">Terms of Use</button> &amp; <button type="button" data-info-page="privacy">Privacy Policy</button></p>
+      </section>
+    </aside>
+
     <aside class="auth-modal" data-cod-otp-modal aria-hidden="true">
       <div class="modal-backdrop" data-action="close-cod-otp"></div>
       <section class="auth-card" aria-label="Confirm COD mobile number">
@@ -600,6 +621,19 @@
         </div>
       </div>
     </div>
+    <aside class="update-prompt" data-update-prompt aria-hidden="true">
+      <div class="modal-backdrop" data-action="dismiss-update"></div>
+      <section class="update-prompt-card" aria-label="App update available">
+        <div>
+          <strong>Update available</strong>
+          <span>New EV Speare app version is ready. Update now for latest fixes.</span>
+        </div>
+        <div class="update-prompt-actions">
+          <button type="button" data-action="apply-update">Update</button>
+          <button type="button" data-action="dismiss-update">Later</button>
+        </div>
+      </section>
+    </aside>
     <div class="toast" role="status" aria-live="polite" data-toast></div>
 
     <script src="config.js"></script>

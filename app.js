@@ -368,6 +368,12 @@ const nodes = {
   loginCity: document.querySelector("[data-login-city]"),
   loginState: document.querySelector("[data-login-state]"),
   loginPincode: document.querySelector("[data-login-pincode]"),
+  apkOtpGate: document.querySelector("[data-apk-otp-gate]"),
+  apkOtpForm: document.querySelector("[data-apk-otp-form]"),
+  apkLoginPhone: document.querySelector("[data-apk-login-phone]"),
+  apkLoginOtp: document.querySelector("[data-apk-login-otp]"),
+  apkLoginOtpRow: document.querySelector("[data-apk-login-otp-row]"),
+  apkLoginSubmit: document.querySelector("[data-apk-login-submit]"),
   codOtpModal: document.querySelector("[data-cod-otp-modal]"),
   codOtp: document.querySelector("[data-cod-otp]"),
   mapPickerModal: document.querySelector("[data-map-picker-modal]"),
@@ -640,6 +646,28 @@ function isLoggedIn() {
     return false;
   }
   return true;
+}
+
+function isApkRuntime() {
+  return Boolean(window.EvSpeareAndroid);
+}
+
+function apkOtpDone() {
+  return localStorage.getItem("evspeare.apkOtpDone") === "1";
+}
+
+function setApkOtpGate(open) {
+  if (!nodes.apkOtpGate) return;
+  nodes.apkOtpGate.classList.toggle("open", Boolean(open));
+  nodes.apkOtpGate.setAttribute("aria-hidden", open ? "false" : "true");
+  document.body.classList.toggle("apk-otp-locked", Boolean(open));
+  if (open) {
+    requestAnimationFrame(() => nodes.apkLoginPhone?.focus());
+  }
+}
+
+function refreshApkOtpGate() {
+  setApkOtpGate(isApkRuntime() && !isLoggedIn() && !apkOtpDone());
 }
 
 function persistShoppingState() {
@@ -2306,6 +2334,7 @@ function checkoutAddressCardHtml(billing) {
 }
 
 function checkoutAddressFormHtml(billing, name, address) {
+  const lockedPhone = isLoggedIn() ? phoneDigits(state.session?.user?.phone || billing.phone) : "";
   return `
     <div class="checkout-inline-address">
       <div class="checkout-section-head">
@@ -2335,7 +2364,7 @@ function checkoutAddressFormHtml(billing, name, address) {
         <div class="checkout-field-grid">
           <label>First Name <small>required</small><input type="text" data-page-checkout-first-name value="${escapeHtml(billing.firstName)}" autocomplete="given-name" /></label>
           <label>Last Name<input type="text" data-page-checkout-last-name value="${escapeHtml(billing.lastName)}" autocomplete="family-name" /></label>
-          <label>Phone <small>required</small><input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(billing.phone)}" autocomplete="tel" /></label>
+          ${lockedPhone ? `<input type="hidden" data-page-checkout-phone value="${escapeHtml(lockedPhone)}" />` : `<label>Phone <small>required</small><input type="tel" inputmode="numeric" data-page-checkout-phone value="${escapeHtml(billing.phone)}" autocomplete="tel" /></label>`}
           <label>Email<input type="email" data-page-checkout-email value="${escapeHtml(billing.email)}" autocomplete="email" /></label>
         </div>
       </div>
@@ -3181,7 +3210,8 @@ async function registerNativePushToken(token) {
 window.EvSpeareRegisterPushToken = registerNativePushToken;
 
 function showUpdatePrompt() {
-  applyAppUpdate();
+  nodes.updatePrompt?.classList.add("open");
+  nodes.updatePrompt?.setAttribute("aria-hidden", "false");
 }
 
 function hideUpdatePrompt() {
@@ -3205,7 +3235,7 @@ async function checkAppVersion() {
     }
 
     if (storedVersion !== latestVersion) {
-      await applyAppUpdate();
+      showUpdatePrompt();
     }
   } catch (error) {
     console.warn("Unable to check app version", error);
@@ -3243,7 +3273,7 @@ async function registerAppUpdateWorker() {
       if (!installingWorker) return;
       installingWorker.addEventListener("statechange", () => {
         if (installingWorker.state === "installed" && navigator.serviceWorker.controller) {
-          applyAppUpdate();
+          showUpdatePrompt();
         }
       });
     });
@@ -3353,7 +3383,37 @@ async function completeOtpSession(response, phone, name) {
   syncCustomerState();
   renderAll();
   closeAccount();
+  localStorage.setItem("evspeare.apkOtpDone", "1");
+  setApkOtpGate(false);
   showToast("Login successful");
+}
+
+async function completeApkOtpLogin(event) {
+  event.preventDefault();
+  const phone = phoneDigits(nodes.apkLoginPhone?.value);
+  if (phone.length !== 10) {
+    showToast("Enter valid 10 digit mobile number");
+    nodes.apkLoginPhone?.focus();
+    return;
+  }
+
+  const otp = String(nodes.apkLoginOtp?.value || "").trim();
+  const otpReady = pendingOtpLogin?.source === "apk" && pendingOtpLogin?.phone === phone && otp.length >= 4;
+  try {
+    if (!otpReady) {
+      await api.requestCodOtp(phone);
+      pendingOtpLogin = { source: "apk", phone, name: "EV Speare Customer", profile: { name: "EV Speare Customer" } };
+      if (nodes.apkLoginOtpRow) nodes.apkLoginOtpRow.hidden = false;
+      if (nodes.apkLoginSubmit) nodes.apkLoginSubmit.textContent = "Verify OTP";
+      nodes.apkLoginOtp?.focus();
+      showToast("OTP sent to mobile number");
+      return;
+    }
+    const response = await api.verifyCodOtp(phone, otp, pendingOtpLogin.profile);
+    await completeOtpSession(response, phone, pendingOtpLogin.name);
+  } catch (error) {
+    showToast(error.message || "Login failed", 7000);
+  }
 }
 
 async function completeNewCustomerLogin(event) {
@@ -3577,7 +3637,9 @@ function validateCheckout() {
   const cityNode = checkoutField("[data-page-checkout-city]", addressNode);
   const pincodeNode = checkoutField("[data-page-checkout-pincode]", addressNode);
   const billing = checkoutBillingDetails();
-  const phone = phoneDigits(billing.phone || phoneNode.value || state.session?.user?.phone);
+  const phone = isLoggedIn()
+    ? phoneDigits(state.session?.user?.phone)
+    : phoneDigits(billing.phone || phoneNode.value || "");
   const name = formatCustomerName(billing) || String(nameNode.value || state.session?.user?.name || "").trim();
   const address = formatAddress(billing);
   const totals = cartTotals();
@@ -4444,6 +4506,7 @@ nodes.checkoutForm.addEventListener("submit", (event) => {
 
 nodes.profileEditForm?.addEventListener("submit", saveProfileName);
 nodes.newCustomerForm?.addEventListener("submit", completeNewCustomerLogin);
+nodes.apkOtpForm?.addEventListener("submit", completeApkOtpLogin);
 
 nodes.supportForm?.addEventListener("submit", submitSupportQuery);
 
@@ -4508,6 +4571,7 @@ function applySavedProfile(profile) {
 
 mountCommerceDrawerPage();
 renderAll();
+refreshApkOtpGate();
 registerAppUpdateWorker();
 syncProducts({ silent: true });
 handlePaymentReturn();
