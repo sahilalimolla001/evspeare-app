@@ -1009,10 +1009,13 @@ function fcmServiceAccount() {
 
 function fcmConfigStatus() {
   const account = fcmServiceAccount();
+  const tokens = readPushTokens();
   return {
     legacyServerKeySet: Boolean(process.env.FCM_SERVER_KEY),
     serviceAccountSet: Boolean(account.clientEmail && account.privateKey),
-    projectIdSet: Boolean(account.projectId)
+    projectIdSet: Boolean(account.projectId),
+    registeredDevices: tokens.length,
+    lastRegisteredAt: tokens[0]?.updatedAt || null
   };
 }
 
