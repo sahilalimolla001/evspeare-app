@@ -965,8 +965,7 @@ function gcsPublicCandidates(gcs) {
   ];
 }
 
-function googleServiceAccount() {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FCM_SERVICE_ACCOUNT_JSON || "";
+function parseServiceAccount(raw, label) {
   if (raw) {
     try {
       let parsed;
@@ -982,9 +981,15 @@ function googleServiceAccount() {
         projectId: parsed.project_id
       };
     } catch (error) {
-      console.error("Invalid GOOGLE_SERVICE_ACCOUNT_JSON", error.message);
+      console.error(`Invalid ${label}`, error.message);
     }
   }
+  return null;
+}
+
+function googleServiceAccount() {
+  const account = parseServiceAccount(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || "", "GOOGLE_SERVICE_ACCOUNT_JSON");
+  if (account) return account;
 
   return {
     clientEmail: process.env.GOOGLE_CLIENT_EMAIL,
@@ -1000,7 +1005,15 @@ function googleStorageConfigured() {
 }
 
 function fcmServiceAccount() {
-  const account = googleServiceAccount();
+  const account = parseServiceAccount(
+    process.env.FCM_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "",
+    "FCM_SERVICE_ACCOUNT_JSON"
+  ) || {
+    clientEmail: process.env.FCM_CLIENT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL || "",
+    privateKey: String(process.env.FCM_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+    tokenUri: process.env.FCM_TOKEN_URI || process.env.FIREBASE_TOKEN_URI || "https://oauth2.googleapis.com/token",
+    projectId: process.env.FCM_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || ""
+  };
   return {
     ...account,
     projectId: process.env.FCM_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || account.projectId
