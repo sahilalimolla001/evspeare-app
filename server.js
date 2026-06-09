@@ -1857,6 +1857,21 @@ function notificationTargets(audience, pincode) {
   return tokens;
 }
 
+function fcmErrorMessage(data) {
+  const error = data?.error || data;
+  if (!error || typeof error !== "object") return "";
+  return [
+    error.status,
+    error.message,
+    Array.isArray(error.details) ? error.details.map((item) => item.errorCode || item.reason || item["@type"]).filter(Boolean).join(", ") : ""
+  ].filter(Boolean).join(": ");
+}
+
+function fcmTokenRejected(data) {
+  const text = fcmErrorMessage(data).toUpperCase();
+  return /UNREGISTERED|SENDER_ID_MISMATCH|INVALID_ARGUMENT|REGISTRATION_TOKEN/.test(text);
+}
+
 async function sendFcmNotification(tokens, notification) {
   if (!tokens.length) {
     return {
@@ -1899,14 +1914,22 @@ async function sendFcmNotification(tokens, notification) {
         })
       });
       const data = await response.json().catch(() => ({}));
-      return { ok: response.ok, data };
+      return { ok: response.ok, token: item.token, data };
     }));
     const sent = results.filter((item) => item.ok).length;
+    const failedResults = results.filter((item) => !item.ok);
+    const rejectedTokens = new Set(failedResults.filter((item) => fcmTokenRejected(item.data)).map((item) => item.token));
+    if (rejectedTokens.size) {
+      writePushTokens(readPushTokens().filter((item) => !rejectedTokens.has(item.token)));
+    }
+    const firstError = fcmErrorMessage(failedResults[0]?.data);
     return {
       configured: true,
       provider: "fcm-http-v1",
       sent,
       failed: results.length - sent,
+      removedInvalidTokens: rejectedTokens.size,
+      message: firstError || (sent ? "" : "Firebase push delivery failed"),
       response: results.slice(0, 10).map((item) => item.data)
     };
   }
@@ -1958,7 +1981,7 @@ async function handlePushSend(req, res) {
   };
   const targets = notificationTargets(notification.audience, notification.pincode);
   const result = await sendFcmNotification(targets, notification).catch((error) => ({
-    configured: Boolean(process.env.FCM_SERVER_KEY),
+    configured: Boolean(process.env.FCM_SERVER_KEY || fcmConfigStatus().serviceAccountSet),
     sent: 0,
     failed: targets.length,
     message: error.message
