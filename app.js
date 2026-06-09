@@ -3433,6 +3433,21 @@ async function registerNativePushToken(token) {
 
 window.EvSpeareRegisterPushToken = registerNativePushToken;
 
+function requestNativePushToken() {
+  try {
+    const token = window.EvSpeareAndroid?.getPushToken?.();
+    if (token) registerNativePushToken(token);
+  } catch (error) {
+    console.warn("Native push token request failed", error);
+  }
+}
+
+function scheduleNativePushTokenRegistration() {
+  [0, 1000, 3000, 7000, 12000].forEach((delay) => {
+    setTimeout(requestNativePushToken, delay);
+  });
+}
+
 function showUpdatePrompt() {
   nodes.updatePrompt?.classList.add("open");
   nodes.updatePrompt?.setAttribute("aria-hidden", "false");
@@ -3604,6 +3619,7 @@ async function completeOtpSession(response, phone, name) {
   applySavedProfile(response.profile, { sync: false });
   syncCustomerState();
   if (pendingNativePushToken) registerNativePushToken(pendingNativePushToken);
+  scheduleNativePushTokenRegistration();
   renderAll();
   closeAccount();
   localStorage.setItem("evspeare.apkOtpDone", "1");
@@ -4811,10 +4827,12 @@ async function resumeCustomerSession() {
     console.warn("Unable to restore customer profile", error);
   }
   if (pendingNativePushToken) registerNativePushToken(pendingNativePushToken);
+  scheduleNativePushTokenRegistration();
   renderAll();
 }
 
 resumeCustomerSession();
+scheduleNativePushTokenRegistration();
 
 function applySavedProfile(profile, { sync = true } = {}) {
   if (!profile) return;
