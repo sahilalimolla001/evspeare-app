@@ -44,6 +44,7 @@ const rateLimitBuckets = new Map();
 const maxRequestBodyBytes = Number(process.env.MAX_REQUEST_BODY_BYTES || 256 * 1024);
 const playStorePackageName = process.env.PLAY_STORE_PACKAGE_NAME || "com.evspeare.shop";
 let googleAccessTokenCache = null;
+let fcmAccessTokenCache = null;
 let websiteLoginCache = null;
 let appVersionCache = null;
 
@@ -965,14 +966,20 @@ function gcsPublicCandidates(gcs) {
 }
 
 function googleServiceAccount() {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "";
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FCM_SERVICE_ACCOUNT_JSON || "";
   if (raw) {
     try {
-      const parsed = JSON.parse(raw);
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = JSON.parse(Buffer.from(raw, "base64").toString("utf8"));
+      }
       return {
         clientEmail: parsed.client_email,
         privateKey: String(parsed.private_key || "").replace(/\\n/g, "\n"),
-        tokenUri: parsed.token_uri || "https://oauth2.googleapis.com/token"
+        tokenUri: parsed.token_uri || "https://oauth2.googleapis.com/token",
+        projectId: parsed.project_id
       };
     } catch (error) {
       console.error("Invalid GOOGLE_SERVICE_ACCOUNT_JSON", error.message);
@@ -982,13 +989,31 @@ function googleServiceAccount() {
   return {
     clientEmail: process.env.GOOGLE_CLIENT_EMAIL,
     privateKey: String(process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-    tokenUri: process.env.GOOGLE_TOKEN_URI || "https://oauth2.googleapis.com/token"
+    tokenUri: process.env.GOOGLE_TOKEN_URI || "https://oauth2.googleapis.com/token",
+    projectId: process.env.GOOGLE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || process.env.FCM_PROJECT_ID
   };
 }
 
 function googleStorageConfigured() {
   const account = googleServiceAccount();
   return Boolean(account.clientEmail && account.privateKey);
+}
+
+function fcmServiceAccount() {
+  const account = googleServiceAccount();
+  return {
+    ...account,
+    projectId: process.env.FCM_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || account.projectId
+  };
+}
+
+function fcmConfigStatus() {
+  const account = fcmServiceAccount();
+  return {
+    legacyServerKeySet: Boolean(process.env.FCM_SERVER_KEY),
+    serviceAccountSet: Boolean(account.clientEmail && account.privateKey),
+    projectIdSet: Boolean(account.projectId)
+  };
 }
 
 async function googleAccessToken() {
@@ -1028,6 +1053,45 @@ async function googleAccessToken() {
     expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000
   };
   return googleAccessTokenCache.token;
+}
+
+async function fcmAccessToken() {
+  if (fcmAccessTokenCache && fcmAccessTokenCache.expiresAt > Date.now() + 60000) {
+    return fcmAccessTokenCache.token;
+  }
+
+  const account = fcmServiceAccount();
+  if (!account.clientEmail || !account.privateKey) {
+    throw new Error("Firebase service account is not configured for push notifications");
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const assertionBase = `${base64UrlJson({ alg: "RS256", typ: "JWT" })}.${base64UrlJson({
+    iss: account.clientEmail,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: account.tokenUri,
+    iat: now,
+    exp: now + 3600
+  })}`;
+  const signature = crypto.createSign("RSA-SHA256").update(assertionBase).sign(account.privateKey).toString("base64url");
+  const assertion = `${assertionBase}.${signature}`;
+
+  const response = await fetch(account.tokenUri, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error_description || data.error || "Firebase token request failed");
+
+  fcmAccessTokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000
+  };
+  return fcmAccessTokenCache.token;
 }
 
 function placeholderSvg(message = "Image unavailable") {
@@ -1440,6 +1504,7 @@ function publicDiagnostics(req) {
       keyIdSet: Boolean(process.env.RAZORPAY_KEY_ID),
       keySecretSet: Boolean(process.env.RAZORPAY_KEY_SECRET)
     },
+    push: fcmConfigStatus(),
     website: {
       productsUrlSet: Boolean(websiteProductsUrl),
       productsUrlSource: process.env.WEBSITE_PRODUCTS_URL ? "env" : websiteProductsUrl ? "config.js" : null,
@@ -1790,8 +1855,6 @@ function notificationTargets(audience, pincode) {
 }
 
 async function sendFcmNotification(tokens, notification) {
-  const serverKey = String(process.env.FCM_SERVER_KEY || "").trim();
-  if (!serverKey) return { configured: false, sent: 0, failed: tokens.length, message: "FCM_SERVER_KEY is not configured" };
   if (!tokens.length) {
     return {
       configured: true,
@@ -1800,6 +1863,53 @@ async function sendFcmNotification(tokens, notification) {
       message: "No registered mobile devices. Install the Firebase Messaging APK and login once so the phone can register its push token."
     };
   }
+
+  const account = fcmServiceAccount();
+  if (account.clientEmail && account.privateKey && account.projectId) {
+    const accessToken = await fcmAccessToken();
+    const endpoint = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(account.projectId)}/messages:send`;
+    const results = await Promise.all(tokens.map(async (item) => {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: {
+            token: item.token,
+            notification: {
+              title: notification.title,
+              body: notification.message
+            },
+            data: {
+              title: notification.title,
+              message: notification.message,
+              target: notification.target || "orders",
+              audience: notification.audience || "all",
+              pincode: notification.pincode || ""
+            },
+            android: {
+              priority: notification.priority === "high" ? "HIGH" : "NORMAL"
+            }
+          }
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      return { ok: response.ok, data };
+    }));
+    const sent = results.filter((item) => item.ok).length;
+    return {
+      configured: true,
+      provider: "fcm-http-v1",
+      sent,
+      failed: results.length - sent,
+      response: results.slice(0, 10).map((item) => item.data)
+    };
+  }
+
+  const serverKey = String(process.env.FCM_SERVER_KEY || "").trim();
+  if (!serverKey) return { configured: false, sent: 0, failed: tokens.length, message: "Firebase push is not configured. Set FIREBASE_SERVICE_ACCOUNT_JSON with project_id or FCM_SERVER_KEY." };
 
   const response = await fetch("https://fcm.googleapis.com/fcm/send", {
     method: "POST",
@@ -1823,7 +1933,7 @@ async function sendFcmNotification(tokens, notification) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || data.message || "FCM send failed");
-  return { configured: true, sent: Number(data.success || 0), failed: Number(data.failure || 0), response: data };
+  return { configured: true, provider: "fcm-legacy", sent: Number(data.success || 0), failed: Number(data.failure || 0), response: data };
 }
 
 async function handlePushSend(req, res) {
