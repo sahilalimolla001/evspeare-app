@@ -686,6 +686,60 @@ function resetOtpEntryForms({ keepPhone = false } = {}) {
   if (!keepPhone && nodes.apkLoginPhone) nodes.apkLoginPhone.value = "";
 }
 
+let activeOtpInput = null;
+let otpAbortController = null;
+
+function fillOtpCode(code) {
+  const clean = String(code || "").replace(/\D/g, "").slice(0, 6);
+  if (!clean || !activeOtpInput) return;
+  activeOtpInput.value = clean;
+  activeOtpInput.dispatchEvent(new Event("input", { bubbles: true }));
+  const action = activeOtpInput === nodes.apkLoginOtp
+    ? nodes.apkLoginSubmit
+    : activeOtpInput === nodes.loginOtp
+      ? nodes.loginSubmit
+      : activeOtpInput === nodes.codOtp
+        ? document.querySelector('[data-action="verify-cod-otp"]')
+        : null;
+  if (clean.length >= 4 && action) {
+    setTimeout(() => action.click(), 250);
+  }
+}
+
+window.EvSpeareReceiveOtp = fillOtpCode;
+
+function startNativeOtpListener() {
+  try {
+    window.EvSpeareAndroid?.startOtpListener?.();
+  } catch (error) {
+    console.warn("Native OTP listener failed", error);
+  }
+}
+
+async function startWebOtpListener(input) {
+  if (!("OTPCredential" in window) || !navigator.credentials) return;
+  otpAbortController?.abort();
+  otpAbortController = new AbortController();
+  try {
+    const credential = await navigator.credentials.get({
+      otp: { transport: ["sms"] },
+      signal: otpAbortController.signal
+    });
+    if (credential?.code && input === activeOtpInput) {
+      fillOtpCode(credential.code);
+    }
+  } catch (error) {
+    if (error.name !== "AbortError") console.warn("Web OTP autofill failed", error);
+  }
+}
+
+function startOtpAutofetch(input) {
+  if (!input) return;
+  activeOtpInput = input;
+  startNativeOtpListener();
+  startWebOtpListener(input);
+}
+
 function setOtpStep(step) {
   const otpStep = step === "otp";
   if (nodes.loginPhoneRow) nodes.loginPhoneRow.hidden = otpStep;
@@ -693,6 +747,7 @@ function setOtpStep(step) {
   if (nodes.loginPhone) nodes.loginPhone.disabled = otpStep;
   if (nodes.loginOtp) nodes.loginOtp.disabled = !otpStep;
   if (nodes.loginSubmit) nodes.loginSubmit.textContent = otpStep ? "Verify OTP" : "Send OTP";
+  if (otpStep) startOtpAutofetch(nodes.loginOtp);
 }
 
 function setApkOtpStep(step) {
@@ -702,6 +757,7 @@ function setApkOtpStep(step) {
   if (nodes.apkLoginPhone) nodes.apkLoginPhone.disabled = otpStep;
   if (nodes.apkLoginOtp) nodes.apkLoginOtp.disabled = !otpStep;
   if (nodes.apkLoginSubmit) nodes.apkLoginSubmit.textContent = otpStep ? "Verify OTP" : "Continue";
+  if (otpStep) startOtpAutofetch(nodes.apkLoginOtp);
 }
 
 function persistShoppingState() {
@@ -3714,7 +3770,10 @@ function openCodOtpModal() {
   nodes.codOtpModal.classList.add("open");
   nodes.codOtpModal.setAttribute("aria-hidden", "false");
   nodes.codOtp.value = "";
-  requestAnimationFrame(() => nodes.codOtp.focus());
+  requestAnimationFrame(() => {
+    nodes.codOtp.focus();
+    startOtpAutofetch(nodes.codOtp);
+  });
 }
 
 function closeCodOtpModal() {
