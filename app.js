@@ -33,6 +33,7 @@ const fastDeliveryEstimateDays = 1;
 const returnWindowDays = 7;
 const codMaxOrderAmount = 1000;
 let pendingOtpLogin = null;
+let pendingNativePushToken = "";
 let mapPicker = {
   map: null,
   marker: null,
@@ -3416,12 +3417,15 @@ function notifyNativeOrderUpdate(title, message) {
 async function registerNativePushToken(token) {
   const cleanToken = String(token || "").trim();
   if (!cleanToken || !api.registerPushToken) return;
+  pendingNativePushToken = cleanToken;
+  if (!isLoggedIn()) return;
   try {
     await api.registerPushToken(cleanToken, {
       platform: "android",
       phone: state.session?.user?.phone || "",
       appVersion: appConfig.appVersion || ""
     });
+    pendingNativePushToken = "";
   } catch (error) {
     console.warn("Push token registration failed", error);
   }
@@ -3597,8 +3601,9 @@ async function completeOtpSession(response, phone, name) {
   resetOtpEntryForms();
   saveJson(storageKeys.session, state.session);
   await restoreCustomerState();
-  applySavedProfile(response.profile);
+  applySavedProfile(response.profile, { sync: false });
   syncCustomerState();
+  if (pendingNativePushToken) registerNativePushToken(pendingNativePushToken);
   renderAll();
   closeAccount();
   localStorage.setItem("evspeare.apkOtpDone", "1");
@@ -4788,20 +4793,30 @@ if (!history.state?.[appHistoryKey]) {
   history.replaceState(pageHistoryState(activePageName()), "", window.location.href);
 }
 
-if (state.session?.user?.phone) {
+async function resumeCustomerSession() {
+  if (!state.session?.user?.phone) return;
   nodes.checkoutPhone.value = state.session.user.phone;
   nodes.checkoutName.value = state.session.user.name || "";
-  api.fetchProfile?.().then((response) => {
-    if (!response?.profile) return;
-    state.session.profile = response.profile;
-    state.session.user.name = response.profile.name || state.session.user.name;
-    applySavedProfile(response.profile);
-    saveJson(storageKeys.session, state.session);
-    renderAll();
-  }).catch(() => {});
+  await restoreCustomerState();
+  try {
+    const response = await api.fetchProfile?.();
+    if (response?.profile) {
+      state.session.profile = response.profile;
+      state.session.user.name = response.profile.name || state.session.user.name;
+      applySavedProfile(response.profile, { sync: false });
+      saveJson(storageKeys.session, state.session);
+      syncCustomerState();
+    }
+  } catch (error) {
+    console.warn("Unable to restore customer profile", error);
+  }
+  if (pendingNativePushToken) registerNativePushToken(pendingNativePushToken);
+  renderAll();
 }
 
-function applySavedProfile(profile) {
+resumeCustomerSession();
+
+function applySavedProfile(profile, { sync = true } = {}) {
   if (!profile) return;
   const location = {
     ...savedLocationDetails(),
@@ -4828,7 +4843,7 @@ function applySavedProfile(profile) {
     saveJson(storageKeys.location, location);
     saveJson(storageKeys.addresses, state.savedAddresses);
     nodes.checkoutAddress.value = formatAddress(location);
-    syncCustomerState();
+    if (sync) syncCustomerState();
   }
 }
 
