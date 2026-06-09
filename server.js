@@ -858,8 +858,11 @@ function twilioConfigStatus() {
   const authToken = process.env.TWILIO_AUTH_TOKEN || "";
   const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID || "";
   const channel = (process.env.TWILIO_VERIFY_CHANNEL || "sms").toLowerCase();
+  const twoFactorApiKey = process.env.TWOFACTOR_API_KEY || process.env.TWO_FACTOR_API_KEY || "";
 
   return {
+    primaryOtpProvider: twoFactorApiKey ? "2factor" : "twilio",
+    twoFactorConfigured: Boolean(twoFactorApiKey),
     configured: Boolean(accountSid && authToken && serviceSid),
     accountSidSet: Boolean(accountSid),
     authTokenSet: Boolean(authToken),
@@ -1547,6 +1550,107 @@ async function twilioRequest(pathname, body) {
   return data;
 }
 
+function otpSessionsPath() {
+  const dataDir = path.join(rootDir, "data");
+  fs.mkdirSync(dataDir, { recursive: true });
+  return path.join(dataDir, "otp-sessions.json");
+}
+
+function readOtpSessions() {
+  try {
+    return JSON.parse(fs.readFileSync(otpSessionsPath(), "utf8"));
+  } catch (error) {
+    return {};
+  }
+}
+
+function writeOtpSessions(sessions) {
+  fs.writeFileSync(otpSessionsPath(), JSON.stringify(sessions, null, 2));
+}
+
+function saveOtpSession(phone, session) {
+  const sessions = readOtpSessions();
+  const now = Date.now();
+  const maxAgeMs = 15 * 60 * 1000;
+  Object.keys(sessions).forEach((key) => {
+    if (!sessions[key]?.createdAt || now - Number(sessions[key].createdAt) > maxAgeMs) delete sessions[key];
+  });
+  sessions[phoneDigits(phone)] = { ...session, createdAt: now };
+  writeOtpSessions(sessions);
+}
+
+function getOtpSession(phone) {
+  const sessions = readOtpSessions();
+  const session = sessions[phoneDigits(phone)];
+  if (!session || Date.now() - Number(session.createdAt || 0) > 15 * 60 * 1000) return null;
+  return session;
+}
+
+function clearOtpSession(phone) {
+  const sessions = readOtpSessions();
+  delete sessions[phoneDigits(phone)];
+  writeOtpSessions(sessions);
+}
+
+async function twoFactorRequestOtp(phone) {
+  const apiKey = process.env.TWOFACTOR_API_KEY || process.env.TWO_FACTOR_API_KEY;
+  if (!apiKey) throw new Error("2Factor API key is missing");
+  const template = String(process.env.TWOFACTOR_TEMPLATE_NAME || process.env.TWO_FACTOR_TEMPLATE_NAME || "").trim();
+  const digits = phoneDigits(phone);
+  const templatePath = template ? `/${encodeURIComponent(template)}` : "";
+  const url = `https://2factor.in/API/V1/${encodeURIComponent(apiKey)}/SMS/${digits}/AUTOGEN${templatePath}`;
+  const response = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || String(data.Status || "").toLowerCase() !== "success") {
+    throw new Error(data.Details || data.Message || `2Factor OTP failed (${response.status})`);
+  }
+  return data;
+}
+
+async function twoFactorVerifyOtp(sessionId, code) {
+  const apiKey = process.env.TWOFACTOR_API_KEY || process.env.TWO_FACTOR_API_KEY;
+  if (!apiKey) throw new Error("2Factor API key is missing");
+  if (!sessionId) throw new Error("2Factor OTP session is missing");
+  const url = `https://2factor.in/API/V1/${encodeURIComponent(apiKey)}/SMS/VERIFY/${encodeURIComponent(sessionId)}/${encodeURIComponent(code)}`;
+  const response = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || String(data.Status || "").toLowerCase() !== "success") {
+    return { status: "pending", provider: "2factor", response: data };
+  }
+  return { status: "approved", provider: "2factor", response: data };
+}
+
+async function requestOtpWithFallback(to) {
+  const fallbackErrors = [];
+  if (process.env.TWOFACTOR_API_KEY || process.env.TWO_FACTOR_API_KEY) {
+    try {
+      const result = await twoFactorRequestOtp(to);
+      saveOtpSession(to, { provider: "2factor", sessionId: result.Details || result.SessionId || result.sessionId || "" });
+      return { provider: "2factor", status: "sent", sid: result.Details || "", fallbackUsed: false };
+    } catch (error) {
+      fallbackErrors.push(`2Factor: ${error.message}`);
+      console.error("2Factor OTP failed, falling back to Twilio", error.message);
+    }
+  }
+
+  const verification = await twilioRequest("/Verifications", {
+    To: to,
+    Channel: (process.env.TWILIO_VERIFY_CHANNEL || "sms").toLowerCase()
+  });
+  saveOtpSession(to, { provider: "twilio", sid: verification.sid || "" });
+  return { provider: "twilio", status: verification.status, sid: verification.sid, fallbackUsed: fallbackErrors.length > 0, fallbackErrors };
+}
+
+async function verifyOtpWithProvider(to, code) {
+  const session = getOtpSession(to);
+  if (session?.provider === "2factor") return twoFactorVerifyOtp(session.sessionId, code);
+  const check = await twilioRequest("/VerificationCheck", {
+    To: to,
+    Code: code
+  });
+  return { ...check, provider: "twilio" };
+}
+
 async function handleRequestOtp(req, res) {
   const body = await readBody(req);
   const user = verifyToken(req);
@@ -1557,14 +1661,13 @@ async function handleRequestOtp(req, res) {
   }
 
   try {
-    const verification = await twilioRequest("/Verifications", {
-      To: to,
-      Channel: (process.env.TWILIO_VERIFY_CHANNEL || "sms").toLowerCase()
-    });
+    const verification = await requestOtpWithFallback(to);
     return send(res, 200, {
       message: "OTP sent",
       sid: verification.sid,
-      status: verification.status
+      status: verification.status,
+      provider: verification.provider,
+      fallbackUsed: verification.fallbackUsed || false
     });
   } catch (error) {
     const status = error.message.includes("env vars") ? 503 : 502;
@@ -1584,16 +1687,14 @@ async function handleVerifyOtp(req, res) {
 
   let check;
   try {
-    check = await twilioRequest("/VerificationCheck", {
-      To: to,
-      Code: code
-    });
+    check = await verifyOtpWithProvider(to, code);
   } catch (error) {
-    const status = error.message.includes("env vars") ? 503 : 502;
+    const status = error.message.includes("env vars") || error.message.includes("missing") ? 503 : 502;
     return send(res, status, { message: error.message });
   }
 
   if (check.status !== "approved") return send(res, 401, { message: "Invalid OTP" });
+  clearOtpSession(to);
 
   const phone = phoneDigits(body.phone);
   const inputProfile = body.profile && typeof body.profile === "object" ? body.profile : {};
