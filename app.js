@@ -674,17 +674,33 @@ function refreshApkOtpGate() {
 }
 
 function resetOtpEntryForms({ keepPhone = false } = {}) {
-  if (nodes.loginPhoneRow) nodes.loginPhoneRow.hidden = false;
-  if (nodes.loginOtpRow) nodes.loginOtpRow.hidden = true;
+  setOtpStep("phone");
+  setApkOtpStep("phone");
   if (nodes.loginOtp) nodes.loginOtp.value = "";
   if (nodes.loginSubmit) nodes.loginSubmit.textContent = "Send OTP";
   if (!keepPhone && nodes.loginPhone) nodes.loginPhone.value = "";
 
-  if (nodes.apkLoginPhoneRow) nodes.apkLoginPhoneRow.hidden = false;
-  if (nodes.apkLoginOtpRow) nodes.apkLoginOtpRow.hidden = true;
   if (nodes.apkLoginOtp) nodes.apkLoginOtp.value = "";
   if (nodes.apkLoginSubmit) nodes.apkLoginSubmit.textContent = "Continue";
   if (!keepPhone && nodes.apkLoginPhone) nodes.apkLoginPhone.value = "";
+}
+
+function setOtpStep(step) {
+  const otpStep = step === "otp";
+  if (nodes.loginPhoneRow) nodes.loginPhoneRow.hidden = otpStep;
+  if (nodes.loginOtpRow) nodes.loginOtpRow.hidden = !otpStep;
+  if (nodes.loginPhone) nodes.loginPhone.disabled = otpStep;
+  if (nodes.loginOtp) nodes.loginOtp.disabled = !otpStep;
+  if (nodes.loginSubmit) nodes.loginSubmit.textContent = otpStep ? "Verify OTP" : "Send OTP";
+}
+
+function setApkOtpStep(step) {
+  const otpStep = step === "otp";
+  if (nodes.apkLoginPhoneRow) nodes.apkLoginPhoneRow.hidden = otpStep;
+  if (nodes.apkLoginOtpRow) nodes.apkLoginOtpRow.hidden = !otpStep;
+  if (nodes.apkLoginPhone) nodes.apkLoginPhone.disabled = otpStep;
+  if (nodes.apkLoginOtp) nodes.apkLoginOtp.disabled = !otpStep;
+  if (nodes.apkLoginSubmit) nodes.apkLoginSubmit.textContent = otpStep ? "Verify OTP" : "Continue";
 }
 
 function persistShoppingState() {
@@ -3605,9 +3621,7 @@ async function completeApkOtpLogin(event) {
     if (!otpReady) {
       await api.requestCodOtp(phone);
       pendingOtpLogin = { source: "apk", phone, name: "EV Speare Customer", profile: { name: "EV Speare Customer" } };
-      if (nodes.apkLoginPhoneRow) nodes.apkLoginPhoneRow.hidden = true;
-      if (nodes.apkLoginOtpRow) nodes.apkLoginOtpRow.hidden = false;
-      if (nodes.apkLoginSubmit) nodes.apkLoginSubmit.textContent = "Verify OTP";
+      setApkOtpStep("otp");
       nodes.apkLoginOtp?.focus();
       showToast("OTP sent to mobile number");
       return;
@@ -3663,9 +3677,7 @@ async function completeNewCustomerLogin(event) {
     if (!otpReady) {
       await api.requestCodOtp(phone);
       pendingOtpLogin = { ...(pendingOtpLogin || {}), phone, name, profile };
-      if (nodes.loginPhoneRow) nodes.loginPhoneRow.hidden = true;
-      if (nodes.loginOtpRow) nodes.loginOtpRow.hidden = false;
-      if (nodes.loginSubmit) nodes.loginSubmit.textContent = "Verify OTP";
+      setOtpStep("otp");
       nodes.loginOtp?.focus();
       showToast("OTP sent to mobile number");
       return;

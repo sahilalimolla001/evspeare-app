@@ -3714,6 +3714,16 @@ body.apk-otp-locked {
   display: none !important;
 }
 
+.auth-panel label[hidden],
+.apk-otp-form label[hidden] {
+  display: none !important;
+}
+
+.auth-panel input:disabled,
+.apk-otp-form input:disabled {
+  opacity: 1;
+}
+
 .primary-button,
 .secondary-button {
   min-height: 42px;
