@@ -1478,6 +1478,8 @@ function normalizeRemoteProduct(item, index, endpointUrl, source) {
     rating: numericValue(firstPresent(item, ["rating", "average_rating", "averageRating"])) || 4.1,
     reviews: numericValue(firstPresent(item, ["reviews", "rating_count", "ratingCount", "review_count", "reviewCount"])) || 0,
     delivery: firstPresent(item, ["delivery", "shipping_text", "shippingText"]) || "Delivery available",
+    warehouseId: firstPresent(item, ["warehouseId", "warehouse_id"]),
+    warehouseCode: firstPresent(item, ["warehouseCode", "warehouse_code", "warehouse"]),
     tags: [...new Set(["Deals", category, ...tags].filter(Boolean))],
     image: firstProductImage(item, endpointUrl),
     stock: stockStatusFromItem(item, quantity),
@@ -3006,6 +3008,8 @@ async function postOrderCancel(endpoint, headers, body, label) {
 
 function warehouseOrderPayload(order = {}) {
   const fastDelivery = isFastDeliveryOrder(order);
+  const warehouseId = order.warehouse_id || order.warehouseId || firstOrderItemValue(order, ["warehouse_id", "warehouseId"]);
+  const warehouseCode = order.warehouse_code || order.warehouseCode || firstOrderItemValue(order, ["warehouse_code", "warehouseCode", "warehouse"]);
   const delivery = {
     ...(order.delivery || {}),
     mode: fastDelivery ? "fast" : (order.delivery?.mode || order.deliveryMode || "free"),
@@ -3019,6 +3023,10 @@ function warehouseOrderPayload(order = {}) {
     customer_name: order.customer_name || order.customer?.name || order.shipping_address?.name || "",
     customer_phone: order.customer_phone || order.customer?.phone || order.shipping_address?.phone || "",
     customer_address: order.customer_address || order.customer?.address || order.shipping_address?.address || "",
+    warehouse_id: warehouseId || undefined,
+    warehouseId: warehouseId || undefined,
+    warehouse_code: warehouseCode || undefined,
+    warehouseCode: warehouseCode || undefined,
     delivery,
     deliveryMode: delivery.mode,
     deliveryLabel: delivery.label,
@@ -3028,6 +3036,16 @@ function warehouseOrderPayload(order = {}) {
     priority: fastDelivery ? "urgent" : (order.priority || "normal"),
     status: fastDelivery ? "pending" : (order.status || "pending")
   };
+}
+
+function firstOrderItemValue(order = {}, keys = []) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  for (const item of items) {
+    for (const key of keys) {
+      if (item?.[key] !== null && item?.[key] !== undefined && item?.[key] !== "") return item[key];
+    }
+  }
+  return "";
 }
 
 async function postWarehouseOrderCancel(req, endpoint, body) {

@@ -4047,9 +4047,15 @@ function buildOrder(customer, payment) {
   const createdAt = new Date();
   const estimateDays = state.deliveryMode === "fast" ? fastDeliveryEstimateDays : deliveryEstimateDays;
   const estimatedDeliveryAt = addDays(createdAt, estimateDays);
+  const warehouseId = firstPresentValue(totals.entries, ["warehouseId", "warehouse_id"]);
+  const warehouseCode = firstPresentValue(totals.entries, ["warehouseCode", "warehouse_code", "warehouse"]);
   return {
     orderId: `BG-${Date.now()}`,
     source: "mobile_pwa",
+    warehouse_id: warehouseId || undefined,
+    warehouseId: warehouseId || undefined,
+    warehouse_code: warehouseCode || undefined,
+    warehouseCode: warehouseCode || undefined,
     customer: {
       id: state.session.user.id,
       name: customer.name,
@@ -4078,7 +4084,11 @@ function buildOrder(customer, payment) {
       price: item.price,
       quantity: item.quantity,
       total: item.price * item.quantity,
-      stockQuantity: stockQuantity(item)
+      stockQuantity: stockQuantity(item),
+      warehouse_id: item.warehouseId || item.warehouse_id || undefined,
+      warehouseId: item.warehouseId || item.warehouse_id || undefined,
+      warehouse_code: item.warehouseCode || item.warehouse_code || item.warehouse || undefined,
+      warehouseCode: item.warehouseCode || item.warehouse_code || item.warehouse || undefined
     })),
     amounts: {
       currency: appConfig.currency || "INR",
@@ -4117,6 +4127,15 @@ function buildOrder(customer, payment) {
       estimatedDeliveryAt: indiaIso(estimatedDeliveryAt)
     }
   };
+}
+
+function firstPresentValue(items, keys) {
+  for (const item of items || []) {
+    for (const key of keys) {
+      if (item?.[key] !== null && item?.[key] !== undefined && item?.[key] !== "") return item[key];
+    }
+  }
+  return "";
 }
 
 function loadScript(src) {
