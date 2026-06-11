@@ -891,13 +891,30 @@ function allowedImageHost(hostname) {
     .split(",")
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
+  const configuredHosts = [
+    process.env.IMAGE_BASE_URL,
+    process.env.WEBSITE_PRODUCTS_URL,
+    process.env.WAREHOUSE_PRODUCTS_URL,
+    process.env.WAREHOUSE_INVENTORY_URL
+  ]
+    .map(hostnameFromUrl)
+    .filter(Boolean);
 
   return (
     hostname === "storage.googleapis.com" ||
     hostname === "firebasestorage.googleapis.com" ||
     hostname.endsWith(".storage.googleapis.com") ||
-    allowed.includes(hostname.toLowerCase())
+    allowed.includes(hostname.toLowerCase()) ||
+    configuredHosts.includes(hostname.toLowerCase())
   );
+}
+
+function hostnameFromUrl(value) {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch (error) {
+    return "";
+  }
 }
 
 function parseGcsSource(src) {
@@ -1223,7 +1240,10 @@ function publicProductImageUrl(value, endpointUrl = "") {
     if (
       url.hostname === "storage.googleapis.com" ||
       url.hostname === "firebasestorage.googleapis.com" ||
-      url.hostname.endsWith(".storage.googleapis.com")
+      url.hostname.endsWith(".storage.googleapis.com") ||
+      url.protocol === "http:" ||
+      url.hostname === hostnameFromUrl(endpointUrl) ||
+      allowedImageHost(url.hostname)
     ) {
       return `/api/mobile/images?src=${encodeURIComponent(image)}`;
     }

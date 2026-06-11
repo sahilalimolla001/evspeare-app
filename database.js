@@ -160,7 +160,8 @@ function publicImageUrl(value) {
     if (
       url.hostname === "storage.googleapis.com" ||
       url.hostname === "firebasestorage.googleapis.com" ||
-      url.hostname.endsWith(".storage.googleapis.com")
+      url.hostname.endsWith(".storage.googleapis.com") ||
+      url.protocol === "http:"
     ) {
       return `/api/mobile/images?src=${encodeURIComponent(image)}`;
     }
@@ -169,7 +170,10 @@ function publicImageUrl(value) {
   }
 
   if (image.startsWith("/") && process.env.IMAGE_BASE_URL) {
-    return `${process.env.IMAGE_BASE_URL.replace(/\/+$/g, "")}${image}`;
+    const absoluteUrl = `${process.env.IMAGE_BASE_URL.replace(/\/+$/g, "")}${image}`;
+    return absoluteUrl.startsWith("http:")
+      ? `/api/mobile/images?src=${encodeURIComponent(absoluteUrl)}`
+      : absoluteUrl;
   }
 
   return image;
