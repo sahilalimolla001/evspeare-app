@@ -2890,7 +2890,7 @@ async function pushOrderToWarehouse(order) {
   const response = await fetchWithTimeout(process.env.WAREHOUSE_ORDERS_URL, {
     method: "POST",
     headers,
-    body: JSON.stringify(order)
+    body: JSON.stringify(warehouseOrderPayload(order))
   });
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};
@@ -3002,6 +3002,32 @@ async function postOrderCancel(endpoint, headers, body, label) {
   }
   if (!response.ok) throw new Error(data.message || data.error || `${label} failed`);
   return data;
+}
+
+function warehouseOrderPayload(order = {}) {
+  const fastDelivery = isFastDeliveryOrder(order);
+  const delivery = {
+    ...(order.delivery || {}),
+    mode: fastDelivery ? "fast" : (order.delivery?.mode || order.deliveryMode || "free"),
+    label: fastDelivery ? "Fast delivery" : (order.delivery?.label || order.deliveryLabel || "Standard delivery"),
+    automation: fastDelivery ? "express_zone_selected" : (order.delivery?.automation || "standard_auto_selected")
+  };
+  return {
+    ...order,
+    external_order_id: order.external_order_id || order.order_id || order.orderId || order.id,
+    order_number: order.order_number || order.external_order_number || order.orderId || order.order_id || order.id,
+    customer_name: order.customer_name || order.customer?.name || order.shipping_address?.name || "",
+    customer_phone: order.customer_phone || order.customer?.phone || order.shipping_address?.phone || "",
+    customer_address: order.customer_address || order.customer?.address || order.shipping_address?.address || "",
+    delivery,
+    deliveryMode: delivery.mode,
+    deliveryLabel: delivery.label,
+    deliveryAutomation: delivery.automation,
+    fastDelivery,
+    fast_delivery: fastDelivery,
+    priority: fastDelivery ? "urgent" : (order.priority || "normal"),
+    status: fastDelivery ? "pending" : (order.status || "pending")
+  };
 }
 
 async function postWarehouseOrderCancel(req, endpoint, body) {
